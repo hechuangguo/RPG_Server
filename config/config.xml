@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ServerConfig>
+
+    <!-- 数据库配置 -->
+    <Database
+        host="127.0.0.1"
+        port="3306"
+        user="root"
+        pass="your_password"
+        name="rpg_game"
+    />
+
+    <!-- SuperServer -->
+    <SuperServer ip="127.0.0.1" port="9000"/>
+
+    <!-- 各服务器内部监听端口 -->
+    <SessionServer port="9001"/>
+    <RecordServer  port="9002"/>
+    <AOIServer     port="9003"/>
+    <SceneServer   port="9004"/>
+    <GatewayServer port="9005"/>
+    <LoggerServer  port="9006"/>
+    <GlobalServer  port="9007"/>
+    <ZoneServer    port="9008"/>
+
+    <!-- 各服务器日志输出路径 -->
+    <LogPaths>
+        <SuperServer>logs/super.log</SuperServer>
+        <SessionServer>logs/session.log</SessionServer>
+        <RecordServer>logs/record.log</RecordServer>
+        <AOIServer>logs/aoi.log</AOIServer>
+        <SceneServer>logs/scene.log</SceneServer>
+        <GatewayServer>logs/gateway.log</GatewayServer>
+        <LoggerServer>logs/logger.log</LoggerServer>
+        <GlobalServer>logs/global.log</GlobalServer>
+        <ZoneServer>logs/zone.log</ZoneServer>
+    </LogPaths>
+
+</ServerConfig>

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 单个 SceneServer 进程的地图配置 -->
+<SceneServerInfo sceneID="1">
+
+    <!-- 初始地图：新手村 -->
+    <Map id="1001"
+         name="新手村"
+         file="map/1001.map"
+         maxPlayer="200"/>
+
+    <!-- 主城 -->
+    <Map id="1002"
+         name="主城"
+         file="map/1002.map"
+         maxPlayer="500"/>
+
+    <!-- 野外地图 -->
+    <Map id="2001"
+         name="迷雾森林"
+         file="map/2001.map"
+         maxPlayer="100"/>
+
+    <Map id="2002"
+         name="荒漠要塞"
+         file="map/2002.map"
+         maxPlayer="100"/>
+
+</SceneServerInfo>
