@@ -1,3 +1,22 @@
+/**
+ * @file    LoggerServer.h
+ * @brief  日志服务器 —— 接收各服务器日志写入请求，统一落盘
+ *
+ * ## 职责
+ * - 接收来自各服务器的 LOG_WRITE_REQ 消息
+ * - 按服务器类型和日期分文件写入（如 session_20260523.log）
+ * - 每小时自动日志切割（关闭旧句柄，下次写入创建新文件）
+ *
+ * ## 日志文件命名规则
+ * @code
+ *   {ServerType}_{YYYYMMDD}.log
+ *   例如：scene_20260523.log、gateway_20260523.log
+ * @endcode
+ *
+ * ## 依赖关系
+ * - 依赖 SuperServer + SessionServer
+ */
+
 #pragma once
 #include "../sdk/net/TcpServer.h"
 #include "../sdk/net/TcpClient.h"
@@ -11,25 +30,41 @@
 #include <vector>
 #include <ctime>
 
-// ============================================================
-//  LoggerServer —— 接收各服务器日志写入请求，集中落盘
-//  依赖 SessionServer
-// ============================================================
-
+/**
+ * @brief 远程日志写入请求结构
+ *
+ * 后跟 logLen 字节的日志文本（纯文本，不含换行）。
+ */
 #pragma pack(push, 1)
 struct Msg_Log_WriteReq
 {
-    uint8_t  serverType;
-    uint8_t  level;        // 0=DEBUG 1=INFO 2=WARN 3=ERR 4=FATAL
-    uint32_t logLen;       // 后跟 logLen 字节的日志文本
+    uint8_t  serverType;  /**< 来源服务器类型（SubServerType 枚举值） */
+    uint8_t  level;       /**< 日志级别：0=DEBUG 1=INFO 2=WARN 3=ERR 4=FATAL */
+    uint32_t logLen;      /**< 日志文本长度（字节）—— 后跟 logLen 字节数据 */
 };
 #pragma pack(pop)
 
+/**
+ * @brief LoggerServer 核心类
+ *
+ * 单进程运行，维护按文件名索引的 FILE* 句柄表。
+ */
 class LoggerServer : public INetCallback
 {
 public:
     LoggerServer() : m_server(this), m_superClient(this), m_sessionClient(this) {}
 
+    /**
+     * @brief 初始化 LoggerServer
+     * @param ip         监听 IP
+     * @param port       监听端口
+     * @param superIP    SuperServer IP
+     * @param superPort  SuperServer 端口
+     * @param sessionIP  SessionServer IP
+     * @param sessionPort SessionServer 端口
+     * @param logDir     日志输出目录
+     * @return 成功返回 true
+     */
     bool Init(const std::string& ip, uint16_t port,
               const std::string& superIP, uint16_t superPort,
               const std::string& sessionIP, uint16_t sessionPort,
@@ -49,6 +84,7 @@ public:
         return true;
     }
 
+    /** @brief 主循环 */
     void Run()
     {
         while (true)
@@ -75,6 +111,12 @@ private:
             [this](uint32_t c, const char* d, uint16_t l){ OnWriteLog(c, d, l); });
     }
 
+    /**
+     * @brief 处理远程日志写入请求
+     *
+     * 解析 Msg_Log_WriteReq 头部，提取日志文本，写入对应文件。
+     * 文件按需打开（首次写入某服务器的日志时）。
+     */
     void OnWriteLog(ConnID fromConn, const char* data, uint16_t len)
     {
         if (len < sizeof(Msg_Log_WriteReq)) return;
@@ -83,7 +125,6 @@ private:
         if ((uint32_t)len < sizeof(Msg_Log_WriteReq) + logLen) return;
         const char* logText = data + sizeof(Msg_Log_WriteReq);
 
-        // 按服务器类型选择文件
         std::string fname = GetLogFileName((SubServerType)req->serverType);
         auto it = m_files.find(fname);
         if (it == m_files.end())
@@ -96,9 +137,14 @@ private:
         }
         fwrite(logText, 1, logLen, it->second);
         fputc('\n', it->second);
-        fflush(it->second);
+        fflush(it->second);  /**< 每条日志立即刷新 */
     }
 
+    /**
+     * @brief 生成日志文件名
+     * @param type 服务器类型
+     * @return 如 "scene_20260523.log"
+     */
     std::string GetLogFileName(SubServerType type)
     {
         time_t now = time(nullptr);
@@ -111,6 +157,11 @@ private:
         return buf;
     }
 
+    /**
+     * @brief 日志切割（每小时执行）
+     *
+     * 关闭所有文件句柄，下次写入时重新按日期创建文件名。
+     */
     void FlushAll()
     {
         for (auto& [n, fp] : m_files) { fflush(fp); fclose(fp); }
@@ -136,10 +187,12 @@ private:
                                reinterpret_cast<char*>(&hb), sizeof(hb));
     }
 
-    TcpServer  m_server;
-    TcpClient  m_superClient;
-    TcpClient  m_sessionClient;
-    uint32_t   m_hbSeq = 0;
-    std::string m_logDir;
+    TcpServer  m_server;         /**< 内部连接监听 */
+    TcpClient  m_superClient;    /**< 到 SuperServer 的连接 */
+    TcpClient  m_sessionClient;  /**< 到 SessionServer 的连接 */
+    uint32_t   m_hbSeq = 0;      /**< 心跳序列号 */
+    std::string m_logDir;        /**< 日志输出根目录 */
+
+    /** @brief 文件句柄表：文件名 → FILE*（按需打开） */
     std::unordered_map<std::string, FILE*> m_files;
 };

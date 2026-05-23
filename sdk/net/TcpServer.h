@@ -1,3 +1,17 @@
+/**
+ * @file    TcpServer.h
+ * @brief  基于 epoll 的 TCP 服务端（边缘触发模式）
+ *
+ * 特性：
+ * - epoll ET + nonblock socket
+ * - SO_REUSEADDR | SO_REUSEPORT 支持快速重启
+ * - TCP_NODELAY 禁用 Nagle 算法
+ * - 单线程轮询模型（Poll 为单帧驱动）
+ * - 双索引查找连接：fd→conn + connID→conn
+ *
+ * @warning 仅适用于单线程场景，所有回调在 Poll() 调用栈内触发。
+ */
+
 #pragma once
 #include "TcpConnection.h"
 #include <sys/epoll.h>
@@ -7,18 +21,27 @@
 #include <string>
 #include <cstdio>
 
-// ============================================================
-//  基于 epoll 的 TCP 服务端（ET 模式，单线程）
-// ============================================================
 class TcpServer
 {
 public:
+    /**
+     * @brief 构造服务端
+     * @param cb 必须非空，所有连接事件将回调到此接口
+     */
     explicit TcpServer(INetCallback* cb)
         : m_cb(cb), m_epollFd(-1), m_listenFd(-1)
         , m_nextConnID(1), m_running(false)
     {}
+
+    /** @brief 停止服务端并释放所有资源 */
     ~TcpServer() { Stop(); }
 
+    /**
+     * @brief 启动监听
+     * @param ip   绑定 IP
+     * @param port 绑定端口
+     * @return 成功返回 true
+     */
     bool Start(const std::string& ip, uint16_t port)
     {
         m_listenFd = CreateListenSocket(ip, port);
@@ -32,7 +55,15 @@ public:
         return true;
     }
 
-    // 单帧驱动，在主循环中调用（timeout_ms: epoll_wait 超时）
+    /**
+     * @brief 单帧驱动 —— 必须在主循环中反复调用
+     * @param timeout_ms epoll_wait 超时时间（毫秒），默认 10ms
+     *
+     * 处理流程：
+     * 1. epoll_wait 获取就绪事件
+     * 2. 监听 fd 就绪 → AcceptAll()
+     * 3. 连接 fd 就绪 → OnReadable / OnWritable
+     */
     void Poll(int timeout_ms = 10)
     {
         epoll_event events[MAX_EPOLL_EVENTS];
@@ -42,7 +73,7 @@ public:
             int fd = events[i].data.fd;
             if (fd == m_listenFd)
             {
-                AcceptAll();
+                AcceptAll();  /**< 监听 fd：处理新连接 */
             }
             else
             {
@@ -64,7 +95,14 @@ public:
         }
     }
 
-    // 发送消息
+    /**
+     * @brief 向指定连接发送消息
+     * @param id    目标连接 ID
+     * @param msgID 协议号
+     * @param data  消息体
+     * @param len   消息体长度
+     * @return 成功返回 true
+     */
     bool SendMsg(ConnID id, uint16_t msgID, const char* data, uint16_t len)
     {
         auto it = m_connMap.find(id);
@@ -72,6 +110,10 @@ public:
         return it->second->SendMsg(msgID, data, len);
     }
 
+    /**
+     * @brief 主动踢除连接
+     * @param id 连接 ID
+     */
     void Kick(ConnID id)
     {
         auto it = m_connMap.find(id);
@@ -82,6 +124,11 @@ public:
         }
     }
 
+    /**
+     * @brief 停止服务端
+     *
+     * 关闭所有连接、epoll fd、监听 fd。
+     */
     void Stop()
     {
         m_running = false;
@@ -93,6 +140,11 @@ public:
     }
 
 private:
+    /**
+     * @brief 创建并绑定监听 socket
+     *
+     * socket() → setsockopt(REUSEADDR|REUSEPORT|NODELAY) → bind() → listen()
+     */
     int CreateListenSocket(const std::string& ip, uint16_t port)
     {
         int fd = ::socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
@@ -115,6 +167,11 @@ private:
         return fd;
     }
 
+    /**
+     * @brief 循环 accept 所有就绪连接（ET 模式必须循环到 EAGAIN）
+     *
+     * accept4(SOCK_NONBLOCK | SOCK_CLOEXEC) 避免额外 fcntl 调用。
+     */
     void AcceptAll()
     {
         while (true)
@@ -135,6 +192,7 @@ private:
         }
     }
 
+    /** @brief 向 epoll 实例注册 fd */
     void AddEpoll(int fd, uint32_t events)
     {
         epoll_event ev{};
@@ -143,6 +201,7 @@ private:
         ::epoll_ctl(m_epollFd, EPOLL_CTL_ADD, fd, &ev);
     }
 
+    /** @brief 从 epoll 和索引表中删除连接 */
     void RemoveConn(int fd)
     {
         ::epoll_ctl(m_epollFd, EPOLL_CTL_DEL, fd, nullptr);
@@ -155,11 +214,14 @@ private:
         }
     }
 
-    INetCallback*  m_cb;
-    int            m_epollFd;
-    int            m_listenFd;
-    uint32_t       m_nextConnID;
-    bool           m_running;
+    INetCallback*  m_cb;  /**< 上层回调 */
+    int            m_epollFd;     /**< epoll 实例 fd */
+    int            m_listenFd;    /**< 监听 socket fd */
+    uint32_t       m_nextConnID;  /**< 自增连接 ID 分配器 */
+    bool           m_running;     /**< 运行状态标记 */
+
+    /** @brief fd → TcpConnection 索引（用于 epoll 事件分发） */
     std::unordered_map<int,     std::shared_ptr<TcpConnection>> m_fdToConn;
+    /** @brief ConnID → TcpConnection 索引（用于 SendMsg / Kick） */
     std::unordered_map<ConnID,  std::shared_ptr<TcpConnection>> m_connMap;
 };

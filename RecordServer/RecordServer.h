@@ -1,3 +1,24 @@
+/**
+ * @file    RecordServer.h
+ * @brief  数据库服务器 —— 角色数据持久化（MySQL）、账号登录验证
+ *
+ * ## 职责
+ * - MySQL 直连：账号验证、角色数据加载/保存
+ * - 定时自动存档（每 60 秒 AutoSaveAll）
+ * - 内部通信：连接 SuperServer + SessionServer
+ *
+ * ## 依赖关系
+ * - 依赖 SuperServer（注册） + SessionServer（社会关系数据）
+ * - 被 GatewayServer（登录验证）、SuperServer（加载角色）、SceneServer（保存角色）调用
+ *
+ * ## 数据流
+ * @code
+ *   GatewayServer ──(REC_LOGIN_VERIFY_REQ)──→ RecordServer ──(SQL)──→ MySQL
+ *   SuperServer   ──(REC_LOAD_ROLE_REQ)───→ RecordServer ──(SQL)──→ MySQL
+ *   SceneServer   ──(REC_SAVE_ROLE_REQ)───→ RecordServer ──(SQL)──→ MySQL
+ * @endcode
+ */
+
 #pragma once
 #include "../sdk/net/TcpServer.h"
 #include "../sdk/net/TcpClient.h"
@@ -8,25 +29,28 @@
 #include "../protocal/InternalMsg.h"
 #include <unordered_map>
 #include <string>
-#include <mysql/mysql.h>   // 依赖 libmysqlclient
+#include <mysql/mysql.h>   /**< libmysqlclient C API */
 
-// ============================================================
-//  RecordServer —— 处理角色数据（离线/在线/DB）
-//  依赖 SessionServer（向上注册），直接操作 MySQL
-// ============================================================
-
-// RecordServer 角色数据（完整存档）
+/**
+ * @brief RecordServer 中的角色数据（完整存档）
+ *
+ * 包含 RoleBase 基础属性以及背包、技能、任务等 JSON 串。
+ */
 struct RoleRecord
 {
-    RoleBase       base;
-    // 扩展：背包、技能、任务状态等
-    std::string    bagJson;    // 简化为 JSON 串
-    std::string    skillJson;
-    std::string    questJson;
-    uint64_t       lastSaveTime = 0;
-    bool           dirty        = false;
+    RoleBase       base;           /**< 基础角色数据 */
+    std::string    bagJson;        /**< 背包数据（JSON 序列化） */
+    std::string    skillJson;      /**< 技能数据（JSON 序列化） */
+    std::string    questJson;      /**< 任务数据（JSON 序列化） */
+    uint64_t       lastSaveTime = 0; /**< 上次存档时间（ms） */
+    bool           dirty        = false; /**< 脏标记（数据变更后置 true） */
 };
 
+/**
+ * @brief RecordServer 中的角色对象
+ *
+ * 继承 IRole，额外持有 RoleRecord（完整持久化数据）。
+ */
 class RecordRole : public IRole
 {
 public:
@@ -37,6 +61,11 @@ private:
     RoleRecord m_record;
 };
 
+/**
+ * @brief RecordServer 核心类
+ *
+ * 单进程运行，持有 MySQL 连接，同时维护到 SuperServer 和 SessionServer 的 TcpClient。
+ */
 class RecordServer : public INetCallback
 {
 public:
@@ -48,6 +77,13 @@ public:
     {}
     ~RecordServer() { if (m_db) mysql_close(m_db); }
 
+    /**
+     * @brief 初始化 RecordServer
+     * @param ip   监听 IP
+     * @param port 监听端口
+     * @param cfg  全局配置（含数据库连接参数）
+     * @return 成功返回 true
+     */
     bool Init(const std::string& ip, uint16_t port,
               const ServerConfig& cfg)
     {
@@ -63,11 +99,13 @@ public:
 
         TimerMgr::Instance().Register(500,   0,     [this]{ RegisterToSuper(); });
         TimerMgr::Instance().Register(10000, 10000, [this]{ SendHeartbeat(); });
+        // 每 60 秒自动保存所有脏数据
         TimerMgr::Instance().Register(60000, 60000, [this]{ AutoSaveAll(); });
         LOG_INFO("RecordServer started.");
         return true;
     }
 
+    /** @brief 主循环 */
     void Run()
     {
         while (true)
@@ -87,6 +125,11 @@ public:
     }
 
 private:
+    /**
+     * @brief 初始化 MySQL 连接
+     * @param cfg 数据库配置
+     * @return 成功返回 true
+     */
     bool InitDB(const ServerConfig& cfg)
     {
         m_db = mysql_init(nullptr);
@@ -99,11 +142,18 @@ private:
             LOG_ERR("MySQL connect failed: %s", mysql_error(m_db));
             return false;
         }
-        mysql_set_character_set(m_db, "utf8mb4");
+        mysql_set_character_set(m_db, "utf8mb4");  /**< 设置 UTF-8 编码 */
         LOG_INFO("MySQL connected: %s:%d/%s", cfg.dbHost.c_str(), cfg.dbPort, cfg.dbName.c_str());
         return true;
     }
 
+    /**
+     * @brief 注册消息处理函数
+     *
+     * REC_LOGIN_VERIFY_REQ → OnLoginVerify（账号密码验证）
+     * REC_LOAD_ROLE_REQ    → OnLoadRole（从 DB 加载角色）
+     * REC_SAVE_ROLE_REQ    → OnSaveRole（保存角色到 DB）
+     */
     void RegisterHandlers()
     {
         auto& d = MsgDispatcher::Instance();
@@ -135,7 +185,12 @@ private:
                                reinterpret_cast<char*>(&hb), sizeof(hb));
     }
 
-    // 账号密码验证
+    /**
+     * @brief 账号密码验证
+     *
+     * 使用 SELECT ... WHERE account='?' AND password=MD5('?') 查询 t_account 表。
+     * @note 生产环境应使用参数化查询防止 SQL 注入。
+     */
     void OnLoginVerify(ConnID fromConn, const char* data, uint16_t len)
     {
         if (len < sizeof(Msg_REC_LoginVerifyReq)) return;
@@ -165,7 +220,7 @@ private:
             }
             else
             {
-                rsp.code = 1; // 账号密码错误
+                rsp.code = 1;
             }
             if (res) mysql_free_result(res);
         }
@@ -173,7 +228,11 @@ private:
                          reinterpret_cast<char*>(&rsp), sizeof(rsp));
     }
 
-    // 加载角色数据
+    /**
+     * @brief 加载角色数据
+     *
+     * 先从 m_roles 缓存查找，未命中则调用 LoadRoleFromDB 从 MySQL 加载。
+     */
     void OnLoadRole(ConnID fromConn, const char* data, uint16_t len)
     {
         if (len < sizeof(RoleID)) return;
@@ -182,8 +241,7 @@ private:
         auto it = m_roles.find(rid);
         if (it == m_roles.end())
         {
-            // 从 DB 加载
-            LoadRoleFromDB(rid);
+            LoadRoleFromDB(rid);  /**< 从 DB 加载 */
         }
         Msg_REC_LoadRoleRsp rsp{};
         rsp.code   = m_roles.count(rid) ? 0 : -1;
@@ -192,6 +250,7 @@ private:
                          reinterpret_cast<char*>(&rsp), sizeof(rsp));
     }
 
+    /** @brief 处理角色保存请求 */
     void OnSaveRole(ConnID fromConn, const char* data, uint16_t len)
     {
         if (len < sizeof(RoleID)) return;
@@ -204,6 +263,11 @@ private:
                          reinterpret_cast<char*>(&rsp), sizeof(rsp));
     }
 
+    /**
+     * @brief 从 MySQL 加载角色数据到内存
+     *
+     * 查询 t_role 表所有字段，构建 RoleBase 并创建 RecordRole 对象。
+     */
     void LoadRoleFromDB(RoleID rid)
     {
         char sql[256];
@@ -235,6 +299,11 @@ private:
         if (res) mysql_free_result(res);
     }
 
+    /**
+     * @brief 将角色数据写回 MySQL
+     *
+     * UPDATE t_role SET level=..., map_id=..., ..., WHERE role_id=...
+     */
     void SaveRoleToDB(RoleID rid)
     {
         auto it = m_roles.find(rid);
@@ -252,6 +321,11 @@ private:
             LOG_DEBUG("SaveRoleToDB: roleID=%llu", rid);
     }
 
+    /**
+     * @brief 批量自动存档
+     *
+     * 每 60 秒定时触发，遍历所有 m_roles 调用 SaveRoleToDB。
+     */
     void AutoSaveAll()
     {
         for (auto& [rid, role] : m_roles)
@@ -259,10 +333,12 @@ private:
         LOG_INFO("AutoSave: %zu roles saved.", m_roles.size());
     }
 
-    TcpServer  m_server;
-    TcpClient  m_superClient;
-    TcpClient  m_sessionClient;
-    MYSQL*     m_db;
-    uint32_t   m_hbSeq = 0;
+    TcpServer  m_server;          /**< 内部连接监听 */
+    TcpClient  m_superClient;     /**< 到 SuperServer 的连接 */
+    TcpClient  m_sessionClient;   /**< 到 SessionServer 的连接 */
+    MYSQL*     m_db;              /**< MySQL 连接句柄 */
+    uint32_t   m_hbSeq = 0;       /**< 心跳序列号 */
+
+    /** @brief 角色数据缓存：roleID → RecordRole */
     std::unordered_map<RoleID, std::shared_ptr<RecordRole>> m_roles;
 };

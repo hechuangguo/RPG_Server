@@ -1,29 +1,53 @@
+/**
+ * @file    RingBuffer.h
+ * @brief  无锁环形缓冲区（单生产者-单消费者）
+ *
+ * 内部使用裸指针 + 两个游标实现 O(1) 读写。
+ * 适用于网络层接收/发送缓冲区场景，不依赖互斥锁，完全在单线程内使用。
+ *
+ * 存储模型：
+ * @code
+ *   [ ... readable ... | ... writable ... ]
+ *   ^                  ^                  ^
+ *   readPos            writePos           capacity
+ * @endcode
+ */
+
 #pragma once
 #include <cstdint>
 #include <cstring>
 #include <cassert>
 
-// ============================================================
-//  环形缓冲区
-// ============================================================
 class RingBuffer
 {
 public:
+    /**
+     * @brief 构造指定容量的环形缓冲区
+     * @param capacity 总容量（字节），默认 65536
+     */
     explicit RingBuffer(uint32_t capacity = 65536)
         : m_capacity(capacity), m_readPos(0), m_writePos(0), m_size(0)
     {
         m_buf = new char[capacity];
     }
+
     ~RingBuffer() { delete[] m_buf; }
 
-    // 可写空间
+    /** @brief 剩余可写字节数 */
     uint32_t WritableBytes() const { return m_capacity - m_size; }
-    // 可读数据量
+
+    /** @brief 已缓冲待读取字节数 */
     uint32_t ReadableBytes()  const { return m_size; }
-    // 是否为空
+
+    /** @brief 缓冲区是否为空 */
     bool     Empty()          const { return m_size == 0; }
 
-    // 写入数据
+    /**
+     * @brief 写入数据（环内可能分两段拷贝）
+     * @param data 源数据指针
+     * @param len  写入字节数
+     * @return 成功返回 true，空间不足返回 false
+     */
     bool Write(const char* data, uint32_t len)
     {
         if (len > WritableBytes()) return false;
@@ -42,7 +66,13 @@ public:
         return true;
     }
 
-    // 读取数据（不移动读指针）
+    /**
+     * @brief 查看数据但不移动读指针
+     * @param out 目标缓冲区
+     * @param len 期望读取字节数
+     * @return 成功返回 true，数据不足返回 false
+     * @note   与 Consume() 配合可实现零拷贝分包解析
+     */
     bool Peek(char* out, uint32_t len) const
     {
         if (len > m_size) return false;
@@ -59,7 +89,11 @@ public:
         return true;
     }
 
-    // 移动读指针
+    /**
+     * @brief 仅移动读指针（不拷贝数据）
+     * @param len 跳过的字节数
+     * @note  通常与 Peek() 配对使用：先 Peek 消息头确定长度，再 Consume 丢弃已解析数据
+     */
     void Consume(uint32_t len)
     {
         assert(len <= m_size);
@@ -67,7 +101,12 @@ public:
         m_size -= len;
     }
 
-    // 读取并移动
+    /**
+     * @brief 读取并移动读指针（= Peek + Consume）
+     * @param out 目标缓冲区
+     * @param len 读取字节数
+     * @return 成功返回 true
+     */
     bool Read(char* out, uint32_t len)
     {
         if (!Peek(out, len)) return false;
@@ -75,12 +114,13 @@ public:
         return true;
     }
 
+    /** @brief 清空缓冲区，重置所有游标 */
     void Clear() { m_readPos = m_writePos = m_size = 0; }
 
 private:
-    char*    m_buf;
-    uint32_t m_capacity;
-    uint32_t m_readPos;
-    uint32_t m_writePos;
-    uint32_t m_size;
+    char*    m_buf;       /**< 底层内存块 */
+    uint32_t m_capacity;  /**< 总容量（字节） */
+    uint32_t m_readPos;   /**< 读游标（下一个可读字节的位置） */
+    uint32_t m_writePos;  /**< 写游标（下一个可写字节的位置） */
+    uint32_t m_size;      /**< 当前缓冲数据量（字节） */
 };

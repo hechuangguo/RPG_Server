@@ -1,142 +1,208 @@
+/**
+ * @file    ClientMsg.h
+ * @brief  客户端 ↔ 服务器 消息协议定义
+ *
+ * 包含所有 GameClient 与 GameServer 之间的协议号枚举及消息结构体。
+ * 采用定长二进制封包（非 protobuf），协议号编码规则如下：
+ *
+ * 协议号范围约定：
+ * | 范围               | 模块       |
+ * |--------------------|-----------|
+ * | 0x0001 ~ 0x00FF    | 登录/注册/角色选择 |
+ * | 0x0100 ~ 0x01FF    | 场景/移动      |
+ * | 0x0200 ~ 0x02FF    | 战斗          |
+ * | 0x0300 ~ 0x03FF    | 背包/物品      |
+ * | 0x0400 ~ 0x04FF    | 技能          |
+ * | 0x0500 ~ 0x05FF    | 聊天          |
+ * | 0x0600 ~ 0x06FF    | 社交（好友/队伍/公会） |
+ * | 0x0700 ~ 0x07FF    | 任务          |
+ * | 0x0F00 ~ 0x0FFF    | 系统/心跳      |
+ *
+ * 命名约定：
+ * - C2S_ 前缀：客户端发往服务器 (Client to Server)
+ * - S2C_ 前缀：服务器发往客户端 (Server to Client)
+ */
+
 #pragma once
 #include <cstdint>
 
-// ============================================================
-//  客户端 <-> 服务器 消息协议号定义
-//  范围约定：
-//    0x0001 ~ 0x00FF : 登录/注册/角色选择
-//    0x0100 ~ 0x01FF : 场景/移动
-//    0x0200 ~ 0x02FF : 战斗
-//    0x0300 ~ 0x03FF : 背包/物品
-//    0x0400 ~ 0x04FF : 技能
-//    0x0500 ~ 0x05FF : 聊天
-//    0x0600 ~ 0x06FF : 社交（好友/队伍/公会）
-//    0x0700 ~ 0x07FF : 任务
-//    0x0F00 ~ 0x0FFF : 系统/心跳
-// ============================================================
-
+/**
+ * @brief 客户端消息协议号枚举
+ */
 enum class ClientMsgID : uint16_t
 {
-    // ---------- 登录 ----------
-    C2S_LOGIN_REQ        = 0x0001,  // 登录请求
-    S2C_LOGIN_RSP        = 0x0002,  // 登录响应
-    C2S_REGISTER_REQ     = 0x0003,  // 注册请求
-    S2C_REGISTER_RSP     = 0x0004,  // 注册响应
-    C2S_SELECT_ROLE_REQ  = 0x0005,  // 选择角色
-    S2C_ROLE_LIST        = 0x0006,  // 角色列表
-    C2S_CREATE_ROLE_REQ  = 0x0007,  // 创建角色
-    S2C_CREATE_ROLE_RSP  = 0x0008,  // 创建角色响应
-    S2C_ENTER_GAME       = 0x0009,  // 进入游戏
+    // ============================================================
+    //  登录 (0x0001 ~ 0x0009)
+    // ============================================================
+    C2S_LOGIN_REQ        = 0x0001,  /**< C→S: 登录请求 */
+    S2C_LOGIN_RSP        = 0x0002,  /**< S→C: 登录响应 */
+    C2S_REGISTER_REQ     = 0x0003,  /**< C→S: 注册请求 */
+    S2C_REGISTER_RSP     = 0x0004,  /**< S→C: 注册响应 */
+    C2S_SELECT_ROLE_REQ  = 0x0005,  /**< C→S: 选择角色进入游戏 */
+    S2C_ROLE_LIST        = 0x0006,  /**< S→C: 角色列表 */
+    C2S_CREATE_ROLE_REQ  = 0x0007,  /**< C→S: 创建角色 */
+    S2C_CREATE_ROLE_RSP  = 0x0008,  /**< S→C: 创建角色响应 */
+    S2C_ENTER_GAME       = 0x0009,  /**< S→C: 通知客户端进入游戏世界 */
 
-    // ---------- 场景/移动 ----------
-    C2S_MOVE_REQ         = 0x0101,  // 移动请求
-    S2C_MOVE_NOTIFY      = 0x0102,  // 移动广播
-    S2C_ENTER_MAP        = 0x0103,  // 进入地图
-    S2C_LEAVE_MAP        = 0x0104,  // 离开地图
-    S2C_SPAWN_ENTITY     = 0x0105,  // 实体出现在视野
-    S2C_DESPAWN_ENTITY   = 0x0106,  // 实体离开视野
-    C2S_TELEPORT_REQ     = 0x0107,  // 传送请求
+    // ============================================================
+    //  场景/移动 (0x0101 ~ 0x0107)
+    // ============================================================
+    C2S_MOVE_REQ         = 0x0101,  /**< C→S: 玩家移动 */
+    S2C_MOVE_NOTIFY      = 0x0102,  /**< S→C: 移动同步广播 */
+    S2C_ENTER_MAP        = 0x0103,  /**< S→C: 进入地图通知 */
+    S2C_LEAVE_MAP        = 0x0104,  /**< S→C: 离开地图通知 */
+    S2C_SPAWN_ENTITY     = 0x0105,  /**< S→C: 实体进入视野 */
+    S2C_DESPAWN_ENTITY   = 0x0106,  /**< S→C: 实体离开视野 */
+    C2S_TELEPORT_REQ     = 0x0107,  /**< C→S: 传送请求 */
 
-    // ---------- 战斗 ----------
-    C2S_ATTACK_REQ       = 0x0201,  // 普攻请求
-    S2C_ATTACK_NOTIFY    = 0x0202,  // 攻击结果广播
-    S2C_HP_CHANGE        = 0x0203,  // 血量变化
-    S2C_ENTITY_DIE       = 0x0204,  // 实体死亡
+    // ============================================================
+    //  战斗 (0x0201 ~ 0x0204)
+    // ============================================================
+    C2S_ATTACK_REQ       = 0x0201,  /**< C→S: 普通攻击 */
+    S2C_ATTACK_NOTIFY    = 0x0202,  /**< S→C: 攻击结果广播 */
+    S2C_HP_CHANGE        = 0x0203,  /**< S→C: 血量变化通知 */
+    S2C_ENTITY_DIE       = 0x0204,  /**< S→C: 实体死亡 */
 
-    // ---------- 背包/物品 ----------
-    C2S_BAG_INFO_REQ     = 0x0301,  // 背包信息请求
-    S2C_BAG_INFO_RSP     = 0x0302,  // 背包信息响应
-    C2S_USE_ITEM_REQ     = 0x0303,  // 使用物品
-    S2C_USE_ITEM_RSP     = 0x0304,  // 使用物品响应
-    C2S_DROP_ITEM_REQ    = 0x0305,  // 丢弃物品
+    // ============================================================
+    //  背包/物品 (0x0301 ~ 0x0305)
+    // ============================================================
+    C2S_BAG_INFO_REQ     = 0x0301,  /**< C→S: 请求背包数据 */
+    S2C_BAG_INFO_RSP     = 0x0302,  /**< S→C: 背包数据响应 */
+    C2S_USE_ITEM_REQ     = 0x0303,  /**< C→S: 使用物品 */
+    S2C_USE_ITEM_RSP     = 0x0304,  /**< S→C: 使用物品结果 */
+    C2S_DROP_ITEM_REQ    = 0x0305,  /**< C→S: 丢弃物品 */
 
-    // ---------- 技能 ----------
-    C2S_SKILL_REQ        = 0x0401,  // 释放技能
-    S2C_SKILL_NOTIFY     = 0x0402,  // 技能广播
+    // ============================================================
+    //  技能 (0x0401 ~ 0x0402)
+    // ============================================================
+    C2S_SKILL_REQ        = 0x0401,  /**< C→S: 释放技能 */
+    S2C_SKILL_NOTIFY     = 0x0402,  /**< S→C: 技能释放广播 */
 
-    // ---------- 聊天 ----------
-    C2S_CHAT_REQ         = 0x0501,  // 发送聊天
-    S2C_CHAT_NOTIFY      = 0x0502,  // 聊天广播
-    C2S_WHISPER_REQ      = 0x0503,  // 私聊
-    S2C_WHISPER_NOTIFY   = 0x0504,  // 私聊通知
+    // ============================================================
+    //  聊天 (0x0501 ~ 0x0504)
+    // ============================================================
+    C2S_CHAT_REQ         = 0x0501,  /**< C→S: 发送聊天消息 */
+    S2C_CHAT_NOTIFY      = 0x0502,  /**< S→C: 聊天消息广播 */
+    C2S_WHISPER_REQ      = 0x0503,  /**< C→S: 私聊 */
+    S2C_WHISPER_NOTIFY   = 0x0504,  /**< S→C: 私聊通知 */
 
-    // ---------- 社交 ----------
-    C2S_ADD_FRIEND_REQ   = 0x0601,
-    S2C_ADD_FRIEND_RSP   = 0x0602,
-    S2C_FRIEND_LIST      = 0x0603,
-    C2S_CREATE_TEAM_REQ  = 0x0610,
-    S2C_TEAM_INFO        = 0x0611,
+    // ============================================================
+    //  社交 (0x0601 ~ 0x0611)
+    // ============================================================
+    C2S_ADD_FRIEND_REQ   = 0x0601,  /**< C→S: 添加好友 */
+    S2C_ADD_FRIEND_RSP   = 0x0602,  /**< S→C: 添加好友响应 */
+    S2C_FRIEND_LIST      = 0x0603,  /**< S→C: 好友列表 */
+    C2S_CREATE_TEAM_REQ  = 0x0610,  /**< C→S: 创建队伍 */
+    S2C_TEAM_INFO        = 0x0611,  /**< S→C: 队伍信息 */
 
-    // ---------- 任务 ----------
-    C2S_QUEST_ACCEPT_REQ = 0x0701,
-    S2C_QUEST_INFO       = 0x0702,
-    C2S_QUEST_SUBMIT_REQ = 0x0703,
-    S2C_QUEST_RESULT     = 0x0704,
+    // ============================================================
+    //  任务 (0x0701 ~ 0x0704)
+    // ============================================================
+    C2S_QUEST_ACCEPT_REQ = 0x0701,  /**< C→S: 接取任务 */
+    S2C_QUEST_INFO       = 0x0702,  /**< S→C: 任务信息同步 */
+    C2S_QUEST_SUBMIT_REQ = 0x0703,  /**< C→S: 提交任务 */
+    S2C_QUEST_RESULT     = 0x0704,  /**< S→C: 任务提交结果 */
 
-    // ---------- 系统 ----------
-    C2S_HEARTBEAT        = 0x0F01,
-    S2C_HEARTBEAT        = 0x0F02,
-    S2C_KICK             = 0x0F03,  // 服务器踢人
-    S2C_NOTICE           = 0x0F04,  // 公告
+    // ============================================================
+    //  系统 (0x0F01 ~ 0x0F04)
+    // ============================================================
+    C2S_HEARTBEAT        = 0x0F01,  /**< C→S: 心跳请求 */
+    S2C_HEARTBEAT        = 0x0F02,  /**< S→C: 心跳响应 */
+    S2C_KICK             = 0x0F03,  /**< S→C: 服务器踢人通知 */
+    S2C_NOTICE           = 0x0F04,  /**< S→C: 系统公告 */
 };
 
 // ============================================================
-//  消息结构体（简化，实际项目可替换为 protobuf/flatbuffers）
+//  客户端消息结构体（简化，实际项目可替换为 protobuf/flatbuffers）
 // ============================================================
 #pragma pack(push, 1)
 
+/**
+ * @brief C→S: 登录请求
+ *
+ * 客户端发送账号密码，由 GatewayServer 转发至 RecordServer 验证。
+ */
 struct Msg_C2S_LoginReq
 {
-    char account[32];
-    char password[32];
+    char account[32];   /**< 账号（明文，实际应加密） */
+    char password[32];  /**< 密码（明文，实际应加密或使用 token） */
 };
 
+/**
+ * @brief S→C: 登录响应
+ *
+ * code=0 时 roleID 为上次登录角色 ID（0 表示无角色需创建）。
+ */
 struct Msg_S2C_LoginRsp
 {
-    int32_t code;       // 0=成功
-    char    msg[64];
-    uint64_t roleID;    // 上次角色（0=无）
+    int32_t  code;      /**< 错误码：0=成功, 1=账号密码错误, -1=服务器内部错误 */
+    char     msg[64];   /**< 可读的错误描述 */
+    uint64_t roleID;    /**< 上次登录角色 ID（0=无角色） */
 };
 
+/**
+ * @brief C→S: 玩家移动请求
+ *
+ * 客户端持续上报位置，SceneServer 通过 AOIServer 广播给视野内玩家。
+ */
 struct Msg_C2S_MoveReq
 {
-    uint64_t roleID;
-    float    x, y, z;
-    float    dir;
-    uint8_t  moveType;  // 0=走 1=跑
+    uint64_t roleID;    /**< 发起移动的角色 ID */
+    float    x, y, z;   /**< 目标坐标 */
+    float    dir;       /**< 朝向（弧度） */
+    uint8_t  moveType;  /**< 移动类型：0=行走 1=跑步 */
 };
 
+/**
+ * @brief S→C: 移动同步广播
+ *
+ * 当周围玩家移动时，服务器将此消息广播给视野内所有玩家。
+ */
 struct Msg_S2C_MoveNotify
 {
-    uint64_t roleID;
-    float    x, y, z;
-    float    dir;
-    uint8_t  moveType;
+    uint64_t roleID;    /**< 移动的角色 ID */
+    float    x, y, z;   /**< 目标坐标 */
+    float    dir;       /**< 朝向 */
+    uint8_t  moveType;  /**< 移动类型 */
 };
 
+/**
+ * @brief C→S: 聊天消息
+ */
 struct Msg_C2S_Chat
 {
-    uint8_t  channel;   // 0=世界 1=区域 2=队伍 3=公会
-    char     content[256];
+    uint8_t  channel;       /**< 频道：0=世界 1=区域 2=队伍 3=公会 */
+    char     content[256];  /**< 聊天内容（UTF-8） */
 };
 
+/**
+ * @brief S→C: 聊天广播
+ */
 struct Msg_S2C_Chat
 {
-    uint64_t fromID;
-    char     fromName[32];
-    uint8_t  channel;
-    char     content[256];
+    uint64_t fromID;        /**< 发送者角色 ID */
+    char     fromName[32];  /**< 发送者角色名 */
+    uint8_t  channel;       /**< 频道 */
+    char     content[256];  /**< 聊天内容 */
 };
 
+/**
+ * @brief C→S: 心跳请求
+ *
+ * 客户端每 10 秒发送一次，超时 60 秒未收到则服务器断开连接。
+ */
 struct Msg_C2S_Heartbeat
 {
-    uint32_t seq;
+    uint32_t seq;  /**< 序列号，响应时原样返回 */
 };
 
+/**
+ * @brief S→C: 心跳响应
+ */
 struct Msg_S2C_Heartbeat
 {
-    uint32_t seq;
-    uint64_t serverTime;  // ms
+    uint32_t seq;        /**< 回显客户端序列号 */
+    uint64_t serverTime; /**< 服务器当前时间（毫秒时间戳） */
 };
 
 #pragma pack(pop)
