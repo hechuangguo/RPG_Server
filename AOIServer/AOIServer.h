@@ -210,7 +210,7 @@ private:
      *
      * 通知视野变化后从格子和索引中删除。
      */
-    void OnLeave(ConnID fromConn, const char* data, uint16_t len)
+    void OnLeave(ConnID /*fromConn*/, const char* data, uint16_t len)
     {
         if (len < sizeof(uint64_t)) return;
         uint64_t eid = *reinterpret_cast<const uint64_t*>(data);

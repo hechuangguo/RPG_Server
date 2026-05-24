@@ -26,10 +26,13 @@
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
 #include "../sdk/util/MsgDispatcher.h"
+#include "../sdk/util/ConfigLoader.h"
 #include "../protocal/InternalMsg.h"
 #include <unordered_map>
 #include <string>
+#include <vector>
 #include <mysql/mysql.h>   /**< libmysqlclient C API */
+#include <cinttypes>
 
 /**
  * @brief RecordServer 中的角色数据（完整存档）
@@ -238,16 +241,43 @@ private:
         if (len < sizeof(RoleID)) return;
         RoleID rid = *reinterpret_cast<const RoleID*>(data);
 
+        if (m_roles.find(rid) == m_roles.end())
+            LoadRoleFromDB(rid);
+
+        Msg_REC_LoadRoleRsp hdr{};
+        hdr.roleID = rid;
         auto it = m_roles.find(rid);
         if (it == m_roles.end())
         {
-            LoadRoleFromDB(rid);  /**< 从 DB 加载 */
+            hdr.code = -1;
+            m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::REC_LOAD_ROLE_RSP,
+                             reinterpret_cast<char*>(&hdr), sizeof(hdr));
+            return;
         }
-        Msg_REC_LoadRoleRsp rsp{};
-        rsp.code   = m_roles.count(rid) ? 0 : -1;
-        rsp.roleID = rid;
+
+        hdr.code = 0;
+        const auto& base = it->second->Base();
+        RoleBaseWire wire{};
+        wire.roleID   = base.roleID;
+        strncpy(wire.name, base.name.c_str(), sizeof(wire.name) - 1);
+        wire.level    = base.level;
+        wire.vocation = base.vocation;
+        wire.sex      = base.sex;
+        wire.mapID    = base.mapID ? base.mapID : 1001;
+        wire.posX     = base.posX;
+        wire.posY     = base.posY;
+        wire.posZ     = base.posZ;
+        wire.hp       = base.hp;
+        wire.maxHP    = base.maxHP;
+        wire.mp       = base.mp;
+        wire.maxMP    = base.maxMP;
+        wire.gold     = base.gold;
+
+        std::vector<char> buf(sizeof(hdr) + sizeof(wire));
+        memcpy(buf.data(), &hdr, sizeof(hdr));
+        memcpy(buf.data() + sizeof(hdr), &wire, sizeof(wire));
         m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::REC_LOAD_ROLE_RSP,
-                         reinterpret_cast<char*>(&rsp), sizeof(rsp));
+                         buf.data(), (uint16_t)buf.size());
     }
 
     /** @brief 处理角色保存请求 */
@@ -273,7 +303,7 @@ private:
         char sql[256];
         snprintf(sql, sizeof(sql),
                  "SELECT role_id,name,level,vocation,sex,map_id,pos_x,pos_y,pos_z,hp,mp,gold"
-                 " FROM t_role WHERE role_id=%llu LIMIT 1", rid);
+                 " FROM t_role WHERE role_id=%" PRIu64 " LIMIT 1", rid);
         if (mysql_query(m_db, sql) != 0) { LOG_ERR("LoadRole SQL err: %s", mysql_error(m_db)); return; }
         MYSQL_RES* res = mysql_store_result(m_db);
         MYSQL_ROW  row = res ? mysql_fetch_row(res) : nullptr;
@@ -312,7 +342,7 @@ private:
         char sql[512];
         snprintf(sql, sizeof(sql),
                  "UPDATE t_role SET level=%u,map_id=%u,pos_x=%.2f,pos_y=%.2f,pos_z=%.2f,"
-                 "hp=%u,mp=%u,gold=%llu WHERE role_id=%llu",
+                 "hp=%u,mp=%u,gold=%" PRIu64 " WHERE role_id=%" PRIu64,
                  base.level, base.mapID, base.posX, base.posY, base.posZ,
                  base.hp, base.mp, base.gold, rid);
         if (mysql_query(m_db, sql) != 0)

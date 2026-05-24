@@ -101,15 +101,22 @@ parse_args() {
 # ──────────────────────────────────────────────
 check_deps() {
     local missing=()
-    for tool in cmake make g++ pkg-config; do
+    for tool in cmake make g++ curl; do
         if ! command -v "${tool}" &>/dev/null; then
             missing+=("${tool}")
         fi
     done
     if [[ ${#missing[@]} -gt 0 ]]; then
         error "缺少必要工具：${missing[*]}
-  Ubuntu/Debian 安装：sudo apt install build-essential cmake libmysqlclient-dev liblua5.4-dev libtinyxml2-dev
-  CentOS/RHEL 安装：sudo yum install gcc-c++ cmake mysql-devel lua-devel tinyxml2-devel"
+  CentOS/RHEL: sudo dnf install -y gcc-c++ cmake make curl tar openssl-devel zlib-devel
+  Ubuntu/Debian: sudo apt install -y build-essential cmake curl libssl-dev zlib1g-dev"
+    fi
+
+    # 若 3Party 未构建，提示先运行 autoinit
+    local lua_lib="${SCRIPT_DIR}/3Party/lua/lib/liblua.a"
+  if [[ ! -f "${lua_lib}" ]]; then
+        warn "3Party 依赖未构建，正在自动执行 autoinit..."
+        "${SCRIPT_DIR}/autoinit.sh"
     fi
 }
 

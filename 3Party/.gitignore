@@ -1,0 +1,6 @@
+# 3Party 构建产物与缓存（保留 README.md、versions.env、download_and_build.sh）
+/cache/
+/src/
+/lua/
+/tinyxml2/
+/mysql/

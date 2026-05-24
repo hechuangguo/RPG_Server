@@ -1,5 +1,6 @@
 #include "GlobalServer.h"
 #include "../sdk/util/ConfigLoader.h"
+#include <csignal>
 
 int main(int argc, char* argv[])
 {

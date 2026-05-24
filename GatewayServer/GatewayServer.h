@@ -22,6 +22,7 @@
 #include "../sdk/net/TcpClient.h"
 #include "../sdk/util/RoleBase.h"
 #include "../sdk/util/MsgDispatcher.h"
+#include "../sdk/util/ConfigLoader.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
 #include "../common/ClientMsg.h"
@@ -88,6 +89,9 @@ public:
         m_superClient.Connect(cfg.superIP,   (uint16_t)cfg.superPort);
         m_recordClient.Connect("127.0.0.1",  (uint16_t)cfg.recordPort);
         m_sceneClient.Connect("127.0.0.1",   (uint16_t)cfg.scenePort);
+
+        m_clientPort = clientPort;
+        m_innerPort  = innerPort;
 
         RegisterHandlers();
         TimerMgr::Instance().Register(500,   0,     [this]{ RegisterToSuper(); });
@@ -181,6 +185,8 @@ private:
             [this](uint32_t c, const char* d, uint16_t l){ OnKickClient(c, d, l); });
         d.Register((uint16_t)InternalMsgID::REC_LOGIN_VERIFY_RSP,
             [this](uint32_t c, const char* d, uint16_t l){ OnLoginVerifyRsp(c, d, l); });
+        d.Register((uint16_t)InternalMsgID::GW_ROLE_LOGIN_RSP,
+            [this](uint32_t c, const char* d, uint16_t l){ OnRoleLoginRsp(c, d, l); });
     }
 
     /**
@@ -248,10 +254,9 @@ private:
     /**
      * @brief 处理 RecordServer 验证响应
      *
-     * 验证成功：设置 clientState=LOGGED_IN，回包给客户端。
-     * 验证失败：回包错误码。
+     * 验证成功：转发 SuperServer 完成登录调度；验证失败：直接回包客户端。
      */
-    void OnLoginVerifyRsp(ConnID fromConn, const char* data, uint16_t len)
+    void OnLoginVerifyRsp(ConnID /*fromConn*/, const char* data, uint16_t len)
     {
         if (len < sizeof(Msg_REC_LoginVerifyRsp)) return;
         const auto* rsp = reinterpret_cast<const Msg_REC_LoginVerifyRsp*>(data);
@@ -259,24 +264,71 @@ private:
         auto it = m_clients.find(clientConn);
         if (it == m_clients.end()) return;
 
+        if (rsp->code != 0)
+        {
+            Msg_S2C_LoginRsp loginRsp{};
+            loginRsp.code = rsp->code;
+            strncpy(loginRsp.msg, "Account or password error", sizeof(loginRsp.msg));
+            it->second.state = ClientState::CONNECTED;
+            m_clientServer.SendMsg(clientConn, (uint16_t)ClientMsgID::S2C_LOGIN_RSP,
+                                   reinterpret_cast<char*>(&loginRsp), sizeof(loginRsp));
+            LOG_WARN("LoginFail: connID=%u code=%d", clientConn, rsp->code);
+            return;
+        }
+
+        it->second.roleID = rsp->roleID;
+        m_superClient.SendMsg((uint16_t)InternalMsgID::GW_ROLE_LOGIN_REQ,
+                              data, len);
+        LOG_INFO("LoginVerifyOK, forwarding to Super: connID=%u roleID=%llu",
+                 clientConn, rsp->roleID);
+    }
+
+    /**
+     * @brief SuperServer 登录流程完成 → 通知客户端进入游戏
+     */
+    void OnRoleLoginRsp(ConnID /*fromConn*/, const char* data, uint16_t len)
+    {
+        if (len < sizeof(Msg_GW_RoleLoginRsp)) return;
+        const auto* rsp = reinterpret_cast<const Msg_GW_RoleLoginRsp*>(data);
+        ConnID clientConn = rsp->gatewayClientConnID;
+        auto it = m_clients.find(clientConn);
+        if (it == m_clients.end()) return;
+
         Msg_S2C_LoginRsp loginRsp{};
+        loginRsp.code   = rsp->code;
+        loginRsp.roleID = rsp->roleID;
         if (rsp->code == 0)
         {
-            it->second.state  = ClientState::LOGGED_IN;
-            it->second.roleID = rsp->roleID;
-            loginRsp.code     = 0;
-            loginRsp.roleID   = rsp->roleID;
+            it->second.state = ClientState::LOGGED_IN;
             strncpy(loginRsp.msg, "Login OK", sizeof(loginRsp.msg));
-            LOG_INFO("LoginSuccess: connID=%u roleID=%llu", clientConn, rsp->roleID);
+
+            Msg_S2C_EnterGame enter{};
+            enter.roleID = rsp->roleID;
+            enter.mapID  = rsp->mapID;
+            enter.x      = rsp->x;
+            enter.y      = rsp->y;
+            enter.z      = rsp->z;
+            enter.level  = rsp->level;
+            enter.hp     = rsp->hp;
+            enter.maxHP  = rsp->maxHP;
+            enter.mp     = rsp->mp;
+            enter.maxMP  = rsp->maxMP;
+            snprintf(enter.name, sizeof(enter.name), "%s", rsp->name);
+
+            m_clientServer.SendMsg(clientConn, (uint16_t)ClientMsgID::S2C_LOGIN_RSP,
+                                   reinterpret_cast<char*>(&loginRsp), sizeof(loginRsp));
+            m_clientServer.SendMsg(clientConn, (uint16_t)ClientMsgID::S2C_ENTER_GAME,
+                                   reinterpret_cast<char*>(&enter), sizeof(enter));
+            LOG_INFO("EnterGame: connID=%u roleID=%llu map=%u",
+                     clientConn, rsp->roleID, rsp->mapID);
         }
         else
         {
-            loginRsp.code = rsp->code;
-            strncpy(loginRsp.msg, "Account or password error", sizeof(loginRsp.msg));
-            LOG_WARN("LoginFail: connID=%u code=%d", clientConn, rsp->code);
+            it->second.state = ClientState::CONNECTED;
+            strncpy(loginRsp.msg, "Enter game failed", sizeof(loginRsp.msg));
+            m_clientServer.SendMsg(clientConn, (uint16_t)ClientMsgID::S2C_LOGIN_RSP,
+                                   reinterpret_cast<char*>(&loginRsp), sizeof(loginRsp));
         }
-        m_clientServer.SendMsg(clientConn, (uint16_t)ClientMsgID::S2C_LOGIN_RSP,
-                               reinterpret_cast<char*>(&loginRsp), sizeof(loginRsp));
     }
 
     /**
@@ -284,7 +336,7 @@ private:
      *
      * 解析包格式：[clientConnID(4)][msgID(2)][data...]
      */
-    void OnSendToClient(ConnID fromConn, const char* data, uint16_t len)
+    void OnSendToClient(ConnID /*fromConn*/, const char* data, uint16_t len)
     {
         if (len < sizeof(uint32_t) + sizeof(uint16_t)) return;
         uint32_t clientConnID;
@@ -297,7 +349,7 @@ private:
     }
 
     /** @brief 踢除客户端连接 */
-    void OnKickClient(ConnID fromConn, const char* data, uint16_t len)
+    void OnKickClient(ConnID /*fromConn*/, const char* data, uint16_t len)
     {
         if (len < sizeof(uint32_t)) return;
         uint32_t clientConnID = *reinterpret_cast<const uint32_t*>(data);
@@ -348,7 +400,7 @@ private:
         reg.serverType = (uint8_t)SubServerType::GATEWAY;
         reg.serverID   = 1;
         strncpy(reg.ip, "127.0.0.1", sizeof(reg.ip));
-        reg.port       = 9005;
+        reg.port       = m_clientPort;
         m_superClient.SendMsg((uint16_t)InternalMsgID::S2S_REGISTER_REQ,
                                reinterpret_cast<char*>(&reg), sizeof(reg));
     }
@@ -366,6 +418,8 @@ private:
     TcpClient m_recordClient;   /**< 到 RecordServer 的连接 */
     TcpClient m_sceneClient;    /**< 到 SceneServer 的连接 */
     uint32_t  m_hbSeq = 0;      /**< 心跳序列号 */
+    uint16_t  m_clientPort = 9005;
+    uint16_t  m_innerPort  = 19005;
 
     /** @brief 客户端会话表：connID → ClientSession */
     std::unordered_map<ConnID, ClientSession> m_clients;

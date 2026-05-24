@@ -1,0 +1,27 @@
+[ 11%] Building CXX object CMakeFiles/SuperServer.dir/SuperServer/main.cpp.o
+[ 16%] Building CXX object CMakeFiles/RecordServer.dir/RecordServer/main.cpp.o
+[ 16%] Building CXX object CMakeFiles/SessionServer.dir/SessionServer/main.cpp.o
+[ 22%] Building CXX object CMakeFiles/AOIServer.dir/AOIServer/main.cpp.o
+[ 27%] Linking CXX executable bin/SuperServer
+[ 33%] Linking CXX executable bin/SessionServer
+[ 33%] Built target SessionServer
+[ 33%] Built target SuperServer
+[ 44%] Building CXX object CMakeFiles/GatewayServer.dir/GatewayServer/main.cpp.o
+[ 44%] Building CXX object CMakeFiles/SceneServer.dir/SceneServer/main.cpp.o
+[ 50%] Linking CXX executable bin/RecordServer
+[ 55%] Linking CXX executable bin/AOIServer
+[ 55%] Built target RecordServer
+[ 55%] Built target AOIServer
+[ 61%] Building CXX object CMakeFiles/LoggerServer.dir/LoggerServer/main.cpp.o
+[ 66%] Building CXX object CMakeFiles/GlobalServer.dir/GlobalServer/main.cpp.o
+[ 72%] Linking CXX executable bin/GlobalServer
+[ 77%] Linking CXX executable bin/LoggerServer
+[ 77%] Built target GlobalServer
+[ 83%] Building CXX object CMakeFiles/ZoneServer.dir/ZoneServer/main.cpp.o
+[ 83%] Built target LoggerServer
+[ 88%] Linking CXX executable bin/GatewayServer
+[ 88%] Built target GatewayServer
+[ 94%] Linking CXX executable bin/SceneServer
+[ 94%] Built target SceneServer
+[100%] Linking CXX executable bin/ZoneServer
+[100%] Built target ZoneServer

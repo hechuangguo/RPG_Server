@@ -95,7 +95,7 @@ private:
      *
      * 追加新条目 → 按 value 降序排序 → 截断到前 100 名。
      */
-    void OnRankUpdate(ConnID fromConn, const char* data, uint16_t len)
+    void OnRankUpdate(ConnID /*fromConn*/, const char* data, uint16_t len)
     {
         if (len < sizeof(RankEntry)) return;
         const auto* entry = reinterpret_cast<const RankEntry*>(data);
@@ -110,7 +110,7 @@ private:
      *
      * 广播给所有已连接的 SceneServer。
      */
-    void OnDataSync(ConnID fromConn, const char* data, uint16_t len)
+    void OnDataSync(ConnID /*fromConn*/, const char* data, uint16_t len)
     {
         LOG_DEBUG("GlobalDataSync len=%d", len);
         for (auto& [cid, _] : m_innerConns)

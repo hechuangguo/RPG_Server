@@ -32,9 +32,11 @@
 #include "../sdk/util/RoleBase.h"
 #include "../sdk/util/MsgDispatcher.h"
 #include "../sdk/util/SceneInfoLoader.h"
+#include "../sdk/util/ConfigLoader.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
 #include "../protocal/InternalMsg.h"
+#include "../common/ClientMsg.h"
 #include <unordered_map>
 #include <vector>
 #include <string>
@@ -80,6 +82,8 @@ struct MapInstance
 class SceneServer : public INetCallback
 {
 public:
+    static SceneServer* Instance() { return s_instance; }
+
     SceneServer()
         : m_server(this)
         , m_superClient(this)
@@ -107,6 +111,7 @@ public:
     {
         Logger::Instance().SetServerName("SceneServer");
         m_sceneID = sceneInfo.sceneID;
+        s_instance = this;
         if (!m_server.Start(ip, port)) { LOG_FATAL("SceneServer start failed"); return false; }
 
         // ── 连接各依赖服务器 ──
@@ -114,7 +119,8 @@ public:
         m_sessionClient.Connect("127.0.0.1",     (uint16_t)cfg.sessionPort);
         m_recordClient.Connect("127.0.0.1",      (uint16_t)cfg.recordPort);
         m_aoiClient.Connect("127.0.0.1",         (uint16_t)cfg.aoiPort);
-        m_gatewayClient.Connect("127.0.0.1",     (uint16_t)cfg.gatewayPort);
+        m_gatewayClient.Connect("127.0.0.1",     (uint16_t)(cfg.gatewayPort + 10000));
+        m_listenPort = port;
 
         // ── 加载地图配置 ──
         for (auto& mc : sceneInfo.maps)
@@ -155,7 +161,7 @@ public:
         }
     }
 
-    void OnConnect(ConnID id)    override {}
+    void OnConnect(ConnID /*id*/)    override {}
     void OnDisconnect(ConnID id) override { LOG_WARN("SceneServer conn lost=%u", id); }
     void OnMessage(ConnID id, uint16_t msgID, const char* data, uint16_t len) override
     {
@@ -187,10 +193,18 @@ private:
         return 0;
     }
 
-    /** @brief Lua → C++: sendToRole(roleID, msgID, data) —— 向客户端发送消息 */
+    /** @brief Lua → C++: send_to_role(roleID, msgID, data) */
     static int LuaSendToRole(lua_State* L)
     {
-        (void)L;  // TODO: 实现客户端消息发送
+        RoleID roleID = (RoleID)luaL_checkinteger(L, 1);
+        uint16_t msgID = (uint16_t)luaL_checkinteger(L, 2);
+        size_t len = 0;
+        const char* data = luaL_optlstring(L, 3, "", &len);
+        auto* self = SceneServer::Instance();
+        if (!self) return 0;
+        auto role = self->FindRole(roleID);
+        if (!role || role->gatewayClientConn == 0) return 0;
+        self->SendToClient(role->gatewayClientConn, msgID, data, (uint16_t)len);
         return 0;
     }
 
@@ -212,37 +226,108 @@ private:
      *
      * 创建 SceneRole → 加入地图 → 通知 AOI → 回包 GatewayServer → 调用 Lua OnRoleEnter。
      */
-    void OnRoleEnter(ConnID fromConn, const char* data, uint16_t len)
+    void OnRoleEnter(ConnID /*fromConn*/, const char* data, uint16_t len)
     {
         if (len < sizeof(Msg_SCE_RoleEnterReq)) return;
         const auto* req = reinterpret_cast<const Msg_SCE_RoleEnterReq*>(data);
-        LOG_INFO("RoleEnter: roleID=%llu mapID=%u", req->roleID, req->mapID);
+        LOG_INFO("RoleEnter: roleID=%llu mapID=%u clientConn=%u",
+                 req->roleID, req->mapID, req->gatewayClientConnID);
 
-        auto it = m_maps.find(req->mapID);
-        if (it == m_maps.end()) { LOG_WARN("Map %u not found on SceneServer %u", req->mapID, m_sceneID); return; }
-        RoleBase base; base.roleID = req->roleID;
-        base.mapID = req->mapID; base.posX = req->x; base.posZ = req->z;
+        uint32_t mapID = req->mapID ? req->mapID : 1001;
+        auto it = m_maps.find(mapID);
+        if (it == m_maps.end())
+        {
+            LOG_WARN("Map %u not found on SceneServer %u", mapID, m_sceneID);
+            SendRoleEnterRsp(req, -1);
+            return;
+        }
+
+        RoleBase base;
+        base.roleID   = req->roleID;
+        base.name     = req->name;
+        base.level    = req->level;
+        base.vocation = req->vocation;
+        base.sex      = req->sex;
+        base.mapID    = mapID;
+        base.posX     = req->x;
+        base.posY     = req->y;
+        base.posZ     = req->z;
+        base.hp       = req->hp;
+        base.maxHP    = req->maxHP;
+        base.mp       = req->mp;
+        base.maxMP    = req->maxMP;
+        base.gold     = req->gold;
+
         auto role = std::make_shared<SceneRole>(base);
+        role->gatewayClientConn = req->gatewayClientConnID;
+        role->SetState(RoleState::ONLINE);
         m_roles[req->roleID] = role;
         it->second.players.push_back(req->roleID);
 
-        // 通知 AOI
         Msg_AOI_Move aoi{};
-        aoi.entityID = req->roleID; aoi.mapID = req->mapID;
-        aoi.x = req->x; aoi.z = req->z;
+        aoi.entityID = req->roleID;
+        aoi.mapID    = mapID;
+        aoi.x = req->x;
+        aoi.y = req->y;
+        aoi.z = req->z;
         m_aoiClient.SendMsg((uint16_t)InternalMsgID::AOI_ENTER_REQ,
                              reinterpret_cast<char*>(&aoi), sizeof(aoi));
 
-        // 回包给 GatewayServer
-        Msg_SCE_RoleEnterReq rsp = *req;
-        m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::SCE_ROLE_ENTER_RSP,
-                         reinterpret_cast<char*>(&rsp), sizeof(rsp));
+        NotifyExistingPlayersOnEnter(*role);
+        SendRoleEnterRsp(req, 0);
+        CallLuaOnEnter(req->roleID, mapID);
+    }
 
-        CallLuaOnEnter(req->roleID, req->mapID);
+    void SendRoleEnterRsp(const Msg_SCE_RoleEnterReq* req, int32_t code)
+    {
+        Msg_SCE_RoleEnterRsp rsp{};
+        rsp.code                = code;
+        rsp.roleID              = req->roleID;
+        rsp.gatewayClientConnID = req->gatewayClientConnID;
+        rsp.mapID               = req->mapID ? req->mapID : 1001;
+        m_superClient.SendMsg((uint16_t)InternalMsgID::SCE_ROLE_ENTER_RSP,
+                              reinterpret_cast<char*>(&rsp), sizeof(rsp));
+    }
+
+    void NotifyExistingPlayersOnEnter(const SceneRole& entering)
+    {
+        const auto& base = entering.Base();
+        Msg_S2C_SpawnEntity spawn{};
+        spawn.entityID   = base.roleID;
+        spawn.level      = base.level;
+        spawn.x          = base.posX;
+        spawn.y          = base.posY;
+        spawn.z          = base.posZ;
+        spawn.dir        = 0.f;
+        spawn.entityType = 0;
+        strncpy(spawn.name, base.name.c_str(), sizeof(spawn.name) - 1);
+
+        for (auto& [rid, role] : m_roles)
+        {
+            if (rid == base.roleID) continue;
+            if (role->Base().mapID != base.mapID) continue;
+            if (role->gatewayClientConn == 0) continue;
+
+            SendToClient(role->gatewayClientConn,
+                         (uint16_t)ClientMsgID::S2C_SPAWN_ENTITY,
+                         reinterpret_cast<char*>(&spawn), sizeof(spawn));
+
+            Msg_S2C_SpawnEntity other{};
+            other.entityID   = role->Base().roleID;
+            other.level      = role->Base().level;
+            other.x          = role->Base().posX;
+            other.y          = role->Base().posY;
+            other.z          = role->Base().posZ;
+            other.entityType = 0;
+            strncpy(other.name, role->Base().name.c_str(), sizeof(other.name) - 1);
+            SendToClient(entering.gatewayClientConn,
+                         (uint16_t)ClientMsgID::S2C_SPAWN_ENTITY,
+                         reinterpret_cast<char*>(&other), sizeof(other));
+        }
     }
 
     /** @brief 角色离开场景（通知 AOI → 保存到 RecordServer → 调用 Lua → 清理内存） */
-    void OnRoleLeave(ConnID fromConn, const char* data, uint16_t len)
+    void OnRoleLeave(ConnID /*fromConn*/, const char* data, uint16_t len)
     {
         if (len < sizeof(RoleID)) return;
         RoleID rid = *reinterpret_cast<const RoleID*>(data);
@@ -259,7 +344,7 @@ private:
     }
 
     /** @brief 处理 GatewayServer 转发来的客户端消息 */
-    void OnClientMsg(ConnID fromConn, const char* data, uint16_t len)
+    void OnClientMsg(ConnID /*fromConn*/, const char* data, uint16_t len)
     {
         if (len < sizeof(Msg_GW_ClientMsg)) return;
         const auto* hdr = reinterpret_cast<const Msg_GW_ClientMsg*>(data);
@@ -270,9 +355,64 @@ private:
     }
 
     /** @brief 处理 AOI 视野变化通知 */
-    void OnViewNotify(ConnID fromConn, const char* data, uint16_t len)
+    void OnViewNotify(ConnID /*fromConn*/, const char* data, uint16_t len)
     {
-        LOG_DEBUG("ViewNotify len=%d", len);
+        if (len == sizeof(Msg_AOI_Move))
+        {
+            const auto* move = reinterpret_cast<const Msg_AOI_Move*>(data);
+            auto it = m_roles.find(move->entityID);
+            if (it != m_roles.end())
+            {
+                it->second->Base().posX = move->x;
+                it->second->Base().posY = move->y;
+                it->second->Base().posZ = move->z;
+            }
+
+            Msg_S2C_MoveNotify notify{};
+            notify.roleID   = move->entityID;
+            notify.x        = move->x;
+            notify.y        = move->y;
+            notify.z        = move->z;
+            notify.dir      = move->dir;
+            notify.moveType = 0;
+            BroadcastToMap(move->mapID, move->entityID,
+                           (uint16_t)ClientMsgID::S2C_MOVE_NOTIFY,
+                           reinterpret_cast<char*>(&notify), sizeof(notify));
+            return;
+        }
+
+        if (len < sizeof(uint64_t) + 1) return;
+        uint64_t entityID = 0;
+        memcpy(&entityID, data, sizeof(uint64_t));
+        bool enter = data[sizeof(uint64_t)] != 0;
+
+        auto it = m_roles.find(entityID);
+        if (it == m_roles.end()) return;
+        const auto& role = it->second;
+        if (role->gatewayClientConn == 0) return;
+
+        if (enter)
+        {
+            Msg_S2C_SpawnEntity spawn{};
+            spawn.entityID   = entityID;
+            spawn.level      = role->Base().level;
+            spawn.x          = role->Base().posX;
+            spawn.y          = role->Base().posY;
+            spawn.z          = role->Base().posZ;
+            spawn.entityType = 0;
+            strncpy(spawn.name, role->Base().name.c_str(), sizeof(spawn.name) - 1);
+            BroadcastToMap(role->Base().mapID, entityID,
+                           (uint16_t)ClientMsgID::S2C_SPAWN_ENTITY,
+                           reinterpret_cast<char*>(&spawn), sizeof(spawn));
+        }
+        else
+        {
+            Msg_S2C_DespawnEntity despawn{};
+            despawn.entityID = entityID;
+            BroadcastToMap(role->Base().mapID, entityID,
+                           (uint16_t)ClientMsgID::S2C_DESPAWN_ENTITY,
+                           reinterpret_cast<char*>(&despawn), sizeof(despawn));
+        }
     }
 
     /**
@@ -295,7 +435,7 @@ private:
     }
 
     /** @brief 处理移动请求：更新坐标 → 通知 AOI */
-    void OnMoveReq(uint32_t clientConnID, const char* data, uint16_t len)
+    void OnMoveReq(uint32_t /*clientConnID*/, const char* data, uint16_t len)
     {
         if (len < sizeof(Msg_C2S_MoveReq)) return;
         const auto* req = reinterpret_cast<const Msg_C2S_MoveReq*>(data);
@@ -319,10 +459,16 @@ private:
     {
         if (len < sizeof(Msg_C2S_Chat)) return;
         const auto* req = reinterpret_cast<const Msg_C2S_Chat*>(data);
+        auto role = FindRoleByClientConn(clientConnID);
+        if (!role) return;
+
         Msg_S2C_Chat notify{};
+        notify.fromID = role->GetID();
         notify.channel = req->channel;
-        strncpy(notify.content, req->content, sizeof(notify.content));
-        BroadcastToMap(0, (uint16_t)ClientMsgID::S2C_CHAT_NOTIFY,
+        snprintf(notify.fromName, sizeof(notify.fromName), "%s", role->GetName());
+        snprintf(notify.content, sizeof(notify.content), "%s", req->content);
+        BroadcastToMap(role->Base().mapID, role->GetID(),
+                       (uint16_t)ClientMsgID::S2C_CHAT_NOTIFY,
                        reinterpret_cast<char*>(&notify), sizeof(notify));
     }
 
@@ -359,12 +505,30 @@ private:
                                  buf.data(), (uint16_t)buf.size());
     }
 
-    /** @brief 广播消息给指定地图内的所有玩家 */
-    void BroadcastToMap(uint32_t mapID, uint16_t msgID, const char* data, uint16_t len)
+    /** @brief 广播消息给指定地图内的所有玩家（可排除指定角色） */
+    void BroadcastToMap(uint32_t mapID, RoleID excludeRoleID,
+                        uint16_t msgID, const char* data, uint16_t len)
     {
-        (void)mapID;
         for (auto& [rid, role] : m_roles)
+        {
+            if (mapID != 0 && role->Base().mapID != mapID) continue;
+            if (rid == excludeRoleID) continue;
+            if (role->gatewayClientConn == 0) continue;
             SendToClient(role->gatewayClientConn, msgID, data, len);
+        }
+    }
+
+    std::shared_ptr<SceneRole> FindRole(RoleID roleID)
+    {
+        auto it = m_roles.find(roleID);
+        return it != m_roles.end() ? it->second : nullptr;
+    }
+
+    std::shared_ptr<SceneRole> FindRoleByClientConn(uint32_t clientConnID)
+    {
+        for (auto& [rid, role] : m_roles)
+            if (role->gatewayClientConn == clientConnID) return role;
+        return nullptr;
     }
 
     /** @brief Lua 回调：角色进入场景 */
@@ -447,7 +611,7 @@ private:
         reg.serverType = (uint8_t)SubServerType::SCENE;
         reg.serverID   = m_sceneID;
         strncpy(reg.ip, "127.0.0.1", sizeof(reg.ip));
-        reg.port       = 9004;
+        reg.port       = m_listenPort;
         m_superClient.SendMsg((uint16_t)InternalMsgID::S2S_REGISTER_REQ,
                                reinterpret_cast<char*>(&reg), sizeof(reg));
     }
@@ -470,6 +634,9 @@ private:
     lua_State* m_lua;             /**< Lua 虚拟机指针 */
     uint32_t   m_sceneID;         /**< 场景服务器编号 */
     uint32_t   m_hbSeq = 0;       /**< 心跳序列号 */
+    uint16_t   m_listenPort = 9004;
+
+    inline static SceneServer* s_instance = nullptr;
 
     /** @brief 地图实例：mapID → MapInstance */
     std::unordered_map<uint32_t, MapInstance>             m_maps;

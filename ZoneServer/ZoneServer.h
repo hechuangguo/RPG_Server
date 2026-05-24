@@ -125,7 +125,7 @@ private:
     }
 
     /** @brief 处理跨区转发消息（当前为占位实现） */
-    void OnForward(ConnID fromConn, const char* data, uint16_t len)
+    void OnForward(ConnID /*fromConn*/, const char* /*data*/, uint16_t len)
     {
         LOG_DEBUG("ZoneForward len=%d", len);
     }

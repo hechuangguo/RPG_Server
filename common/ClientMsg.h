@@ -205,4 +205,41 @@ struct Msg_S2C_Heartbeat
     uint64_t serverTime; /**< 服务器当前时间（毫秒时间戳） */
 };
 
+/**
+ * @brief S→C: 进入游戏世界
+ */
+struct Msg_S2C_EnterGame
+{
+    uint64_t roleID;
+    char     name[32];
+    uint32_t mapID;
+    float    x, y, z;
+    uint32_t level;
+    uint32_t hp;
+    uint32_t maxHP;
+    uint32_t mp;
+    uint32_t maxMP;
+};
+
+/**
+ * @brief S→C: 实体进入视野
+ */
+struct Msg_S2C_SpawnEntity
+{
+    uint64_t entityID;
+    char     name[32];
+    uint32_t level;
+    float    x, y, z;
+    float    dir;
+    uint8_t  entityType;  /**< 0=玩家 1=NPC */
+};
+
+/**
+ * @brief S→C: 实体离开视野
+ */
+struct Msg_S2C_DespawnEntity
+{
+    uint64_t entityID;
+};
+
 #pragma pack(pop)

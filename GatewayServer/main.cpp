@@ -1,5 +1,6 @@
 #include "GatewayServer.h"
 #include "../sdk/util/ConfigLoader.h"
+#include <csignal>
 
 int main(int argc, char* argv[])
 {
@@ -10,8 +11,9 @@ int main(int argc, char* argv[])
     Logger::Instance().SetPath(cfg.logPaths.count("GatewayServer")
                                 ? cfg.logPaths.at("GatewayServer") : "logs/gateway.log");
     GatewayServer server;
-    // 客户端端口 9005，内部端口 19005
-    if (!server.Init(9005, 19005, cfg)) return 1;
+    uint16_t clientPort = (uint16_t)cfg.gatewayPort;
+    uint16_t innerPort  = (uint16_t)(cfg.gatewayPort + 10000);
+    if (!server.Init(clientPort, innerPort, cfg)) return 1;
     server.Run();
     return 0;
 }

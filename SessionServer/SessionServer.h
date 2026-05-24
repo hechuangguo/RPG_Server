@@ -189,13 +189,12 @@ private:
             m_roles.emplace(rid, std::make_shared<SessionRole>(base));
         }
 
-        Msg_SES_LoadRoleRsp rsp{};
         m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::SES_LOAD_ROLE_RSP,
                          data, len);
     }
 
     /** @brief 处理社会关系数据保存请求（当前为占位实现） */
-    void OnSaveRoleReq(ConnID fromConn, const char* data, uint16_t len)
+    void OnSaveRoleReq(ConnID /*fromConn*/, const char* data, uint16_t len)
     {
         if (len < sizeof(RoleID)) return;
         RoleID rid = *reinterpret_cast<const RoleID*>(data);
@@ -204,7 +203,7 @@ private:
     }
 
     /** @brief 处理好友更新（当前为占位实现） */
-    void OnFriendUpdate(ConnID fromConn, const char* data, uint16_t len)
+    void OnFriendUpdate(ConnID /*fromConn*/, const char* /*data*/, uint16_t len)
     {
         LOG_DEBUG("FriendUpdate len=%d", len);
         // TODO: 解析好友变更，广播给在线好友
@@ -238,9 +237,3 @@ private:
     /** @brief 离线消息队列：roleID → 消息列表 */
     std::unordered_map<RoleID, std::vector<OfflineMsg>>      m_offlineMsgs;
 };
-
-// 占位结构（补充 InternalMsg.h 未定义的结构体）
-#pragma pack(push,1)
-/** @brief SessionServer 加载角色响应结构 */
-struct Msg_SES_LoadRoleRsp { uint64_t roleID; int32_t code; };
-#pragma pack(pop)

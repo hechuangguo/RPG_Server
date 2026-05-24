@@ -105,6 +105,7 @@ public:
     /**
      * @brief 获取当前毫秒时间戳（steady_clock，不受系统时间调整影响）
      * @return 从 steady_clock epoch 以来的毫秒数
+     * @see TimeUtil::UnixMs() 墙钟 Unix 毫秒，用于日志与闹钟
      */
     static uint64_t NowMs()
     {

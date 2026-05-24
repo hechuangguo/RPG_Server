@@ -13,7 +13,7 @@
  *     <SessionServer port="9001"/>
  *     ...
  *     <LogPaths>
- *       <SuperServer>logs/super.log</SuperServer>
+ *       <SuperServer>logs/super.log</SuperServer>   <!-- 实时文件；归档 super.log.YYYYMMDD-HH -->
  *       ...
  *     </LogPaths>
  *   </ServerConfig>

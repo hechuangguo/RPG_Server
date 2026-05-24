@@ -33,27 +33,10 @@
 #include <string>
 
 /**
- * @brief 子服务器类型枚举
- *
- * 与项目架构中的 9 种服务器一一对应。
- */
-enum class SubServerType : uint8_t
-{
-    UNKNOWN       = 0,  /**< 未知类型（未注册或异常） */
-    SESSION       = 1,  /**< SessionServer —— 社会关系 / 离线数据 */
-    RECORD        = 2,  /**< RecordServer —— DB 读写 / 角色持久化 */
-    AOI           = 3,  /**< AOIServer —— 视野管理 */
-    SCENE         = 4,  /**< SceneServer —— 在线数据 / 地图逻辑 */
-    GATEWAY       = 5,  /**< GatewayServer —— 客户端接入 */
-    LOGGER        = 6,  /**< LoggerServer —— 日志收集 */
-    GLOBAL        = 7,  /**< GlobalServer —— 全区数据（可选） */
-    ZONE          = 8,  /**< ZoneServer —— 跨区转发（可选） */
-};
-
-/**
  * @brief SuperServer 维护的子服务器信息
  *
  * 每个连接的子服务器在此结构中被记录，用于路由和心跳检测。
+ * SubServerType 定义见 InternalMsg.h。
  */
 struct SubServerInfo
 {
@@ -78,6 +61,16 @@ struct RoleProxy
     ConnID   gatewayConnID;       /**< 对应 GatewayServer 的内部连接 */
     ConnID   sceneConnID;         /**< 分配到的 SceneServer 连接 */
     uint32_t gatewayClientConnID; /**< 角色在 GatewayServer 里的客户端连接 ID */
+};
+
+/** @brief 登录流程中的待完成上下文 */
+struct PendingLogin
+{
+    RoleID       roleID;
+    ConnID       gatewayConnID;
+    uint32_t     gatewayClientConnID;
+    ConnID       sceneConnID;
+    RoleBaseWire roleData{};
 };
 
 /**
@@ -166,6 +159,10 @@ private:
             [this](uint32_t c, const char* d, uint16_t l){ OnHeartbeat(c, d, l); });
         d.Register((uint16_t)InternalMsgID::GW_ROLE_LOGIN_REQ,
             [this](uint32_t c, const char* d, uint16_t l){ OnRoleLoginReq(c, d, l); });
+        d.Register((uint16_t)InternalMsgID::REC_LOAD_ROLE_RSP,
+            [this](uint32_t c, const char* d, uint16_t l){ OnLoadRoleRsp(c, d, l); });
+        d.Register((uint16_t)InternalMsgID::SCE_ROLE_ENTER_RSP,
+            [this](uint32_t c, const char* d, uint16_t l){ OnRoleEnterRsp(c, d, l); });
         d.Register((uint16_t)InternalMsgID::SS_KICK_ROLE,
             [this](uint32_t c, const char* d, uint16_t l){ OnKickRole(c, d, l); });
     }
@@ -227,24 +224,133 @@ private:
         const auto* rsp = reinterpret_cast<const Msg_REC_LoginVerifyRsp*>(data);
         if (rsp->code != 0) return;
 
-        RoleProxy proxy;
-        proxy.roleID              = rsp->roleID;
-        proxy.gatewayConnID       = connID;
-        proxy.gatewayClientConnID = rsp->gatewayConnID;
-        proxy.sceneConnID         = FindSceneServer();  /**< 选择 SceneServer */
-        m_roles[rsp->roleID]      = proxy;
+        ConnID sceneConn = FindSceneServer();
+        if (sceneConn == INVALID_CONN_ID)
+        {
+            LOG_WARN("RoleLogin: no SceneServer available roleID=%llu", rsp->roleID);
+            SendLoginFailToGateway(connID, rsp->gatewayConnID, -1);
+            return;
+        }
+
+        PendingLogin pending{};
+        pending.roleID              = rsp->roleID;
+        pending.gatewayConnID       = connID;
+        pending.gatewayClientConnID = rsp->gatewayConnID;
+        pending.sceneConnID         = sceneConn;
+        m_pendingLogins[rsp->roleID] = pending;
 
         LOG_INFO("RoleLogin: roleID=%llu gatewayConn=%u sceneConn=%u",
-                 rsp->roleID, connID, proxy.sceneConnID);
+                 rsp->roleID, connID, sceneConn);
 
         ConnID recConn = FindSubServer(SubServerType::RECORD);
         if (recConn != INVALID_CONN_ID)
         {
-            Msg_REC_LoadRoleRsp loadReq{};
-            loadReq.roleID = rsp->roleID;
+            RoleID rid = rsp->roleID;
             m_server.SendMsg(recConn, (uint16_t)InternalMsgID::REC_LOAD_ROLE_REQ,
-                             reinterpret_cast<char*>(&loadReq), sizeof(loadReq));
+                             reinterpret_cast<char*>(&rid), sizeof(rid));
         }
+        else
+        {
+            SendLoginFailToGateway(connID, rsp->gatewayConnID, -1);
+            m_pendingLogins.erase(rsp->roleID);
+        }
+    }
+
+    void OnLoadRoleRsp(ConnID /*connID*/, const char* data, uint16_t len)
+    {
+        if (len < sizeof(Msg_REC_LoadRoleRsp)) return;
+        const auto* hdr = reinterpret_cast<const Msg_REC_LoadRoleRsp*>(data);
+        auto pit = m_pendingLogins.find(hdr->roleID);
+        if (pit == m_pendingLogins.end()) return;
+
+        if (hdr->code != 0 || len < sizeof(Msg_REC_LoadRoleRsp) + sizeof(RoleBaseWire))
+        {
+            SendLoginFailToGateway(pit->second.gatewayConnID,
+                                   pit->second.gatewayClientConnID, hdr->code);
+            m_pendingLogins.erase(pit);
+            return;
+        }
+
+        const auto* wire = reinterpret_cast<const RoleBaseWire*>(
+            data + sizeof(Msg_REC_LoadRoleRsp));
+
+        Msg_SCE_RoleEnterReq enter{};
+        enter.roleID              = wire->roleID;
+        enter.mapID               = wire->mapID ? wire->mapID : 1001;
+        enter.x                   = wire->posX;
+        enter.y                   = wire->posY;
+        enter.z                   = wire->posZ;
+        enter.gatewayClientConnID = pit->second.gatewayClientConnID;
+        snprintf(enter.name, sizeof(enter.name), "%s", wire->name);
+        enter.level    = wire->level;
+        enter.vocation = wire->vocation;
+        enter.sex      = wire->sex;
+        enter.hp       = wire->hp;
+        enter.maxHP    = wire->maxHP;
+        enter.mp       = wire->mp;
+        enter.maxMP    = wire->maxMP;
+        enter.gold     = wire->gold;
+
+        pit->second.roleData = *wire;
+
+        RoleProxy proxy;
+        proxy.roleID              = wire->roleID;
+        proxy.gatewayConnID       = pit->second.gatewayConnID;
+        proxy.gatewayClientConnID = pit->second.gatewayClientConnID;
+        proxy.sceneConnID         = pit->second.sceneConnID;
+        m_roles[wire->roleID]     = proxy;
+
+        m_server.SendMsg(pit->second.sceneConnID,
+                         (uint16_t)InternalMsgID::SCE_ROLE_ENTER_REQ,
+                         reinterpret_cast<char*>(&enter), sizeof(enter));
+    }
+
+    void OnRoleEnterRsp(ConnID /*connID*/, const char* data, uint16_t len)
+    {
+        if (len < sizeof(Msg_SCE_RoleEnterRsp)) return;
+        const auto* rsp = reinterpret_cast<const Msg_SCE_RoleEnterRsp*>(data);
+        auto pit = m_pendingLogins.find(rsp->roleID);
+        if (pit == m_pendingLogins.end()) return;
+
+        Msg_GW_RoleLoginRsp gwRsp{};
+        gwRsp.code                = rsp->code;
+        gwRsp.gatewayClientConnID = rsp->gatewayClientConnID;
+        gwRsp.roleID              = rsp->roleID;
+        gwRsp.mapID               = rsp->mapID;
+        if (rsp->code == 0)
+        {
+            const auto& w = pit->second.roleData;
+            gwRsp.x     = w.posX;
+            gwRsp.y     = w.posY;
+            gwRsp.z     = w.posZ;
+            gwRsp.level = w.level;
+            gwRsp.hp    = w.hp;
+            gwRsp.maxHP = w.maxHP;
+            gwRsp.mp    = w.mp;
+            gwRsp.maxMP = w.maxMP;
+            snprintf(gwRsp.name, sizeof(gwRsp.name), "%s", w.name);
+        }
+
+        auto rit = m_roles.find(rsp->roleID);
+        if (rit != m_roles.end())
+        {
+            m_server.SendMsg(rit->second.gatewayConnID,
+                             (uint16_t)InternalMsgID::GW_ROLE_LOGIN_RSP,
+                             reinterpret_cast<char*>(&gwRsp), sizeof(gwRsp));
+        }
+
+        if (rsp->code != 0)
+            m_roles.erase(rsp->roleID);
+        m_pendingLogins.erase(pit);
+    }
+
+    void SendLoginFailToGateway(ConnID gatewayConnID, uint32_t clientConnID, int32_t code)
+    {
+        Msg_GW_RoleLoginRsp gwRsp{};
+        gwRsp.code                = code;
+        gwRsp.gatewayClientConnID = clientConnID;
+        m_server.SendMsg(gatewayConnID, (uint16_t)InternalMsgID::GW_ROLE_LOGIN_RSP,
+                         reinterpret_cast<char*>(&gwRsp), sizeof(gwRsp));
     }
 
     /**
@@ -252,7 +358,7 @@ private:
      *
      * 通知对应 GatewayServer 踢除指定角色的客户端连接。
      */
-    void OnKickRole(ConnID connID, const char* data, uint16_t len)
+    void OnKickRole(ConnID /*connID*/, const char* data, uint16_t len)
     {
         if (len < sizeof(RoleID)) return;
         RoleID rid = *reinterpret_cast<const RoleID*>(data);
@@ -318,4 +424,6 @@ private:
     std::unordered_map<ConnID, SubServerInfo> m_servers;
     /** @brief 在线角色路由表：roleID → 代理信息 */
     std::unordered_map<RoleID, RoleProxy>     m_roles;
+    /** @brief 登录中的角色：roleID → 待完成上下文 */
+    std::unordered_map<RoleID, PendingLogin>  m_pendingLogins;
 };

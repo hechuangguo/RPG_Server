@@ -88,7 +88,7 @@ public:
     const RoleBase& Base() const { return m_base; }          /**< 获取基础属性（只读） */
 
     /** @brief 每帧回调（子类可选覆写） */
-    virtual void OnTick(uint64_t nowMs) {}
+    virtual void OnTick(uint64_t /*nowMs*/) {}
     /** @brief 角色登录时回调 */
     virtual void OnLogin()             {}
     /** @brief 角色登出时回调 */

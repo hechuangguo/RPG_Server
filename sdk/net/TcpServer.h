@@ -15,6 +15,7 @@
 #pragma once
 #include "TcpConnection.h"
 #include <sys/epoll.h>
+#include <arpa/inet.h>
 #include <unordered_map>
 #include <memory>
 #include <atomic>

@@ -4,13 +4,13 @@
  *
  * ## 职责
  * - 接收来自各服务器的 LOG_WRITE_REQ 消息
- * - 按服务器类型和日期分文件写入（如 session_20260523.log）
- * - 每小时自动日志切割（关闭旧句柄，下次写入创建新文件）
+ * - 按服务器类型双文件落盘：scene.log + scene.log.YYYYMMDD-HH
+ * - 跨小时自动切换归档文件
  *
  * ## 日志文件命名规则
  * @code
- *   {ServerType}_{YYYYMMDD}.log
- *   例如：scene_20260523.log、gateway_20260523.log
+ *   实时：scene.log（供 log.sh）
+ *   归档：scene.log.20260524-12
  * @endcode
  *
  * ## 依赖关系
@@ -22,13 +22,13 @@
 #include "../sdk/net/TcpClient.h"
 #include "../sdk/util/MsgDispatcher.h"
 #include "../sdk/log/Logger.h"
+#include "../sdk/log/LogFileWriter.h"
 #include "../sdk/timer/TimerMgr.h"
 #include "../protocal/InternalMsg.h"
 #include <unordered_map>
 #include <fstream>
 #include <string>
 #include <vector>
-#include <ctime>
 
 /**
  * @brief 远程日志写入请求结构
@@ -78,8 +78,6 @@ public:
         RegisterHandlers();
         TimerMgr::Instance().Register(500,   0,     [this]{ RegisterToSuper(); });
         TimerMgr::Instance().Register(10000, 10000, [this]{ SendHeartbeat(); });
-        // 每小时刷新日志文件句柄（日志切割）
-        TimerMgr::Instance().Register(3600000, 3600000, [this]{ FlushAll(); });
         LOG_INFO("LoggerServer started on %s:%d", ip.c_str(), port);
         return true;
     }
@@ -96,8 +94,8 @@ public:
         }
     }
 
-    void OnConnect(ConnID id)    override {}
-    void OnDisconnect(ConnID id) override {}
+    void OnConnect(ConnID /*id*/)    override {}
+    void OnDisconnect(ConnID /*id*/) override {}
     void OnMessage(ConnID id, uint16_t msgID, const char* data, uint16_t len) override
     {
         MsgDispatcher::Instance().Dispatch(id, msgID, data, len);
@@ -117,7 +115,7 @@ private:
      * 解析 Msg_Log_WriteReq 头部，提取日志文本，写入对应文件。
      * 文件按需打开（首次写入某服务器的日志时）。
      */
-    void OnWriteLog(ConnID fromConn, const char* data, uint16_t len)
+    void OnWriteLog(ConnID /*fromConn*/, const char* data, uint16_t len)
     {
         if (len < sizeof(Msg_Log_WriteReq)) return;
         const auto* req = reinterpret_cast<const Msg_Log_WriteReq*>(data);
@@ -125,48 +123,35 @@ private:
         if ((uint32_t)len < sizeof(Msg_Log_WriteReq) + logLen) return;
         const char* logText = data + sizeof(Msg_Log_WriteReq);
 
-        std::string fname = GetLogFileName((SubServerType)req->serverType);
-        auto it = m_files.find(fname);
-        if (it == m_files.end())
-        {
-            std::string path = m_logDir + "/" + fname;
-            FILE* fp = fopen(path.c_str(), "a");
-            if (!fp) { LOG_ERR("Cannot open log file: %s", path.c_str()); return; }
-            m_files[fname] = fp;
-            it = m_files.find(fname);
-        }
-        fwrite(logText, 1, logLen, it->second);
-        fputc('\n', it->second);
-        fflush(it->second);  /**< 每条日志立即刷新 */
+        auto& writer = GetWriter((SubServerType)req->serverType);
+        writer.Write(logText, logLen);
+        writer.Write("\n", 1);
+        writer.Flush();
     }
 
-    /**
-     * @brief 生成日志文件名
-     * @param type 服务器类型
-     * @return 如 "scene_20260523.log"
-     */
-    std::string GetLogFileName(SubServerType type)
+    static const char* ServerLogBaseName(SubServerType type)
     {
-        time_t now = time(nullptr);
-        struct tm t{}; localtime_r(&now, &t);
-        char ts[16]; snprintf(ts, sizeof(ts), "%04d%02d%02d", t.tm_year+1900, t.tm_mon+1, t.tm_mday);
-        static const char* names[] = {"unknown","session","record","aoi","scene","gateway","logger","global","zone"};
-        int idx = (int)type;
+        static const char* names[] = {
+            "unknown.log", "session.log", "record.log", "aoi.log",
+            "scene.log", "gateway.log", "logger.log", "global.log", "zone.log"
+        };
+        int idx = static_cast<int>(type);
         if (idx < 0 || idx >= 9) idx = 0;
-        char buf[64]; snprintf(buf, sizeof(buf), "%s_%s.log", names[idx], ts);
-        return buf;
+        return names[idx];
     }
 
-    /**
-     * @brief 日志切割（每小时执行）
-     *
-     * 关闭所有文件句柄，下次写入时重新按日期创建文件名。
-     */
-    void FlushAll()
+    LogFileWriter& GetWriter(SubServerType type)
     {
-        for (auto& [n, fp] : m_files) { fflush(fp); fclose(fp); }
-        m_files.clear();
-        LOG_INFO("LoggerServer: log files rotated.");
+        int idx = static_cast<int>(type);
+        if (idx < 0 || idx >= 9) idx = 0;
+        auto it = m_writers.find(idx);
+        if (it != m_writers.end()) return it->second;
+
+        std::string path = m_logDir + "/" + ServerLogBaseName(type);
+        LogFileWriter writer;
+        writer.SetBasePath(path);
+        auto [ins, _] = m_writers.emplace(idx, std::move(writer));
+        return ins->second;
     }
 
     void RegisterToSuper()
@@ -191,8 +176,8 @@ private:
     TcpClient  m_superClient;    /**< 到 SuperServer 的连接 */
     TcpClient  m_sessionClient;  /**< 到 SessionServer 的连接 */
     uint32_t   m_hbSeq = 0;      /**< 心跳序列号 */
-    std::string m_logDir;        /**< 日志输出根目录 */
+    std::string m_logDir;
 
-    /** @brief 文件句柄表：文件名 → FILE*（按需打开） */
-    std::unordered_map<std::string, FILE*> m_files;
+    /** @brief 各服务器类型 → 双文件写入器 */
+    std::unordered_map<int, LogFileWriter> m_writers;
 };

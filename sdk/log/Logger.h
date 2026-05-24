@@ -5,6 +5,7 @@
  * 特性：
  * - 五级日志：DEBUG / INFO / WARN / ERROR / FATAL
  * - 同时输出到 stdout 和文件
+ * - 双文件落盘：logs/aoi.log（实时）+ logs/aoi.log.YYYYMMDD-HH（按小时归档）
  * - 线程安全（std::mutex）
  * - 每行自动附加时间戳和服务器名称前缀
  * - 便捷宏：LOG_DEBUG / LOG_INFO / LOG_WARN / LOG_ERR / LOG_FATAL
@@ -16,9 +17,10 @@
  */
 
 #pragma once
+#include "LogFileWriter.h"
+#include "../time/TimeUtil.h"
 #include <cstdint>
 #include <cstdio>
-#include <ctime>
 #include <cstdarg>
 #include <string>
 #include <mutex>
@@ -59,16 +61,14 @@ public:
     void SetLevel(LogLevel lv)  { m_level = lv;  }
 
     /**
-     * @brief 设置日志文件路径
-     * @param path 相对或绝对路径；空字符串则仅输出到 stdout
-     * @note  会关闭之前打开的文件句柄
+     * @brief 设置日志基础路径（实时文件）
+     * @param path 如 logs/aoi.log；归档为 logs/aoi.log.YYYYMMDD-HH
+     * @note  空字符串则仅输出到 stdout
      */
     void SetPath(const std::string& path)
     {
         std::lock_guard<std::mutex> lk(m_mu);
-        if (m_fp) { fclose(m_fp); m_fp = nullptr; }
-        if (!path.empty())
-            m_fp = fopen(path.c_str(), "a");
+        m_writer.SetBasePath(path);
         m_path = path;
     }
 
@@ -93,35 +93,29 @@ public:
         vsnprintf(buf, sizeof(buf), fmt, ap);
         va_end(ap);
 
-        // 格式化时间戳
-        time_t now = time(nullptr);
-        struct tm t{};
-        localtime_r(&now, &t);
-        char ts[32];
-        snprintf(ts, sizeof(ts), "%04d-%02d-%02d %02d:%02d:%02d",
-                 t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
-                 t.tm_hour, t.tm_min, t.tm_sec);
+        std::string ts = TimeUtil::Format(TimeUtil::UnixMs(), TIME_DEFAULT_FMT);
 
         const char* lvStr[] = {"DEBUG","INFO","WARN","ERROR","FATAL"};
         char line[2200];
         int n = snprintf(line, sizeof(line), "[%s][%s][%s] %s\n",
-                         ts, m_name.c_str(), lvStr[(int)lv], buf);
+                         ts.c_str(), m_name.c_str(), lvStr[(int)lv], buf);
 
         std::lock_guard<std::mutex> lk(m_mu);
-        fwrite(line, 1, n, stdout);             /**< 总是输出到 stdout */
-        if (m_fp) fwrite(line, 1, n, m_fp);     /**< 同时写文件 */
-        if (lv == LogLevel::FATAL) fflush(m_fp ? m_fp : stdout); /**< FATAL 立即刷新 */
+        fwrite(line, 1, n, stdout);
+        if (m_writer.HasPath())
+            m_writer.Write(line, static_cast<size_t>(n));
+        if (lv == LogLevel::FATAL)
+            m_writer.Flush();
     }
 
 private:
-    Logger() : m_fp(nullptr), m_level(LogLevel::DEBUG), m_name("Server") {}
-    ~Logger() { if (m_fp) fclose(m_fp); }
+    Logger() : m_level(LogLevel::DEBUG), m_name("Server") {}
 
-    FILE*       m_fp;     /**< 日志文件句柄（nullptr = 仅 stdout） */
-    LogLevel    m_level;  /**< 当前最低输出级别 */
-    std::string m_name;   /**< 服务器名称前缀 */
-    std::string m_path;   /**< 日志文件路径 */
-    std::mutex  m_mu;     /**< 写文件互斥锁 */
+    LogLevel       m_level;
+    std::string    m_name;
+    std::string    m_path;
+    LogFileWriter  m_writer;
+    std::mutex     m_mu;
 };
 
 // ============================================================

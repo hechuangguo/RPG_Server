@@ -1,5 +1,6 @@
 #include "SceneServer.h"
 #include "../sdk/util/ConfigLoader.h"
+#include <csignal>
 #include "../sdk/util/SceneInfoLoader.h"
 
 int main(int argc, char* argv[])

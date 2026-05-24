@@ -37,6 +37,22 @@
 #include <cstdint>
 
 /**
+ * @brief 子服务器类型（与 Msg_S2S_Register::serverType 对应）
+ */
+enum class SubServerType : uint8_t
+{
+    UNKNOWN = 0,
+    SESSION = 1,
+    RECORD  = 2,
+    AOI     = 3,
+    SCENE   = 4,
+    GATEWAY = 5,
+    LOGGER  = 6,
+    GLOBAL  = 7,
+    ZONE    = 8,
+};
+
+/**
  * @brief 服务器内部消息协议号枚举
  */
 enum class InternalMsgID : uint16_t
@@ -180,7 +196,28 @@ struct Msg_REC_LoadRoleRsp
 {
     int32_t  code;      /**< 0=成功, -1=角色不存在 */
     uint64_t roleID;    /**< 角色 ID */
-    // 后续追加 RoleBase 二进制数据 ...
+    // 成功时后续追加 RoleBaseWire ...
+};
+
+/**
+ * @brief 角色基础数据网络传输格式（定长，可 memcpy 序列化）
+ */
+struct RoleBaseWire
+{
+    uint64_t roleID   = 0;
+    char     name[32] = {};
+    uint32_t level    = 1;
+    uint32_t vocation = 0;
+    uint32_t sex      = 0;
+    uint32_t mapID    = 0;
+    float    posX     = 0.f;
+    float    posY     = 0.f;
+    float    posZ     = 0.f;
+    uint32_t hp       = 100;
+    uint32_t maxHP    = 100;
+    uint32_t mp       = 100;
+    uint32_t maxMP    = 100;
+    uint64_t gold     = 0;
 };
 
 /**
@@ -188,9 +225,48 @@ struct Msg_REC_LoadRoleRsp
  */
 struct Msg_SCE_RoleEnterReq
 {
-    uint64_t roleID;    /**< 要进入场景的角色 ID */
-    uint32_t mapID;     /**< 目标地图 ID */
-    float    x, y, z;   /**< 出生点坐标 */
+    uint64_t roleID;              /**< 要进入场景的角色 ID */
+    uint32_t mapID;               /**< 目标地图 ID */
+    float    x, y, z;             /**< 出生点坐标 */
+    uint32_t gatewayClientConnID; /**< Gateway 中客户端连接 ID */
+    char     name[32];            /**< 角色名 */
+    uint32_t level    = 1;
+    uint32_t vocation = 0;
+    uint32_t sex      = 0;
+    uint32_t hp       = 100;
+    uint32_t maxHP    = 100;
+    uint32_t mp       = 100;
+    uint32_t maxMP    = 100;
+    uint64_t gold     = 0;
+};
+
+/**
+ * @brief SceneServer → SuperServer: 角色进入场景结果
+ */
+struct Msg_SCE_RoleEnterRsp
+{
+    int32_t  code;                /**< 0=成功, -1=失败 */
+    uint64_t roleID;
+    uint32_t gatewayClientConnID;
+    uint32_t mapID;
+};
+
+/**
+ * @brief SuperServer → GatewayServer: 登录流程完成通知
+ */
+struct Msg_GW_RoleLoginRsp
+{
+    int32_t  code;                /**< 0=成功 */
+    uint32_t gatewayClientConnID;
+    uint64_t roleID;
+    uint32_t mapID;
+    float    x, y, z;
+    char     name[32];
+    uint32_t level = 1;
+    uint32_t hp    = 100;
+    uint32_t maxHP = 100;
+    uint32_t mp    = 100;
+    uint32_t maxMP = 100;
 };
 
 /**
