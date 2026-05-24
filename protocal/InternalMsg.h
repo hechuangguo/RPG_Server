@@ -23,12 +23,12 @@
  *   Client → GatewayServer                           (C2S_LOGIN_REQ)
  *   GatewayServer → RecordServer                     (REC_LOGIN_VERIFY_REQ)
  *   RecordServer → GatewayServer                     (REC_LOGIN_VERIFY_RSP)
- *   GatewayServer → SuperServer                      (GW_ROLE_LOGIN_REQ)
- *   SuperServer → RecordServer                       (REC_LOAD_ROLE_REQ)
- *   RecordServer → SuperServer                       (REC_LOAD_ROLE_RSP)
- *   SuperServer → SceneServer                        (SCE_ROLE_ENTER_REQ)
+ *   GatewayServer → SuperServer                      (GW_USER_LOGIN_REQ)
+ *   SuperServer → RecordServer                       (REC_LOAD_USER_REQ)
+ *   RecordServer → SuperServer                       (REC_LOAD_USER_RSP)
+ *   SuperServer → SceneServer                        (SCE_USER_ENTER_REQ)
  *   SceneServer → AOIServer                          (AOI_ENTER_REQ)
- *   SceneServer → GatewayServer                      (SCE_ROLE_ENTER_RSP)
+ *   SceneServer → GatewayServer                      (SCE_USER_ENTER_RSP)
  *   GatewayServer → Client                           (S2C_LOGIN_RSP / S2C_ENTER_GAME)
  * @endcode
  */
@@ -68,35 +68,35 @@ enum class InternalMsgID : uint16_t
     // ============================================================
     //  SuperServer (0x1001 ~ 0x1003)
     // ============================================================
-    SS_KICK_ROLE         = 0x1001,  /**< 强制角色下线 */
+    SS_KICK_USER         = 0x1001,  /**< 强制用户下线 */
     SS_QUERY_ONLINE      = 0x1002,  /**< 查询在线状态 */
     SS_QUERY_ONLINE_RSP  = 0x1003,  /**< 在线状态响应 */
 
     // ============================================================
     //  SessionServer (0x1101 ~ 0x1105)
     // ============================================================
-    SES_LOAD_ROLE_REQ    = 0x1101,  /**< 加载角色社会关系数据 */
-    SES_LOAD_ROLE_RSP    = 0x1102,  /**< 社会关系数据响应 */
-    SES_SAVE_ROLE_REQ    = 0x1103,  /**< 保存角色社会关系数据 */
+    SES_LOAD_USER_REQ    = 0x1101,  /**< 加载用户社会关系数据 */
+    SES_LOAD_USER_RSP    = 0x1102,  /**< 社会关系数据响应 */
+    SES_SAVE_USER_REQ    = 0x1103,  /**< 保存用户社会关系数据 */
     SES_FRIEND_UPDATE    = 0x1104,  /**< 好友关系更新 */
     SES_OFFLINE_MSG_PUSH = 0x1105,  /**< 推送离线消息 */
 
     // ============================================================
     //  RecordServer (0x1201 ~ 0x1206)
     // ============================================================
-    REC_LOAD_ROLE_REQ    = 0x1201,  /**< 从 DB 加载角色数据 */
-    REC_LOAD_ROLE_RSP    = 0x1202,  /**< 角色数据加载响应 */
-    REC_SAVE_ROLE_REQ    = 0x1203,  /**< 保存角色数据到 DB */
-    REC_SAVE_ROLE_RSP    = 0x1204,  /**< 保存结果响应 */
+    REC_LOAD_USER_REQ    = 0x1201,  /**< 从 DB 加载用户数据 */
+    REC_LOAD_USER_RSP    = 0x1202,  /**< 用户数据加载响应 */
+    REC_SAVE_USER_REQ    = 0x1203,  /**< 保存用户数据到 DB */
+    REC_SAVE_USER_RSP    = 0x1204,  /**< 保存结果响应 */
     REC_LOGIN_VERIFY_REQ = 0x1205,  /**< 账号密码验证请求 */
     REC_LOGIN_VERIFY_RSP = 0x1206,  /**< 验证结果响应 */
 
     // ============================================================
     //  SceneServer (0x1301 ~ 0x1306)
     // ============================================================
-    SCE_ROLE_ENTER_REQ   = 0x1301,  /**< 角色进入场景请求 */
-    SCE_ROLE_ENTER_RSP   = 0x1302,  /**< 角色进入场景响应 */
-    SCE_ROLE_LEAVE       = 0x1303,  /**< 角色离开场景通知 */
+    SCE_USER_ENTER_REQ   = 0x1301,  /**< 用户进入场景请求 */
+    SCE_USER_ENTER_RSP   = 0x1302,  /**< 用户进入场景响应 */
+    SCE_USER_LEAVE       = 0x1303,  /**< 用户离开场景通知 */
     SCE_FORWARD_TO_CLIENT= 0x1304,  /**< 向客户端转发消息（经 GatewayServer） */
     SCE_MAP_INFO_REQ     = 0x1305,  /**< 请求地图信息 */
     SCE_MAP_INFO_RSP     = 0x1306,  /**< 地图信息响应 */
@@ -107,8 +107,8 @@ enum class InternalMsgID : uint16_t
     GW_CLIENT_MSG        = 0x1401,  /**< 来自客户端的消息（转发给 SceneServer） */
     GW_SEND_TO_CLIENT    = 0x1402,  /**< SceneServer → Gateway: 发送给客户端 */
     GW_KICK_CLIENT       = 0x1403,  /**< 踢除客户端连接 */
-    GW_ROLE_LOGIN_REQ    = 0x1404,  /**< Gateway → SuperServer: 发起角色登录流程 */
-    GW_ROLE_LOGIN_RSP    = 0x1405,  /**< SuperServer → Gateway: 登录流程结果 */
+    GW_USER_LOGIN_REQ    = 0x1404,  /**< Gateway → SuperServer: 发起用户登录流程 */
+    GW_USER_LOGIN_RSP    = 0x1405,  /**< SuperServer → Gateway: 登录流程结果 */
 
     // ============================================================
     //  AOIServer (0x1501 ~ 0x1504)
@@ -149,6 +149,14 @@ enum class InternalMsgID : uint16_t
  * @brief 子服务器向 SuperServer 注册
  *
  * 所有依赖服务器启动后必须发送此消息，SuperServer 据此建立路由表。
+ *
+ * 注册流程：
+ * 1. 子服务器启动后，主动向 SuperServer 发送 S2S_REGISTER_REQ（Msg_S2S_Register）。
+ * 2. SuperServer 收到后校验 serverType/serverID 合法性，记录该服务器的 IP:Port 到路由表。
+ * 3. SuperServer 回复 S2S_REGISTER_RSP，携带分配的 logicalNodeID。
+ * 4. 注册成功后，子服务器开始周期性发送 S2S_HEARTBEAT 以维持在线状态。
+ * 5. 若 SuperServer 在 N 个心跳周期内未收到某子服务器的心跳，则将其标记为离线，
+ *    并通知相关服务器进行故障转移（如 SceneServer 上的用户踢出等）。
  */
 struct Msg_S2S_Register
 {
@@ -160,6 +168,17 @@ struct Msg_S2S_Register
 
 /**
  * @brief 心跳消息（请求与响应共用此结构）
+ *
+ * 超时机制说明：
+ * - 子服务器每隔 HEARTBEAT_INTERVAL（默认 5 秒）向 SuperServer 发送 S2S_HEARTBEAT。
+ * - SuperServer 收到后立即回复 S2S_HEARTBEAT_ACK。
+ * - 若 SuperServer 在 HEARTBEAT_TIMEOUT（默认 15 秒，即 3 个周期）内未收到心跳，
+ *   则判定该子服务器离线，触发以下动作：
+ *     1. 从路由表中移除该服务器条目。
+ *     2. 广播服务器离线通知给所有已注册的子服务器。
+ *     3. 若离线的是 SceneServer，SuperServer 会通知 GatewayServer 断开该场景上
+ *        所有用户的客户端连接（通过 GW_KICK_CLIENT）。
+ * - seq 字段用于检测丢包和乱序：接收方若发现 seq 不连续，可记录告警日志。
  */
 struct Msg_S2S_Heartbeat
 {
@@ -183,53 +202,63 @@ struct Msg_REC_LoginVerifyReq
 struct Msg_REC_LoginVerifyRsp
 {
     int32_t  code;           /**< 0=成功, 1=密码错误, -1=服务器错误 */
-    uint64_t roleID;         /**< 验证通过时的角色 ID */
+    uint64_t userID;         /**< 验证通过时的用户 ID */
     uint32_t gatewayConnID;  /**< 回显 GatewayServer 连接 ID */
 };
 
 /**
- * @brief RecordServer 加载角色数据响应
+ * @brief RecordServer 加载用户数据响应
  *
- * code=0 时后续追加完整的角色二进制数据（RoleBase 序列化 + 扩展字段）。
+ * code=0 时后续追加完整的用户二进制数据（UserBase 序列化 + 扩展字段）。
  */
-struct Msg_REC_LoadRoleRsp
+struct Msg_REC_LoadUserRsp
 {
-    int32_t  code;      /**< 0=成功, -1=角色不存在 */
-    uint64_t roleID;    /**< 角色 ID */
-    // 成功时后续追加 RoleBaseWire ...
+    int32_t  code;      /**< 0=成功, -1=用户不存在 */
+    uint64_t userID;    /**< 用户 ID */
+    // 成功时后续追加 UserBaseWire ...
 };
 
 /**
- * @brief 角色基础数据网络传输格式（定长，可 memcpy 序列化）
+ * @brief 用户基础数据网络传输格式（定长，可 memcpy 序列化）
+ *
+ * 序列化/反序列化说明：
+ * - 此结构体使用 #pragma pack(push, 1) 保证紧密排列，无填充字节。
+ * - 序列化：直接将结构体指针 reinterpret_cast 为 char* 后 memcpy 到发送缓冲区，
+ *   按字段声明顺序逐字节写入，无需额外编码。
+ * - 反序列化：从接收缓冲区 memcpy 到此结构体即可恢复，建议先校验缓冲区长度
+ *   不小于 sizeof(UserBaseWire) 以防止越界读取。
+ * - 字符串字段（如 name）使用定长 char 数组，空终止字符串，不足部分补零。
+ * - 数值字段使用网络字节序（大端）传输，发送/接收时需调用 hton*/ntoh* 转换。
+ * - 若需扩展字段，应在结构体末尾追加并同步更新版本号，确保向后兼容。
  */
-struct RoleBaseWire
+struct UserBaseWire
 {
-    uint64_t roleID   = 0;
-    char     name[32] = {};
-    uint32_t level    = 1;
-    uint32_t vocation = 0;
-    uint32_t sex      = 0;
-    uint32_t mapID    = 0;
-    float    posX     = 0.f;
-    float    posY     = 0.f;
-    float    posZ     = 0.f;
-    uint32_t hp       = 100;
-    uint32_t maxHP    = 100;
-    uint32_t mp       = 100;
-    uint32_t maxMP    = 100;
-    uint64_t gold     = 0;
+    uint64_t userID   = 0;                /**< 全局唯一用户 ID（8 字节大端，与 DB 主键一致） */
+    char     name[32] = {};               /**< 用户昵称（空终止字符串，最多 31 个有效字符） */
+    uint32_t level    = 1;                /**< 等级（默认 1，范围 1~999） */
+    uint32_t vocation = 0;                /**< 职业类型（0=战士 1=法师 2=弓手 3=刺客） */
+    uint32_t sex      = 0;                /**< 性别（0=男 1=女） */
+    uint32_t mapID    = 0;                /**< 当前所在地图 ID（0 表示无地图） */
+    float    posX     = 0.f;              /**< X 轴坐标（世界坐标系，浮点精度） */
+    float    posY     = 0.f;              /**< Y 轴坐标（高度） */
+    float    posZ     = 0.f;              /**< Z 轴坐标 */
+    uint32_t hp       = 100;              /**< 当前生命值 */
+    uint32_t maxHP    = 100;              /**< 最大生命值 */
+    uint32_t mp       = 100;              /**< 当前魔法值 */
+    uint32_t maxMP    = 100;              /**< 最大魔法值 */
+    uint64_t gold     = 0;                /**< 金币数量 */
 };
 
 /**
- * @brief SuperServer → SceneServer: 角色进入场景请求
+ * @brief SuperServer → SceneServer: 用户进入场景请求
  */
-struct Msg_SCE_RoleEnterReq
+struct Msg_SCE_UserEnterReq
 {
-    uint64_t roleID;              /**< 要进入场景的角色 ID */
+    uint64_t userID;              /**< 要进入场景的用户 ID */
     uint32_t mapID;               /**< 目标地图 ID */
     float    x, y, z;             /**< 出生点坐标 */
     uint32_t gatewayClientConnID; /**< Gateway 中客户端连接 ID */
-    char     name[32];            /**< 角色名 */
+    char     name[32];            /**< 用户名 */
     uint32_t level    = 1;
     uint32_t vocation = 0;
     uint32_t sex      = 0;
@@ -241,12 +270,12 @@ struct Msg_SCE_RoleEnterReq
 };
 
 /**
- * @brief SceneServer → SuperServer: 角色进入场景结果
+ * @brief SceneServer → SuperServer: 用户进入场景结果
  */
-struct Msg_SCE_RoleEnterRsp
+struct Msg_SCE_UserEnterRsp
 {
     int32_t  code;                /**< 0=成功, -1=失败 */
-    uint64_t roleID;
+    uint64_t userID;
     uint32_t gatewayClientConnID;
     uint32_t mapID;
 };
@@ -254,11 +283,11 @@ struct Msg_SCE_RoleEnterRsp
 /**
  * @brief SuperServer → GatewayServer: 登录流程完成通知
  */
-struct Msg_GW_RoleLoginRsp
+struct Msg_GW_UserLoginRsp
 {
     int32_t  code;                /**< 0=成功 */
     uint32_t gatewayClientConnID;
-    uint64_t roleID;
+    uint64_t userID;
     uint32_t mapID;
     float    x, y, z;
     char     name[32];

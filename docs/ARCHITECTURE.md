@@ -1,4 +1,4 @@
-# RPG Server 架构文档
+﻿# RPG Server 架构文档
 
 本文档描述 Linux 下 C++/Lua 分布式 MMORPG 服务器的整体架构，供开发与运维参考。
 
@@ -101,7 +101,7 @@ RPG/
 │   ├── net/                # epoll TCP 栈
 │   ├── timer/TimerMgr.h
 │   ├── log/Logger.h
-│   └── util/               # ConfigLoader, MsgDispatcher, RoleBase
+│   └── util/               # ConfigLoader, MsgDispatcher, UserBase
 ├── common/ClientMsg.h      # 客户端协议
 ├── protocal/InternalMsg.h  # 服务器间协议
 ├── config/config.xml       # 全局配置
@@ -119,19 +119,19 @@ RPG/
 
 - 子服务器通过 `S2S_REGISTER_REQ` 注册，维护路由表
 - 90 秒心跳超时标记离线
-- 维护 `RoleProxy`（角色 ↔ Gateway / Scene 连接映射）
+- 维护 `UserProxy`（用户 ↔ Gateway / Scene 连接映射）
 - 协调登录：Gateway → Super → Record（加载）→ Scene
 
 ### SessionServer — 社会关系与离线数据
 
-- 好友、离线消息、角色社会关系内存管理
-- `SessionRole` 继承 `IRole`，扩展 `SocialData`
+- 好友、离线消息、用户社会关系内存管理
+- `SessionUser` 继承 `IUser`，扩展 `SocialData`
 
 ### RecordServer — 数据库读写
 
 - 唯一直连 MySQL 的进程
-- 账号验证、角色 load/save、定时自动存档
-- `RecordRole` 继承 `IRole`
+- 账号验证、用户 load/save、定时自动存档
+- `RecordUser` 继承 `IUser`
 
 ### AOIServer — 视野管理
 
@@ -140,7 +140,7 @@ RPG/
 
 ### SceneServer — 核心游戏逻辑
 
-- 在线角色与地图实例管理
+- 在线用户与地图实例管理
 - 处理客户端游戏消息（移动、聊天、技能、心跳）
 - 内嵌 Lua VM，加载 `script/scene/init.lua`
 - 唯一可水平扩展的进程
@@ -180,14 +180,14 @@ while (true) {
 
 `OnMessage` → `MsgDispatcher::Dispatch(msgID)` → 已注册 handler
 
-### 角色基类体系
+### 用户基类体系
 
 ```
-RoleBase（纯数据结构）
-    └── IRole（OnTick / OnLogin / OnLogout）
-            ├── SessionRole
-            ├── RecordRole
-            └── SceneRole
+UserBase（纯数据结构）
+    └── IUser（OnTick / OnLogin / OnLogout）
+            ├── SessionUser
+            ├── RecordUser
+            └── SceneUser
 ```
 
 ---
@@ -230,13 +230,13 @@ sequenceDiagram
     C->>GW: C2S_LOGIN_REQ
     GW->>REC: REC_LOGIN_VERIFY_REQ
     REC-->>GW: REC_LOGIN_VERIFY_RSP
-    GW->>SS: GW_ROLE_LOGIN_REQ
-    SS->>REC: REC_LOAD_ROLE_REQ
-    REC-->>SS: REC_LOAD_ROLE_RSP + RoleBaseWire
-    SS->>SCE: SCE_ROLE_ENTER_REQ
+    GW->>SS: GW_USER_LOGIN_REQ
+    SS->>REC: REC_LOAD_USER_REQ
+    REC-->>SS: REC_LOAD_USER_RSP + UserBaseWire
+    SS->>SCE: SCE_USER_ENTER_REQ
     SCE->>AOI: AOI_ENTER_REQ
-    SCE-->>SS: SCE_ROLE_ENTER_RSP
-    SS-->>GW: GW_ROLE_LOGIN_RSP
+    SCE-->>SS: SCE_USER_ENTER_RSP
+    SS-->>GW: GW_USER_LOGIN_RSP
     GW-->>C: S2C_LOGIN_RSP + S2C_ENTER_GAME
 ```
 
@@ -286,7 +286,7 @@ flowchart TB
         Timer[TimerMgr]
         Log[Logger]
         Disp[MsgDispatcher]
-        Role[RoleBase/IRole]
+        User[UserBase/IUser]
     end
 
     subgraph proto [协议层]

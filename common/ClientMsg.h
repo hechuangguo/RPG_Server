@@ -8,7 +8,7 @@
  * 协议号范围约定：
  * | 范围               | 模块       |
  * |--------------------|-----------|
- * | 0x0001 ~ 0x00FF    | 登录/注册/角色选择 |
+ * | 0x0001 ~ 0x00FF    | 登录/注册/用户选择 |
  * | 0x0100 ~ 0x01FF    | 场景/移动      |
  * | 0x0200 ~ 0x02FF    | 战斗          |
  * | 0x0300 ~ 0x03FF    | 背包/物品      |
@@ -38,10 +38,10 @@ enum class ClientMsgID : uint16_t
     S2C_LOGIN_RSP        = 0x0002,  /**< S→C: 登录响应 */
     C2S_REGISTER_REQ     = 0x0003,  /**< C→S: 注册请求 */
     S2C_REGISTER_RSP     = 0x0004,  /**< S→C: 注册响应 */
-    C2S_SELECT_ROLE_REQ  = 0x0005,  /**< C→S: 选择角色进入游戏 */
-    S2C_ROLE_LIST        = 0x0006,  /**< S→C: 角色列表 */
-    C2S_CREATE_ROLE_REQ  = 0x0007,  /**< C→S: 创建角色 */
-    S2C_CREATE_ROLE_RSP  = 0x0008,  /**< S→C: 创建角色响应 */
+    C2S_SELECT_USER_REQ  = 0x0005,  /**< C→S: 选择用户进入游戏 */
+    S2C_USER_LIST        = 0x0006,  /**< S→C: 用户列表 */
+    C2S_CREATE_USER_REQ  = 0x0007,  /**< C→S: 创建用户 */
+    S2C_CREATE_USER_RSP  = 0x0008,  /**< S→C: 创建用户响应 */
     S2C_ENTER_GAME       = 0x0009,  /**< S→C: 通知客户端进入游戏世界 */
 
     // ============================================================
@@ -131,13 +131,17 @@ struct Msg_C2S_LoginReq
 /**
  * @brief S→C: 登录响应
  *
- * code=0 时 roleID 为上次登录角色 ID（0 表示无角色需创建）。
+ * code=0 时 userID 为上次登录用户 ID（0 表示无用户需创建）。
+ *
+ * 该字段用于客户端登录流程记忆功能：服务器在验证账号密码通过后，
+ * 查询该账号上次登录的 userID 并返回给客户端，客户端据此可以直接
+ * 选择该用户进入游戏，跳过用户列表界面，提升用户登录体验。
  */
 struct Msg_S2C_LoginRsp
 {
     int32_t  code;      /**< 错误码：0=成功, 1=账号密码错误, -1=服务器内部错误 */
     char     msg[64];   /**< 可读的错误描述 */
-    uint64_t roleID;    /**< 上次登录角色 ID（0=无角色） */
+    uint64_t userID;    /**< 上次登录用户 ID（0=无用户） */
 };
 
 /**
@@ -147,7 +151,7 @@ struct Msg_S2C_LoginRsp
  */
 struct Msg_C2S_MoveReq
 {
-    uint64_t roleID;    /**< 发起移动的角色 ID */
+    uint64_t userID;    /**< 发起移动的用户 ID */
     float    x, y, z;   /**< 目标坐标 */
     float    dir;       /**< 朝向（弧度） */
     uint8_t  moveType;  /**< 移动类型：0=行走 1=跑步 */
@@ -160,7 +164,7 @@ struct Msg_C2S_MoveReq
  */
 struct Msg_S2C_MoveNotify
 {
-    uint64_t roleID;    /**< 移动的角色 ID */
+    uint64_t userID;    /**< 移动的用户 ID */
     float    x, y, z;   /**< 目标坐标 */
     float    dir;       /**< 朝向 */
     uint8_t  moveType;  /**< 移动类型 */
@@ -180,8 +184,8 @@ struct Msg_C2S_Chat
  */
 struct Msg_S2C_Chat
 {
-    uint64_t fromID;        /**< 发送者角色 ID */
-    char     fromName[32];  /**< 发送者角色名 */
+    uint64_t fromID;        /**< 发送者用户 ID */
+    char     fromName[32];  /**< 发送者用户名 */
     uint8_t  channel;       /**< 频道 */
     char     content[256];  /**< 聊天内容 */
 };
@@ -207,10 +211,23 @@ struct Msg_S2C_Heartbeat
 
 /**
  * @brief S→C: 进入游戏世界
+ *
+ * 当客户端选择用户进入游戏后，服务器按以下流程处理并下发此消息：
+ *
+ * 1. 客户端发送选择用户请求（用户点击"进入游戏"按钮）；
+ * 2. SceneServer 接收请求，从数据库加载该用户的完整数据
+ *    （等级、血量、魔法、道具、装备、技能、任务进度等）；
+ * 3. SceneServer 将用户加载到指定场景地图，初始化 AOI（Area of Interest）视野；
+ * 4. SceneServer 下发 Msg_S2C_EnterGame 通知客户端进入游戏世界，
+ *    携带用户基本信息（userID、名称、坐标、等级、HP/MP 等）；
+ * 5. 客户端收到此消息后，加载对应地图资源、初始化 UI、
+ *    并在场景中创建本地用户实体，完成从登录界面到游戏场景的切换。
+ *
+ * 注意：此消息后通常紧接 Msg_S2C_SpawnEntity 批量下发视野内的其他实体。
  */
 struct Msg_S2C_EnterGame
 {
-    uint64_t roleID;
+    uint64_t userID;
     char     name[32];
     uint32_t mapID;
     float    x, y, z;
@@ -223,6 +240,18 @@ struct Msg_S2C_EnterGame
 
 /**
  * @brief S→C: 实体进入视野
+ *
+ * 当玩家进入某个实体（其他玩家、NPC、怪物等）的 AOI 视野范围时，
+ * 服务器下发此消息通知客户端创建并渲染该实体。
+ *
+ * entityType 枚举：
+ * | 值 | 类型   | 说明                                         |
+ * |----|--------|----------------------------------------------|
+ * | 0  | PLAYER | 其他在线玩家，客户端应加载其外观、装备等数据 |
+ * | 1  | NPC    | 非玩家角色（商人、任务NPC、传送员等），不可攻击 |
+ * | 2  | MONSTER| 野外怪物，可攻击、会掉落物品                     |
+ * | 3  | PET    | 玩家宠物/召唤物，跟随主人行动                 |
+ * | 4  | ITEM   | 掉落在地面上的物品实体，可拾取                 |
  */
 struct Msg_S2C_SpawnEntity
 {
@@ -231,11 +260,22 @@ struct Msg_S2C_SpawnEntity
     uint32_t level;
     float    x, y, z;
     float    dir;
-    uint8_t  entityType;  /**< 0=玩家 1=NPC */
+    uint8_t  entityType;  /**< 实体类型，参见枚举说明 */
 };
 
 /**
  * @brief S→C: 实体离开视野
+ *
+ * 服务器在以下时机下发此消息，通知客户端移除指定实体：
+ *
+ * 1. **离开AOI范围**：当某实体移出当前玩家的视野范围（超出 AOI 半径）时；
+ * 2. **实体下线**：当其他玩家断开连接、登出游戏时；
+ * 3. **实体死亡消失**：怪物被击杀后尸体消失、限时NPC活动结束消失时；
+ * 4. **传送/切换地图**：当实体通过传送门或进入副本离开当前场景时；
+ * 5. **实体销毁**：临时召唤物到期、任务道具被拾取后消失等场景。
+ *
+ * 客户端收到此消息后应立即销毁该实体的本地渲染对象，
+ * 并从实体管理器中移除，同时清理相关 UI 引用（如血条、名字等）。
  */
 struct Msg_S2C_DespawnEntity
 {

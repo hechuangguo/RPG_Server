@@ -1,5 +1,10 @@
 -- ============================================================
 --  script/scene/event_system.lua  —— Lua 事件系统
+--  采用发布/订阅（Pub-Sub）模式：
+--    发布者(Fire) 按事件名广播消息，无需知晓订阅者
+--    订阅者(On)   按事件名注册回调，在事件触发时被调用
+--    取消订阅(Off) 移除已注册的处理器
+--  实现模块间松耦合通信
 -- ============================================================
 
 EventSystem = {}
@@ -37,7 +42,12 @@ function EventSystem.Fire(eventName, ...)
     end
 end
 
--- 定时触发队列（延迟事件）
+-- ============================================================
+--  延迟事件机制（FireAfter）：
+--    将事件加入定时队列，在指定毫秒后自动触发
+--    参数：delayMs(延迟毫秒), eventName(事件名), ...(事件参数)
+--    由 EventSystem.Update(nowMs) 每帧检查到期事件并执行
+-- ============================================================
 local _timedEvents = {}
 
 function EventSystem.FireAfter(delayMs, eventName, ...)
@@ -59,11 +69,11 @@ function EventSystem.Update(nowMs)
     end
 end
 
--- 预定义事件示例：角色进入地图时发广播
-EventSystem.On("role_enter", function(roleID, mapID)
-    log_info(string.format("[Event] role_enter: role=%d map=%d", roleID, mapID))
+-- 预定义事件示例：用户进入地图时发广播
+EventSystem.On("user_enter", function(userID, mapID)
+    log_info(string.format("[Event] user_enter: user=%d map=%d", userID, mapID))
 end)
 
-EventSystem.On("role_leave", function(roleID)
-    log_info(string.format("[Event] role_leave: role=%d", roleID))
+EventSystem.On("user_leave", function(userID)
+    log_info(string.format("[Event] user_leave: user=%d", userID))
 end)

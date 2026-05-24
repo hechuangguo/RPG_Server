@@ -39,11 +39,11 @@ function NpcMgr.Init(mapID)
 end
 
 -- 玩家进入地图时初始化该地图 NPC
-function NpcMgr.OnPlayerEnter(roleID, mapID)
+function NpcMgr.OnPlayerEnter(userID, mapID)
     NpcMgr.Init(mapID)
 end
 
-function NpcMgr.OnPlayerLeave(roleID)
+function NpcMgr.OnPlayerLeave(userID)
     -- 如果地图没有玩家了，可以清理 NPC
 end
 
@@ -51,7 +51,11 @@ end
 function NpcMgr.Update(nowMs)
     for id, npc in pairs(_npcs) do
         if not npc.alive then
-            -- 检查复活计时
+            -- ============================================================
+            --  复活计时逻辑：
+            --    死亡时设置 respawnTimer = 当前时间 + 复活间隔
+            --    每帧检查：nowMs >= respawnTimer 时恢复 alive=true，重置HP
+            -- ============================================================
             if nowMs >= npc.respawnTimer then
                 npc.alive    = true
                 npc.hp       = npc.maxHP
@@ -63,7 +67,14 @@ function NpcMgr.Update(nowMs)
     end
 end
 
--- NPC AI 简单状态机
+-- ============================================================
+--  简易 AI 状态机：
+--    活着的战斗NPC(mob/boss)每帧检查：
+--      1. 扫描附近玩家 → 选取仇恨目标
+--      2. 距离判断 → 追击或返回巡逻点
+--      3. 进入攻击范围 → 执行攻击
+--    实际AI逻辑由外部脚本(ai字段)加载实现
+-- ============================================================
 function NpcMgr.UpdateAI(npc, nowMs)
     if npc.type == "mob" or npc.type == "boss" then
         -- 简单巡逻逻辑（实际可加载外部 AI 脚本）

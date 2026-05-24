@@ -1,28 +1,28 @@
 /**
  * @file    RecordServer.h
- * @brief  数据库服务器 —— 角色数据持久化（MySQL）、账号登录验证
+ * @brief  数据库服务器 —— 用户数据持久化（MySQL）、账号登录验证
  *
  * ## 职责
- * - MySQL 直连：账号验证、角色数据加载/保存
+ * - MySQL 直连：账号验证、用户数据加载/保存
  * - 定时自动存档（每 60 秒 AutoSaveAll）
  * - 内部通信：连接 SuperServer + SessionServer
  *
  * ## 依赖关系
  * - 依赖 SuperServer（注册） + SessionServer（社会关系数据）
- * - 被 GatewayServer（登录验证）、SuperServer（加载角色）、SceneServer（保存角色）调用
+ * - 被 GatewayServer（登录验证）、SuperServer（加载用户）、SceneServer（保存用户）调用
  *
  * ## 数据流
  * @code
  *   GatewayServer ──(REC_LOGIN_VERIFY_REQ)──→ RecordServer ──(SQL)──→ MySQL
- *   SuperServer   ──(REC_LOAD_ROLE_REQ)───→ RecordServer ──(SQL)──→ MySQL
- *   SceneServer   ──(REC_SAVE_ROLE_REQ)───→ RecordServer ──(SQL)──→ MySQL
+ *   SuperServer   ──(REC_LOAD_USER_REQ)───→ RecordServer ──(SQL)──→ MySQL
+ *   SceneServer   ──(REC_SAVE_USER_REQ)───→ RecordServer ──(SQL)──→ MySQL
  * @endcode
  */
 
 #pragma once
 #include "../sdk/net/TcpServer.h"
 #include "../sdk/net/TcpClient.h"
-#include "../sdk/util/RoleBase.h"
+#include "../sdk/util/UserBase.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
 #include "../sdk/util/MsgDispatcher.h"
@@ -35,13 +35,13 @@
 #include <cinttypes>
 
 /**
- * @brief RecordServer 中的角色数据（完整存档）
+ * @brief RecordServer 中的用户数据（完整存档）
  *
- * 包含 RoleBase 基础属性以及背包、技能、任务等 JSON 串。
+ * 包含 UserBase 基础属性以及背包、技能、任务等 JSON 串。
  */
-struct RoleRecord
+struct UserRecord
 {
-    RoleBase       base;           /**< 基础角色数据 */
+    UserBase       base;           /**< 基础用户数据 */
     std::string    bagJson;        /**< 背包数据（JSON 序列化） */
     std::string    skillJson;      /**< 技能数据（JSON 序列化） */
     std::string    questJson;      /**< 任务数据（JSON 序列化） */
@@ -50,18 +50,18 @@ struct RoleRecord
 };
 
 /**
- * @brief RecordServer 中的角色对象
+ * @brief RecordServer 中的用户对象
  *
- * 继承 IRole，额外持有 RoleRecord（完整持久化数据）。
+ * 继承 IUser，额外持有 UserRecord（完整持久化数据）。
  */
-class RecordRole : public IRole
+class RecordUser : public IUser
 {
 public:
-    explicit RecordRole(const RoleBase& base)
-        : IRole(base) {}
-    RoleRecord& Record() { return m_record; }
+    explicit RecordUser(const UserBase& base)
+        : IUser(base) {}
+    UserRecord& Record() { return m_record; }
 private:
-    RoleRecord m_record;
+    UserRecord m_record;
 };
 
 /**
@@ -154,18 +154,18 @@ private:
      * @brief 注册消息处理函数
      *
      * REC_LOGIN_VERIFY_REQ → OnLoginVerify（账号密码验证）
-     * REC_LOAD_ROLE_REQ    → OnLoadRole（从 DB 加载角色）
-     * REC_SAVE_ROLE_REQ    → OnSaveRole（保存角色到 DB）
+     * REC_LOAD_USER_REQ    → OnLoadUser（从 DB 加载用户）
+     * REC_SAVE_USER_REQ    → OnSaveUser（保存用户到 DB）
      */
     void RegisterHandlers()
     {
         auto& d = MsgDispatcher::Instance();
         d.Register((uint16_t)InternalMsgID::REC_LOGIN_VERIFY_REQ,
             [this](uint32_t c, const char* d, uint16_t l){ OnLoginVerify(c, d, l); });
-        d.Register((uint16_t)InternalMsgID::REC_LOAD_ROLE_REQ,
-            [this](uint32_t c, const char* d, uint16_t l){ OnLoadRole(c, d, l); });
-        d.Register((uint16_t)InternalMsgID::REC_SAVE_ROLE_REQ,
-            [this](uint32_t c, const char* d, uint16_t l){ OnSaveRole(c, d, l); });
+        d.Register((uint16_t)InternalMsgID::REC_LOAD_USER_REQ,
+            [this](uint32_t c, const char* d, uint16_t l){ OnLoadUser(c, d, l); });
+        d.Register((uint16_t)InternalMsgID::REC_SAVE_USER_REQ,
+            [this](uint32_t c, const char* d, uint16_t l){ OnSaveUser(c, d, l); });
     }
 
     void RegisterToSuper()
@@ -192,7 +192,12 @@ private:
      * @brief 账号密码验证
      *
      * 使用 SELECT ... WHERE account='?' AND password=MD5('?') 查询 t_account 表。
-     * @note 生产环境应使用参数化查询防止 SQL 注入。
+     *
+     * @warning 【安全风险】当前实现使用 snprintf 拼接 SQL 字符串，存在 SQL 注入风险。
+     *          如果 req->account 或 req->password 中包含单引号等特殊字符，
+     *          攻击者可构造恶意输入绕过认证或执行任意 SQL。
+     *          生产环境必须使用 mysql_real_escape_string() 转义用户输入，
+     *          或改用 mysql_stmt_prepare() / mysql_stmt_bind_param() 参数化查询。
      */
     void OnLoginVerify(ConnID fromConn, const char* data, uint16_t len)
     {
@@ -204,7 +209,7 @@ private:
 
         char sql[512];
         snprintf(sql, sizeof(sql),
-                 "SELECT role_id FROM t_account WHERE account='%s' AND password=MD5('%s') LIMIT 1",
+                 "SELECT user_id FROM t_account WHERE account='%s' AND password=MD5('%s') LIMIT 1",
                  req->account, req->password);
 
         if (mysql_query(m_db, sql) != 0)
@@ -218,8 +223,8 @@ private:
             MYSQL_ROW  row = res ? mysql_fetch_row(res) : nullptr;
             if (row)
             {
-                rsp.code   = 0;
-                rsp.roleID = (uint64_t)strtoull(row[0], nullptr, 10);
+                rsp.code    = 0;
+                rsp.userID  = (uint64_t)strtoull(row[0], nullptr, 10);
             }
             else
             {
@@ -232,33 +237,33 @@ private:
     }
 
     /**
-     * @brief 加载角色数据
+     * @brief 加载用户数据
      *
-     * 先从 m_roles 缓存查找，未命中则调用 LoadRoleFromDB 从 MySQL 加载。
+     * 先从 m_users 缓存查找，未命中则调用 LoadUserFromDB 从 MySQL 加载。
      */
-    void OnLoadRole(ConnID fromConn, const char* data, uint16_t len)
+    void OnLoadUser(ConnID fromConn, const char* data, uint16_t len)
     {
-        if (len < sizeof(RoleID)) return;
-        RoleID rid = *reinterpret_cast<const RoleID*>(data);
+        if (len < sizeof(UserID)) return;
+        UserID rid = *reinterpret_cast<const UserID*>(data);
 
-        if (m_roles.find(rid) == m_roles.end())
-            LoadRoleFromDB(rid);
+        if (m_users.find(rid) == m_users.end())
+            LoadUserFromDB(rid);
 
-        Msg_REC_LoadRoleRsp hdr{};
-        hdr.roleID = rid;
-        auto it = m_roles.find(rid);
-        if (it == m_roles.end())
+        Msg_REC_LoadUserRsp hdr{};
+        hdr.userID = rid;
+        auto it = m_users.find(rid);
+        if (it == m_users.end())
         {
             hdr.code = -1;
-            m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::REC_LOAD_ROLE_RSP,
+            m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::REC_LOAD_USER_RSP,
                              reinterpret_cast<char*>(&hdr), sizeof(hdr));
             return;
         }
 
         hdr.code = 0;
         const auto& base = it->second->Base();
-        RoleBaseWire wire{};
-        wire.roleID   = base.roleID;
+        UserBaseWire wire{};
+        wire.userID   = base.userID;
         strncpy(wire.name, base.name.c_str(), sizeof(wire.name) - 1);
         wire.level    = base.level;
         wire.vocation = base.vocation;
@@ -276,41 +281,57 @@ private:
         std::vector<char> buf(sizeof(hdr) + sizeof(wire));
         memcpy(buf.data(), &hdr, sizeof(hdr));
         memcpy(buf.data() + sizeof(hdr), &wire, sizeof(wire));
-        m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::REC_LOAD_ROLE_RSP,
+        m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::REC_LOAD_USER_RSP,
                          buf.data(), (uint16_t)buf.size());
     }
 
-    /** @brief 处理角色保存请求 */
-    void OnSaveRole(ConnID fromConn, const char* data, uint16_t len)
+    /** @brief 处理用户保存请求 */
+    void OnSaveUser(ConnID fromConn, const char* data, uint16_t len)
     {
-        if (len < sizeof(RoleID)) return;
-        RoleID rid = *reinterpret_cast<const RoleID*>(data);
-        SaveRoleToDB(rid);
-        Msg_REC_LoadRoleRsp rsp{};
+        if (len < sizeof(UserID)) return;
+        UserID rid = *reinterpret_cast<const UserID*>(data);
+        SaveUserToDB(rid);
+        Msg_REC_LoadUserRsp rsp{};
         rsp.code   = 0;
-        rsp.roleID = rid;
-        m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::REC_SAVE_ROLE_RSP,
+        rsp.userID = rid;
+        m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::REC_SAVE_USER_RSP,
                          reinterpret_cast<char*>(&rsp), sizeof(rsp));
     }
 
     /**
-     * @brief 从 MySQL 加载角色数据到内存
+     * @brief 从 MySQL 加载用户数据到内存
      *
-     * 查询 t_role 表所有字段，构建 RoleBase 并创建 RecordRole 对象。
+     * 查询 t_user 表所有字段，构建 UserBase 并创建 RecordUser 对象。
+     *
+     * @note SELECT 字段与 row 索引映射表：
+     *       | 索引 | 字段      | 类型      | 说明               |
+     *       |------|-----------|-----------|--------------------|
+     *       | row[0]  | user_id  | uint64_t  | 用户唯一标识       |
+     *       | row[1]  | name     | string    | 用户昵称           |
+     *       | row[2]  | level    | uint32_t  | 等级（默认 1）     |
+     *       | row[3]  | vocation | uint32_t  | 职业（默认 0）     |
+     *       | row[4]  | sex      | uint32_t  | 性别（默认 0）     |
+     *       | row[5]  | map_id   | uint32_t  | 所在地图（默认 0） |
+     *       | row[6]  | pos_x    | float     | X 坐标            |
+     *       | row[7]  | pos_y    | float     | Y 坐标            |
+     *       | row[8]  | pos_z    | float     | Z 坐标            |
+     *       | row[9]  | hp       | uint32_t  | 当前生命值（默认 100）|
+     *       | row[10] | mp       | uint32_t  | 当前魔法值（默认 100）|
+     *       | row[11] | gold     | uint64_t  | 金币              |
      */
-    void LoadRoleFromDB(RoleID rid)
+    void LoadUserFromDB(UserID rid)
     {
         char sql[256];
         snprintf(sql, sizeof(sql),
-                 "SELECT role_id,name,level,vocation,sex,map_id,pos_x,pos_y,pos_z,hp,mp,gold"
-                 " FROM t_role WHERE role_id=%" PRIu64 " LIMIT 1", rid);
-        if (mysql_query(m_db, sql) != 0) { LOG_ERR("LoadRole SQL err: %s", mysql_error(m_db)); return; }
+                 "SELECT user_id,name,level,vocation,sex,map_id,pos_x,pos_y,pos_z,hp,mp,gold"
+                 " FROM t_user WHERE user_id=%" PRIu64 " LIMIT 1", rid);
+        if (mysql_query(m_db, sql) != 0) { LOG_ERR("LoadUser SQL err: %s", mysql_error(m_db)); return; }
         MYSQL_RES* res = mysql_store_result(m_db);
         MYSQL_ROW  row = res ? mysql_fetch_row(res) : nullptr;
         if (row)
         {
-            RoleBase base;
-            base.roleID  = rid;
+            UserBase base;
+            base.userID  = rid;
             base.name    = row[1] ? row[1] : "";
             base.level   = row[2] ? (uint32_t)atoi(row[2]) : 1;
             base.vocation= row[3] ? (uint32_t)atoi(row[3]) : 0;
@@ -322,53 +343,58 @@ private:
             base.hp      = row[9] ? (uint32_t)atoi(row[9])  : 100;
             base.mp      = row[10]? (uint32_t)atoi(row[10]) : 100;
             base.gold    = row[11]? (uint64_t)strtoull(row[11], nullptr, 10) : 0;
-            auto role    = std::make_shared<RecordRole>(base);
-            m_roles[rid] = role;
-            LOG_DEBUG("LoadRoleFromDB: roleID=%llu name=%s", rid, base.name.c_str());
+            auto role    = std::make_shared<RecordUser>(base);
+            m_users[rid] = role;
+            LOG_DEBUG("LoadUserFromDB: userID=%llu name=%s", rid, base.name.c_str());
         }
         if (res) mysql_free_result(res);
     }
 
     /**
-     * @brief 将角色数据写回 MySQL
+     * @brief 将用户数据写回 MySQL
      *
-     * UPDATE t_role SET level=..., map_id=..., ..., WHERE role_id=...
+     * UPDATE t_user SET level=..., map_id=..., ..., WHERE user_id=...
      */
-    void SaveRoleToDB(RoleID rid)
+    void SaveUserToDB(UserID rid)
     {
-        auto it = m_roles.find(rid);
-        if (it == m_roles.end()) return;
+        auto it = m_users.find(rid);
+        if (it == m_users.end()) return;
         const auto& base = it->second->Base();
         char sql[512];
         snprintf(sql, sizeof(sql),
-                 "UPDATE t_role SET level=%u,map_id=%u,pos_x=%.2f,pos_y=%.2f,pos_z=%.2f,"
-                 "hp=%u,mp=%u,gold=%" PRIu64 " WHERE role_id=%" PRIu64,
+                 "UPDATE t_user SET level=%u,map_id=%u,pos_x=%.2f,pos_y=%.2f,pos_z=%.2f,"
+                 "hp=%u,mp=%u,gold=%" PRIu64 " WHERE user_id=%" PRIu64,
                  base.level, base.mapID, base.posX, base.posY, base.posZ,
                  base.hp, base.mp, base.gold, rid);
         if (mysql_query(m_db, sql) != 0)
-            LOG_ERR("SaveRole SQL err: %s", mysql_error(m_db));
+            LOG_ERR("SaveUser SQL err: %s", mysql_error(m_db));
         else
-            LOG_DEBUG("SaveRoleToDB: roleID=%llu", rid);
+            LOG_DEBUG("SaveUserToDB: userID=%llu", rid);
     }
 
     /**
      * @brief 批量自动存档
      *
-     * 每 60 秒定时触发，遍历所有 m_roles 调用 SaveRoleToDB。
+     * 每 60 秒定时触发，遍历所有 m_users 调用 SaveUserToDB。
+     *
+     * @note 脏标记检查逻辑：当前实现无条件保存全部用户数据。
+     *       若需优化 I/O 开销，可增加脏标记（dirty flag）过滤：
+     *       仅当用户数据被修改（dirty == true）时才执行 SaveUserToDB，
+     *       保存成功后将 dirty 重置为 false。
      */
     void AutoSaveAll()
     {
-        for (auto& [rid, role] : m_roles)
-            SaveRoleToDB(rid);
-        LOG_INFO("AutoSave: %zu roles saved.", m_roles.size());
+        for (auto& [rid, role] : m_users)
+            SaveUserToDB(rid);
+        LOG_INFO("AutoSave: %zu users saved.", m_users.size());
     }
 
-    TcpServer  m_server;          /**< 内部连接监听 */
-    TcpClient  m_superClient;     /**< 到 SuperServer 的连接 */
-    TcpClient  m_sessionClient;   /**< 到 SessionServer 的连接 */
-    MYSQL*     m_db;              /**< MySQL 连接句柄 */
-    uint32_t   m_hbSeq = 0;       /**< 心跳序列号 */
+    TcpServer  m_server;          /**< 内部连接监听（接收来自 Gateway/Super/Scene Server 的请求） */
+    TcpClient  m_superClient;     /**< 到 SuperServer 的连接（用于注册服务器、发送心跳） */
+    TcpClient  m_sessionClient;   /**< 到 SessionServer 的连接（用于查询社会关系/好友数据） */
+    MYSQL*     m_db;              /**< MySQL 连接句柄（全局共享，非线程安全） */
+    uint32_t   m_hbSeq = 0;       /**< 心跳序列号（每次自增，SuperServer 用于检测丢包） */
 
-    /** @brief 角色数据缓存：roleID → RecordRole */
-    std::unordered_map<RoleID, std::shared_ptr<RecordRole>> m_roles;
+    /** @brief 用户数据缓存：userID → RecordUser */
+    std::unordered_map<UserID, std::shared_ptr<RecordUser>> m_users;
 };

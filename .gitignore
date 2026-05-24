@@ -1,0 +1,8 @@
+# Build output
+build/
+
+# Logs
+logs/
+
+# Cache
+.cache/

@@ -9,6 +9,49 @@
  * - 单线程轮询模型（Poll 为单帧驱动）
  * - 双索引查找连接：fd→conn + connID→conn
  *
+ * accept 流程（AcceptAll）：
+ * - 监听 socket 注册了 EPOLLIN | EPOLLET，epoll 触发时调用 AcceptAll()。
+ * - AcceptAll() 循环调用 accept4(SOCK_NONBLOCK | SOCK_CLOEXEC) 直到返回错误（ET 模式必须循环）。
+ * - 每个 accept 到的新 fd：
+ *   1. 设置 TCP_NODELAY（减少小包延迟）
+ *   2. 分配自增 ConnID
+ *   3. 创建 TcpConnection（shared_ptr）
+ *   4. 注册到 m_fdToConn（fd 索引）和 m_connMap（ConnID 索引）
+ *   5. 注册到 epoll（EPOLLIN | EPOLLOUT | EPOLLET | EPOLLRDHUP）
+ *   6. 触发 OnConnect 回调
+ *
+ * 连接管理生命周期：
+ * - 创建：AcceptAll() 中 accept4() 后创建 TcpConnection 并注册到索引
+ * - 数据收发：Poll() 中 epoll 事件分发 → OnReadable() / OnWritable()
+ * - 移除触发：对端关闭、错误、主动 Kick() → Close() + RemoveConn()
+ * - RemoveConn() 从 epoll 删除 fd，并从 m_fdToConn 和 m_connMap 中移除条目
+ * - 销毁：shared_ptr 引用计数归零后自动析构（~TcpConnection 关闭 fd）
+ *
+ * INetCallback 裸接口使用示例：
+ * @code
+ *   class MyServerCb : public INetCallback {
+ *   public:
+ *       void OnConnect(ConnID id) override {
+ *           printf("client connected: %u\n", id);
+ *       }
+ *       void OnDisconnect(ConnID id) override {
+ *           printf("client disconnected: %u\n", id);
+ *       }
+ *       void OnMessage(ConnID id, uint16_t msgID, const char* data, uint16_t len) override {
+ *           printf("msg from %u: id=%u len=%u\n", id, msgID, len);
+ *           // 处理消息...
+ *       }
+ *   };
+ *
+ *   MyServerCb cb;
+ *   TcpServer server(&cb);
+ *   server.Start("0.0.0.0", 8080);
+ *   while (running) {
+ *       server.Poll(10);
+ *   }
+ *   server.Stop();
+ * @endcode
+ *
  * @warning 仅适用于单线程场景，所有回调在 Poll() 调用栈内触发。
  */
 
@@ -22,6 +65,12 @@
 #include <string>
 #include <cstdio>
 
+/**
+ * @brief 基于 epoll 的 TCP 服务端（单线程、ET 模式）
+ *
+ * 管理监听 socket 和所有已连接的 TcpConnection。
+ * 通过 INetCallback 回调接口将网络事件抛给上层业务。
+ */
 class TcpServer
 {
 public:
@@ -34,14 +83,20 @@ public:
         , m_nextConnID(1), m_running(false)
     {}
 
-    /** @brief 停止服务端并释放所有资源 */
+    /** @brief 析构时停止服务端并释放所有资源 */
     ~TcpServer() { Stop(); }
 
     /**
      * @brief 启动监听
-     * @param ip   绑定 IP
-     * @param port 绑定端口
+     * @param ip   绑定 IP（如 "0.0.0.0" 监听所有网卡）
+     * @param port 绑定端口号
      * @return 成功返回 true
+     *
+     * 启动流程：
+     * 1. CreateListenSocket() 创建并配置监听 socket
+     * 2. epoll_create1() 创建 epoll 实例
+     * 3. 将监听 fd 注册到 epoll（EPOLLIN | EPOLLET）
+     * 4. 设置 m_running = true
      */
     bool Start(const std::string& ip, uint16_t port)
     {
@@ -61,9 +116,13 @@ public:
      * @param timeout_ms epoll_wait 超时时间（毫秒），默认 10ms
      *
      * 处理流程：
-     * 1. epoll_wait 获取就绪事件
-     * 2. 监听 fd 就绪 → AcceptAll()
-     * 3. 连接 fd 就绪 → OnReadable / OnWritable
+     * 1. epoll_wait 获取就绪事件（最多 MAX_EPOLL_EVENTS 个）
+     * 2. 监听 fd 就绪 → AcceptAll() 循环 accept 新连接
+     * 3. 连接 fd 就绪：
+     *    - EPOLLERR / EPOLLHUP → Close() + RemoveConn()
+     *    - EPOLLIN → OnReadable()（接收数据 + 拆包回调）
+     *    - EPOLLOUT → OnWritable()（刷新发送缓冲区）
+     *    - 回调后检查 IsClosed()，若已关闭则 RemoveConn()
      */
     void Poll(int timeout_ms = 10)
     {
@@ -98,11 +157,13 @@ public:
 
     /**
      * @brief 向指定连接发送消息
-     * @param id    目标连接 ID
-     * @param msgID 协议号
-     * @param data  消息体
+     * @param id    目标连接 ID（由 OnConnect 回调提供）
+     * @param msgID 协议消息 ID
+     * @param data  消息体数据指针
      * @param len   消息体长度
-     * @return 成功返回 true
+     * @return 成功写入发送缓冲区返回 true；连接不存在或已关闭返回 false
+     *
+     * @note  通过 ConnID 索引 m_connMap 查找 TcpConnection，委托其 SendMsg()。
      */
     bool SendMsg(ConnID id, uint16_t msgID, const char* data, uint16_t len)
     {
@@ -112,8 +173,13 @@ public:
     }
 
     /**
-     * @brief 主动踢除连接
+     * @brief 主动踢除指定连接
      * @param id 连接 ID
+     *
+     * 执行流程：
+     * 1. 通过 ConnID 查找 TcpConnection
+     * 2. 调用 Close() 关闭连接（触发 OnDisconnect 回调）
+     * 3. 调用 RemoveConn() 从 epoll 和索引中移除
      */
     void Kick(ConnID id)
     {
@@ -128,7 +194,13 @@ public:
     /**
      * @brief 停止服务端
      *
-     * 关闭所有连接、epoll fd、监听 fd。
+     * 清理流程：
+     * 1. 设置 m_running = false
+     * 2. 遍历所有连接并 Close()（触发 OnDisconnect 回调）
+     * 3. 清空 m_fdToConn 和 m_connMap
+     * 4. 关闭 epoll fd 和监听 fd
+     *
+     * @note  连接的 shared_ptr 引用计数在索引清空后可能归零，触发析构
      */
     void Stop()
     {
@@ -142,9 +214,17 @@ public:
 
 private:
     /**
-     * @brief 创建并绑定监听 socket
+     * @brief 创建并配置监听 socket
+     * @param ip   绑定 IP
+     * @param port 绑定端口
+     * @return 成功返回监听 fd；失败返回 -1
      *
-     * socket() → setsockopt(REUSEADDR|REUSEPORT|NODELAY) → bind() → listen()
+     * 配置流程：
+     * 1. socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC) 创建非阻塞 socket
+     * 2. SO_REUSEADDR：允许 bind 处于 TIME_WAIT 状态的地址（快速重启）
+     * 3. SO_REUSEPORT：允许多个进程/线程绑定同一地址（负载均衡）
+     * 4. TCP_NODELAY：禁用 Nagle 算法（减少小包延迟）
+     * 5. bind() + listen(LISTEN_BACKLOG)
      */
     int CreateListenSocket(const std::string& ip, uint16_t port)
     {
@@ -171,7 +251,17 @@ private:
     /**
      * @brief 循环 accept 所有就绪连接（ET 模式必须循环到 EAGAIN）
      *
-     * accept4(SOCK_NONBLOCK | SOCK_CLOEXEC) 避免额外 fcntl 调用。
+     * 对每个新连接：
+     * 1. accept4(SOCK_NONBLOCK | SOCK_CLOEXEC) 接受连接
+     * 2. 设置 TCP_NODELAY
+     * 3. 分配自增 ConnID
+     * 4. 创建 TcpConnection 并注册到双索引
+     * 5. 注册到 epoll（EPOLLIN | EPOLLOUT | EPOLLET | EPOLLRDHUP）
+     * 6. 触发 OnConnect 回调通知上层
+     *
+     * @note  EPOLLOUT 初始就绪：用于检测非阻塞 connect（此处 accept 的 fd 已完成连接），
+     *        后续 EPOLLOUT 事件表示发送缓冲区可写。
+     *        EPOLLRDHUP：对端关闭写端时触发，配合 EPOLLIN 检测半关闭状态。
      */
     void AcceptAll()
     {
@@ -193,7 +283,11 @@ private:
         }
     }
 
-    /** @brief 向 epoll 实例注册 fd */
+    /**
+     * @brief 向 epoll 实例注册 fd
+     * @param fd      要注册的文件描述符
+     * @param events  关注的事件掩码
+     */
     void AddEpoll(int fd, uint32_t events)
     {
         epoll_event ev{};
@@ -202,7 +296,17 @@ private:
         ::epoll_ctl(m_epollFd, EPOLL_CTL_ADD, fd, &ev);
     }
 
-    /** @brief 从 epoll 和索引表中删除连接 */
+    /**
+     * @brief 从 epoll 和双索引中删除连接
+     * @param fd 要移除的 socket fd
+     *
+     * 执行流程：
+     * 1. epoll_ctl(EPOLL_CTL_DEL) 从 epoll 实例中移除 fd
+     * 2. 通过 fd 在 m_fdToConn 中查找连接，获取 ConnID
+     * 3. 从 m_connMap 和 m_fdToConn 中移除条目
+     *
+     * @note  移除后连接的 shared_ptr 引用计数减 1，若归零则析构（~TcpConnection 关闭 fd）
+     */
     void RemoveConn(int fd)
     {
         ::epoll_ctl(m_epollFd, EPOLL_CTL_DEL, fd, nullptr);
@@ -215,14 +319,14 @@ private:
         }
     }
 
-    INetCallback*  m_cb;  /**< 上层回调 */
+    INetCallback*  m_cb;  /**< 上层回调接口（不负责释放） */
     int            m_epollFd;     /**< epoll 实例 fd */
     int            m_listenFd;    /**< 监听 socket fd */
-    uint32_t       m_nextConnID;  /**< 自增连接 ID 分配器 */
+    uint32_t       m_nextConnID;  /**< 自增连接 ID 分配器（从 1 开始） */
     bool           m_running;     /**< 运行状态标记 */
 
-    /** @brief fd → TcpConnection 索引（用于 epoll 事件分发） */
+    /** @brief fd → TcpConnection 索引（用于 epoll 事件分发，O(1) 查找） */
     std::unordered_map<int,     std::shared_ptr<TcpConnection>> m_fdToConn;
-    /** @brief ConnID → TcpConnection 索引（用于 SendMsg / Kick） */
+    /** @brief ConnID → TcpConnection 索引（用于 SendMsg / Kick，O(1) 查找） */
     std::unordered_map<ConnID,  std::shared_ptr<TcpConnection>> m_connMap;
 };

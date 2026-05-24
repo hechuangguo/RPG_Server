@@ -1,4 +1,4 @@
-# RPG Server
+﻿# RPG Server
 
 Linux 平台下的分布式 MMORPG 游戏服务器，采用 **C++17 + Lua 5.4**，共 **9 个独立进程** 组成微服务集群。
 
@@ -88,7 +88,7 @@ ENABLE_ZONE=1 ./RunServer.sh            # 含 ZoneServer
 ## 新人阅读顺序
 
 1. `sdk/net/NetDefine.h` — 网络基础
-2. `sdk/util/RoleBase.h` — 角色模型
+2. `sdk/util/UserBase.h` — 用户模型
 3. `protocal/InternalMsg.h` — 服务器间协议
 4. `common/ClientMsg.h` — 客户端协议
 5. `SuperServer/SuperServer.h` — 注册与路由

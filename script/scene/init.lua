@@ -1,5 +1,7 @@
 -- ============================================================
 --  script/scene/init.lua  —— SceneServer Lua 初始化入口
+--  负责：注册全局tick回调、用户进出场景、技能请求分发
+--  C++ 通过此模块调用 Lua 逻辑，实现场景核心流程调度
 -- ============================================================
 
 -- 引入框架模块
@@ -18,23 +20,23 @@ function OnTick(nowMs)
 end
 
 -- ============================================================
---  角色进入场景
+--  用户进入场景
 -- ============================================================
-function OnRoleEnter(roleID, mapID)
-    log_info(string.format("OnRoleEnter: roleID=%d mapID=%d", roleID, mapID))
+function OnUserEnter(userID, mapID)
+    log_info(string.format("OnUserEnter: userID=%d mapID=%d", userID, mapID))
     -- 触发事件
-    EventSystem.Fire("role_enter", roleID, mapID)
+    EventSystem.Fire("user_enter", userID, mapID)
     -- 通知 NPC 管理器
-    NpcMgr.OnPlayerEnter(roleID, mapID)
+    NpcMgr.OnPlayerEnter(userID, mapID)
 end
 
 -- ============================================================
---  角色离开场景
+--  用户离开场景
 -- ============================================================
-function OnRoleLeave(roleID)
-    log_info(string.format("OnRoleLeave: roleID=%d", roleID))
-    EventSystem.Fire("role_leave", roleID)
-    NpcMgr.OnPlayerLeave(roleID)
+function OnUserLeave(userID)
+    log_info(string.format("OnUserLeave: userID=%d", userID))
+    EventSystem.Fire("user_leave", userID)
+    NpcMgr.OnPlayerLeave(userID)
 end
 
 -- ============================================================

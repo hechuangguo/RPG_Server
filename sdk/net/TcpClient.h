@@ -6,6 +6,38 @@
  * 内部维护独立的 epoll 实例，非阻塞 connect()。
  *
  * 典型场景：SessionServer 通过 TcpClient 连接 SuperServer。
+ *
+ * 重连机制：
+ * - 本类**不内置自动重连**。若连接断开，IsConnected() 返回 false，
+ *   调用方需根据业务需求自行实现重连逻辑（如指数退避重试）。
+ * - 重连前需先调用 Disconnect() 释放旧连接，再调用 Connect() 发起新连接。
+ * - 建议重连模式示例：
+ * @code
+ *   void TryReconnect(TcpClient& client, const std::string& ip, uint16_t port) {
+ *       client.Disconnect();
+ *       while (!client.Connect(ip, port)) {
+ *           std::this_thread::sleep_for(std::chrono::seconds(1));
+ *       }
+ *   }
+ * @endcode
+ *
+ * 消息发送队列：
+ * - 本身不维护发送队列，发送操作直接委托给内部的 TcpConnection。
+ * - TcpConnection 内部有一个 RingBuffer 作为发送缓冲区（m_sendBuf），
+ *   SendMsg() 仅将消息头+消息体写入缓冲区，实际发送由 Poll() 中的
+ *   EPOLLOUT 事件驱动 OnWritable() 异步完成。
+ * - 若发送缓冲区已满，SendMsg() 返回 false，调用方可选择丢弃或缓存。
+ *
+ * 异步回调流程（INetCallback）：
+ * - OnConnect(connID)：连接建立成功时触发。
+ *   - 若 connect() 返回 0（本地立即成功），在 Connect() 调用栈内触发。
+ *   - 若 connect() 返回 EINPROGRESS（异步进行中），在 Poll() 检测到 EPOLLOUT 时触发。
+ * - OnMessage(connID, msgID, data, len)：收到完整消息时触发（在 Poll() → OnReadable() 调用栈内）。
+ * - OnDisconnect(connID)：连接断开时触发（包括对端关闭、错误关闭、主动 Disconnect()）。
+ *
+ * 线程模型：
+ * - 所有回调均在 Poll() 调用栈内同步触发，**非线程安全**。
+ * - 避免在回调中执行长时间阻塞操作。
  */
 
 #pragma once
@@ -17,26 +49,42 @@
 #include <memory>
 #include <string>
 
+/**
+ * @brief TCP 客户端（单连接，用于服务器间互联）
+ *
+ * 管理一条到远端服务器的非阻塞 TCP 连接。
+ * 内部持有独立的 epoll 实例和唯一的 TcpConnection。
+ *
+ * 生命周期：Connect() → Poll() 循环 → Disconnect()
+ */
 class TcpClient
 {
 public:
     /**
      * @brief 构造客户端
-     * @param cb 事件回调
+     * @param cb 事件回调接口（INetCallback），生命周期由调用方管理
      */
     explicit TcpClient(INetCallback* cb)
         : m_cb(cb), m_epollFd(-1), m_conn(nullptr), m_connID(INVALID_CONN_ID)
     {}
 
-    /** @brief 断开并释放资源 */
+    /** @brief 析构时自动断开连接并释放资源 */
     ~TcpClient() { Disconnect(); }
 
     /**
      * @brief 非阻塞连接远端服务器
-     * @param ip   目标 IP
-     * @param port 目标端口
-     * @return 成功发起连接返回 true
-     * @note  连接完成事件通过 OnConnect 回调通知（可能在立即或在 Poll 中）
+     * @param ip   目标 IP 地址（如 "127.0.0.1"）
+     * @param port 目标端口号
+     * @return 成功发起连接返回 true（注意：此时连接可能尚未真正建立）
+     *
+     * 连接流程：
+     * 1. 创建非阻塞 socket（SOCK_NONBLOCK | SOCK_CLOEXEC）
+     * 2. 设置 TCP_NODELAY 禁用 Nagle 算法（减少小包延迟）
+     * 3. 调用 connect()，若返回 EINPROGRESS 表示异步连接进行中
+     * 4. 创建 epoll 实例，监听 EPOLLIN | EPOLLOUT（ET 模式）
+     * 5. 若 connect() 立即返回 0，直接触发 OnConnect 回调
+     *
+     * @note  连接真正建立的事件通过 OnConnect 回调通知（可能立即或在 Poll 中）
      */
     bool Connect(const std::string& ip, uint16_t port)
     {
@@ -68,7 +116,15 @@ public:
 
     /**
      * @brief 单帧驱动（必须主循环中调用）
-     * @param timeout_ms epoll_wait 超时
+     * @param timeout_ms epoll_wait 超时时间（毫秒），默认 10ms
+     *
+     * 处理流程：
+     * 1. epoll_wait 等待事件（最多 16 个）
+     * 2. EPOLLOUT 事件：
+     *    - 首次触发时表示非阻塞 connect() 完成，触发 OnConnect 回调
+     *    - 后续触发时调用 OnWritable() 刷新发送缓冲区
+     * 3. EPOLLIN 事件：调用 OnReadable() 接收数据并拆包
+     * 4. EPOLLERR / EPOLLHUP：调用 Close() 关闭连接
      */
     void Poll(int timeout_ms = 10)
     {
@@ -94,8 +150,12 @@ public:
     }
 
     /**
-     * @brief 发送消息
-     * @see TcpConnection::SendMsg
+     * @brief 向远端发送消息
+     * @param msgID 协议消息 ID
+     * @param data  消息体数据指针
+     * @param len   消息体长度
+     * @return 写入发送缓冲区成功返回 true；连接已关闭或缓冲区满返回 false
+     * @see TcpConnection::SendMsg —— 实际数据由后续 OnWritable() 异步写出
      */
     bool SendMsg(uint16_t msgID, const char* data, uint16_t len)
     {
@@ -103,19 +163,24 @@ public:
         return m_conn->SendMsg(msgID, data, len);
     }
 
-    /** @brief 断开连接 */
+    /**
+     * @brief 断开连接并释放 epoll 资源
+     *
+     * 关闭底层 TcpConnection（触发 OnDisconnect 回调），
+     * 并关闭 epoll 实例 fd。之后可再次调用 Connect() 发起新连接。
+     */
     void Disconnect()
     {
         if (m_conn) m_conn->Close();
         if (m_epollFd >= 0) { ::close(m_epollFd); m_epollFd = -1; }
     }
 
-    /** @brief 连接是否存活 */
+    /** @brief 连接是否存活（未关闭） */
     bool IsConnected() const { return m_conn && !m_conn->IsClosed(); }
 
 private:
-    INetCallback*  m_cb;       /**< 事件回调 */
-    int            m_epollFd;  /**< epoll 实例 fd */
-    std::shared_ptr<TcpConnection> m_conn;  /**< 底层连接对象 */
-    ConnID         m_connID;   /**< 连接 ID（固定为 1） */
+    INetCallback*  m_cb;       /**< 事件回调接口（不负责释放） */
+    int            m_epollFd;  /**< 独立的 epoll 实例 fd */
+    std::shared_ptr<TcpConnection> m_conn;  /**< 底层连接对象（shared_ptr 管理生命周期） */
+    ConnID         m_connID;   /**< 连接 ID（客户端固定为 1） */
 };

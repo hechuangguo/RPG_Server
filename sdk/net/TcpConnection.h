@@ -8,6 +8,39 @@
  * - 通过 INetCallback 将完整消息抛给上层
  * - Close() 自动回调 OnDisconnect
  *
+ * 连接状态机：
+ * - 状态通过 m_closed 布尔标记管理，仅有两种状态：Active（false）和 Closed（true）。
+ * - 状态转换：
+ *   - Active → Closed：由 Close() 触发（对端关闭、recv/send 错误、主动关闭）
+ *   - Closed 是终态，不可逆。
+ * - Close() 是幂等操作：重复调用安全（内部检查 m_closed 防止重复关闭 fd 和重复回调）。
+ * - 生命周期由 shared_ptr 管理，TcpServer/TcpClient 持有 shared_ptr，
+ *   Close() 后连接对象可能仍被引用，直到引用计数归零才析构。
+ *
+ * epoll 事件处理流程：
+ * - EPOLLIN  → OnReadable()：
+ *   1. 循环 recv() 直到返回 EAGAIN/EWOULDBLOCK（ET 模式必须读尽）
+ *   2. 每次收到的数据写入 m_recvBuf（RingBuffer）
+ *   3. recv() 返回 0 表示对端关闭 → 调用 Close()
+ *   4. recv() 出错且非 EAGAIN → 调用 Close()
+ *   5. 数据全部读完后调用 ProcessMessages() 尝试拆包
+ *
+ * - EPOLLOUT → OnWritable()：
+ *   1. 循环从 m_sendBuf（RingBuffer）取出数据 send()
+ *   2. send() 成功则 Consume 已发送字节数
+ *   3. send() 返回 EAGAIN 表示发送缓冲区已满 → 退出循环等待下次 EPOLLOUT
+ *   4. send() 出错且非 EAGAIN → 调用 Close()
+ *
+ * RingBuffer 与连接的交互：
+ * - 接收缓冲区 m_recvBuf：
+ *   - OnReadable() 写入（生产者），ProcessMessages() 读取（消费者）。
+ *   - 支持半包处理：若缓冲区中数据不足一条完整消息（头部+消息体），
+ *     数据保留在缓冲区，等待下次 OnReadable() 补齐。
+ * - 发送缓冲区 m_sendBuf：
+ *   - SendMsg() 写入（生产者），OnWritable() 读取并 send()（消费者）。
+ *   - 若缓冲区满，SendMsg() 返回 false（背压机制，调用方需处理）。
+ * - 两个缓冲区大小由 NetDefine.h 中的 RECV_BUFFER_SIZE / SEND_BUFFER_SIZE 决定。
+ *
  * 使用方式：由 TcpServer / TcpClient 创建和管理生命周期（shared_ptr）。
  */
 
@@ -21,14 +54,22 @@
 #include <fcntl.h>
 #include <cstring>
 
+/**
+ * @brief 单条 TCP 连接封装
+ *
+ * 封装非阻塞 socket fd，提供消息收发、拆包、连接关闭等功能。
+ * 由 TcpServer（服务端 accept 后创建）或 TcpClient（客户端 connect 后创建）管理。
+ */
 class TcpConnection
 {
 public:
     /**
      * @brief 构造连接对象
-     * @param fd 已 accept / connect 的 socket fd（非阻塞）
+     * @param fd 已 accept / connect 的 socket fd（必须为非阻塞模式）
      * @param id 全局唯一的连接 ID
-     * @param cb 上层事件回调
+     * @param cb 上层事件回调接口（生命周期由调用方管理）
+     *
+     * 初始化接收缓冲区（RECV_BUFFER_SIZE）和发送缓冲区（SEND_BUFFER_SIZE）。
      */
     TcpConnection(int fd, ConnID id, INetCallback* cb)
         : m_fd(fd), m_id(id), m_cb(cb)
@@ -37,13 +78,13 @@ public:
         , m_closed(false)
     {}
 
-    /** @brief 析构时自动关闭 socket */
+    /** @brief 析构时自动关闭 socket（若尚未关闭） */
     ~TcpConnection() { Close(); }
 
     /** @brief 获取连接 ID */
     ConnID   GetID()   const { return m_id;   }
 
-    /** @brief 获取底层 socket fd */
+    /** @brief 获取底层 socket fd（关闭后返回 -1） */
     int      GetFd()   const { return m_fd;   }
 
     /** @brief 连接是否已关闭 */
@@ -51,11 +92,19 @@ public:
 
     /**
      * @brief 发送一条消息（自动添加 MsgHeader）
-     * @param msgID 协议号
-     * @param data  消息体指针
-     * @param len   消息体长度
+     * @param msgID 协议消息 ID
+     * @param data  消息体指针（可为 nullptr，此时 len 必须为 0）
+     * @param len   消息体长度（字节）
      * @return 写入发送缓冲区成功返回 true
-     * @note   实际数据由后续 OnWritable() 异步写出
+     * @retval false 连接已关闭 或 发送缓冲区空间不足
+     *
+     * 写入流程：
+     * 1. 构造 MsgHeader（length = len, msgID = msgID）
+     * 2. 将 MsgHeader 写入 m_sendBuf（RingBuffer）
+     * 3. 若有消息体（len > 0），将消息体数据追加写入 m_sendBuf
+     * 4. 实际数据由后续 OnWritable() 事件驱动异步写出
+     *
+     * @note   此方法仅操作内存缓冲区，不会阻塞。发送失败不触发 Close()。
      */
     bool SendMsg(uint16_t msgID, const char* data, uint16_t len)
     {
@@ -71,9 +120,15 @@ public:
     }
 
     /**
-     * @brief epoll 返回 EPOLLIN 时调用
+     * @brief epoll 返回 EPOLLIN 时调用（TcpServer/TcpClient 驱动）
      *
-     * 循环 recv() 直到 EAGAIN，然后调用 ProcessMessages() 拆包。
+     * 接收流程（ET 模式必须循环读尽）：
+     * 1. 循环调用 recv(fd, buf, 4096, 0)
+     * 2. n > 0：将数据追加写入 m_recvBuf
+     * 3. n == 0：对端正常关闭 → Close() 并返回
+     * 4. n < 0 && (EAGAIN || EWOULDBLOCK)：无更多数据 → 退出循环
+     * 5. n < 0 && 其他错误：异常关闭 → Close() 并返回
+     * 6. 循环结束后调用 ProcessMessages() 尝试拆包
      */
     void OnReadable()
     {
@@ -101,9 +156,15 @@ public:
     }
 
     /**
-     * @brief epoll 返回 EPOLLOUT 时调用
+     * @brief epoll 返回 EPOLLOUT 时调用（TcpServer/TcpClient 驱动）
      *
-     * 循环 send() 直到发送缓冲区为空或 EAGAIN。
+     * 发送流程（ET 模式必须写尽）：
+     * 1. 循环检查 m_sendBuf 是否有可读数据
+     * 2. Peek 一块数据（最多 4096 字节）到临时缓冲区
+     * 3. 调用 send(fd, buf, len, MSG_NOSIGNAL) 写出（MSG_NOSIGNAL 防止 SIGPIPE）
+     * 4. n > 0：Consume 已发送字节数，继续循环
+     * 5. n < 0 && (EAGAIN || EWOULDBLOCK)：内核发送缓冲区已满 → 退出等待下次 EPOLLOUT
+     * 6. n < 0 && 其他错误：异常关闭 → Close() 并返回
      */
     void OnWritable()
     {
@@ -127,9 +188,15 @@ public:
     }
 
     /**
-     * @brief 关闭连接
+     * @brief 关闭连接（幂等操作）
      *
-     * 幂等操作：关闭 socket fd，回调 OnDisconnect。
+     * 执行流程：
+     * 1. 检查 m_closed 标志，已关闭则直接返回
+     * 2. 设置 m_closed = true
+     * 3. close(m_fd)，将 m_fd 置为 -1（防止后续误用）
+     * 4. 触发回调 m_cb->OnDisconnect(m_id)（通知上层连接已断开）
+     *
+     * @note  回调在 Close() 调用栈内同步执行。调用方需确保回调中不依赖已关闭的资源。
      */
     void Close()
     {
@@ -146,8 +213,15 @@ private:
     /**
      * @brief 从接收缓冲区中解析完整消息
      *
-     * 算法：Peek 消息头 → 检查剩余字节是否足够 → Consume 消息头 + Read 消息体 → 回调 OnMessage。
-     * 循环直到不足一条完整消息为止，半包数据留在缓冲区等待下次补齐。
+     * 拆包算法（基于长度前缀协议）：
+     * 1. Peek MSG_HEADER_SIZE 字节 → 解析 MsgHeader（length, msgID）
+     * 2. 计算完整消息长度 = MSG_HEADER_SIZE + hdr.length
+     * 3. 检查 m_recvBuf 中可用字节是否 >= 完整消息长度
+     *    - 不足 → 半包，退出循环等待下次 OnReadable() 补齐
+     *    - 足够 → Consume 消息头，Read 消息体，触发 OnMessage 回调
+     * 4. 循环处理直到缓冲区中不足一条完整消息
+     *
+     * @note  消息体最大长度受 MAX_PACKET_SIZE 限制（在 NetDefine.h 中定义）
      */
     void ProcessMessages()
     {
@@ -166,10 +240,10 @@ private:
         }
     }
 
-    int          m_fd;        /**< 非阻塞 socket 文件描述符 */
+    int          m_fd;        /**< 非阻塞 socket 文件描述符（关闭后为 -1） */
     ConnID       m_id;        /**< 连接全局 ID */
     INetCallback* m_cb;       /**< 上层回调接口（不负责释放） */
-    RingBuffer   m_recvBuf;   /**< 接收环形缓冲区 */
-    RingBuffer   m_sendBuf;   /**< 发送环形缓冲区 */
-    bool         m_closed;    /**< 关闭标记（防止重复 Close） */
+    RingBuffer   m_recvBuf;   /**< 接收环形缓冲区（OnReadable 写入，ProcessMessages 读取） */
+    RingBuffer   m_sendBuf;   /**< 发送环形缓冲区（SendMsg 写入，OnWritable 读取） */
+    bool         m_closed;    /**< 关闭标记（防止重复 Close 和重复回调） */
 };

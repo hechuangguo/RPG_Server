@@ -1,10 +1,10 @@
-/**
+﻿/**
  * @file    SuperServer.h
- * @brief  超级服务器 —— 统一管理所有子服务器连接，协调角色登录流程
+ * @brief  超级服务器 —— 统一管理所有子服务器连接，协调用户登录流程
  *
  * ## 职责
  * - 作为所有子服务器的注册中心（维护路由表）
- * - 管理角色登录调度（GatewayServer → RecordServer → SceneServer）
+ * - 管理用户登录调度（GatewayServer → RecordServer → SceneServer）
  * - 定期心跳检查（90 秒超时标记离线）
  * - 处理踢人请求（通知 GatewayServer 断开客户端）
  *
@@ -25,7 +25,7 @@
 #pragma once
 #include "../sdk/net/TcpServer.h"
 #include "../sdk/util/MsgDispatcher.h"
-#include "../sdk/util/RoleBase.h"
+#include "../sdk/util/UserBase.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
 #include "../protocal/InternalMsg.h"
@@ -50,27 +50,35 @@ struct SubServerInfo
 };
 
 /**
- * @brief SuperServer 维护的角色代理信息
+ * @brief SuperServer 维护的用户代理信息
  *
- * 记录角色当前所在的 GatewayServer 和 SceneServer 连接，
+ * 记录用户当前所在的 GatewayServer 和 SceneServer 连接，
  * 用于踢人、跨服路由等操作。
+ *
+ * 字段关系说明：
+ * - gatewayConnID 与 sceneConnID 分别指向用户关联的两个子服务器内部连接，
+ *   二者通过 SuperServer 路由表关联，但彼此无直接依赖。
+ * - gatewayClientConnID 是 GatewayServer 内部为客户端分配的连接标识，
+ *   在踢人操作时需要通过 gatewayConnID 定位 GatewayServer，
+ *   再通过 gatewayClientConnID 定位具体客户端连接。
+ * - userID 作为唯一索引，将上述三个连接信息绑定为一个用户在线路由条目。
  */
-struct RoleProxy
+struct UserProxy
 {
-    RoleID   roleID;              /**< 角色 ID */
+    UserID   userID;              /**< 用户 ID */
     ConnID   gatewayConnID;       /**< 对应 GatewayServer 的内部连接 */
     ConnID   sceneConnID;         /**< 分配到的 SceneServer 连接 */
-    uint32_t gatewayClientConnID; /**< 角色在 GatewayServer 里的客户端连接 ID */
+    uint32_t gatewayClientConnID; /**< 用户在 GatewayServer 里的客户端连接 ID */
 };
 
 /** @brief 登录流程中的待完成上下文 */
 struct PendingLogin
 {
-    RoleID       roleID;
+    UserID       userID;
     ConnID       gatewayConnID;
     uint32_t     gatewayClientConnID;
     ConnID       sceneConnID;
-    RoleBaseWire roleData{};
+    UserBaseWire userData{};
 };
 
 /**
@@ -147,8 +155,8 @@ private:
      *
      * S2S_REGISTER_REQ → OnRegister（注册）
      * S2S_HEARTBEAT    → OnHeartbeat（心跳）
-     * GW_ROLE_LOGIN_REQ→ OnRoleLoginReq（登录调度）
-     * SS_KICK_ROLE     → OnKickRole（踢人）
+     * GW_USER_LOGIN_REQ→ OnUserLoginReq（登录调度）
+     * SS_KICK_USER     → OnKickUser（踢人）
      */
     void RegisterHandlers()
     {
@@ -157,14 +165,14 @@ private:
             [this](uint32_t c, const char* d, uint16_t l){ OnRegister(c, d, l); });
         d.Register((uint16_t)InternalMsgID::S2S_HEARTBEAT,
             [this](uint32_t c, const char* d, uint16_t l){ OnHeartbeat(c, d, l); });
-        d.Register((uint16_t)InternalMsgID::GW_ROLE_LOGIN_REQ,
-            [this](uint32_t c, const char* d, uint16_t l){ OnRoleLoginReq(c, d, l); });
-        d.Register((uint16_t)InternalMsgID::REC_LOAD_ROLE_RSP,
-            [this](uint32_t c, const char* d, uint16_t l){ OnLoadRoleRsp(c, d, l); });
-        d.Register((uint16_t)InternalMsgID::SCE_ROLE_ENTER_RSP,
-            [this](uint32_t c, const char* d, uint16_t l){ OnRoleEnterRsp(c, d, l); });
-        d.Register((uint16_t)InternalMsgID::SS_KICK_ROLE,
-            [this](uint32_t c, const char* d, uint16_t l){ OnKickRole(c, d, l); });
+        d.Register((uint16_t)InternalMsgID::GW_USER_LOGIN_REQ,
+            [this](uint32_t c, const char* d, uint16_t l){ OnUserLoginReq(c, d, l); });
+        d.Register((uint16_t)InternalMsgID::REC_LOAD_USER_RSP,
+            [this](uint32_t c, const char* d, uint16_t l){ OnLoadUserRsp(c, d, l); });
+        d.Register((uint16_t)InternalMsgID::SCE_USER_ENTER_RSP,
+            [this](uint32_t c, const char* d, uint16_t l){ OnUserEnterRsp(c, d, l); });
+        d.Register((uint16_t)InternalMsgID::SS_KICK_USER,
+            [this](uint32_t c, const char* d, uint16_t l){ OnKickUser(c, d, l); });
     }
 
     /**
@@ -213,12 +221,12 @@ private:
     }
 
     /**
-     * @brief 处理角色登录请求
+     * @brief 处理用户登录请求
      *
      * GatewayServer 验证账号密码后将结果发给 SuperServer，
-     * SuperServer 负责分配 SceneServer 并通知 RecordServer 加载角色数据。
+     * SuperServer 负责分配 SceneServer 并通知 RecordServer 加载用户数据。
      */
-    void OnRoleLoginReq(ConnID connID, const char* data, uint16_t len)
+    void OnUserLoginReq(ConnID connID, const char* data, uint16_t len)
     {
         if (len < sizeof(Msg_REC_LoginVerifyRsp)) return;
         const auto* rsp = reinterpret_cast<const Msg_REC_LoginVerifyRsp*>(data);
@@ -227,43 +235,43 @@ private:
         ConnID sceneConn = FindSceneServer();
         if (sceneConn == INVALID_CONN_ID)
         {
-            LOG_WARN("RoleLogin: no SceneServer available roleID=%llu", rsp->roleID);
+            LOG_WARN("UserLogin: no SceneServer available userID=%llu", rsp->userID);
             SendLoginFailToGateway(connID, rsp->gatewayConnID, -1);
             return;
         }
 
         PendingLogin pending{};
-        pending.roleID              = rsp->roleID;
+        pending.userID              = rsp->userID;
         pending.gatewayConnID       = connID;
         pending.gatewayClientConnID = rsp->gatewayConnID;
         pending.sceneConnID         = sceneConn;
-        m_pendingLogins[rsp->roleID] = pending;
+        m_pendingLogins[rsp->userID] = pending;
 
-        LOG_INFO("RoleLogin: roleID=%llu gatewayConn=%u sceneConn=%u",
-                 rsp->roleID, connID, sceneConn);
+        LOG_INFO("UserLogin: userID=%llu gatewayConn=%u sceneConn=%u",
+                 rsp->userID, connID, sceneConn);
 
         ConnID recConn = FindSubServer(SubServerType::RECORD);
         if (recConn != INVALID_CONN_ID)
         {
-            RoleID rid = rsp->roleID;
-            m_server.SendMsg(recConn, (uint16_t)InternalMsgID::REC_LOAD_ROLE_REQ,
-                             reinterpret_cast<char*>(&rid), sizeof(rid));
+            UserID uid = rsp->userID;
+            m_server.SendMsg(recConn, (uint16_t)InternalMsgID::REC_LOAD_USER_REQ,
+                             reinterpret_cast<char*>(&uid), sizeof(uid));
         }
         else
         {
             SendLoginFailToGateway(connID, rsp->gatewayConnID, -1);
-            m_pendingLogins.erase(rsp->roleID);
+            m_pendingLogins.erase(rsp->userID);
         }
     }
 
-    void OnLoadRoleRsp(ConnID /*connID*/, const char* data, uint16_t len)
+    void OnLoadUserRsp(ConnID /*connID*/, const char* data, uint16_t len)
     {
-        if (len < sizeof(Msg_REC_LoadRoleRsp)) return;
-        const auto* hdr = reinterpret_cast<const Msg_REC_LoadRoleRsp*>(data);
-        auto pit = m_pendingLogins.find(hdr->roleID);
+        if (len < sizeof(Msg_REC_LoadUserRsp)) return;
+        const auto* hdr = reinterpret_cast<const Msg_REC_LoadUserRsp*>(data);
+        auto pit = m_pendingLogins.find(hdr->userID);
         if (pit == m_pendingLogins.end()) return;
 
-        if (hdr->code != 0 || len < sizeof(Msg_REC_LoadRoleRsp) + sizeof(RoleBaseWire))
+        if (hdr->code != 0 || len < sizeof(Msg_REC_LoadUserRsp) + sizeof(UserBaseWire))
         {
             SendLoginFailToGateway(pit->second.gatewayConnID,
                                    pit->second.gatewayClientConnID, hdr->code);
@@ -271,11 +279,11 @@ private:
             return;
         }
 
-        const auto* wire = reinterpret_cast<const RoleBaseWire*>(
-            data + sizeof(Msg_REC_LoadRoleRsp));
+        const auto* wire = reinterpret_cast<const UserBaseWire*>(
+            data + sizeof(Msg_REC_LoadUserRsp));
 
-        Msg_SCE_RoleEnterReq enter{};
-        enter.roleID              = wire->roleID;
+        Msg_SCE_UserEnterReq enter{};
+        enter.userID              = wire->userID;
         enter.mapID               = wire->mapID ? wire->mapID : 1001;
         enter.x                   = wire->posX;
         enter.y                   = wire->posY;
@@ -291,35 +299,35 @@ private:
         enter.maxMP    = wire->maxMP;
         enter.gold     = wire->gold;
 
-        pit->second.roleData = *wire;
+        pit->second.userData = *wire;
 
-        RoleProxy proxy;
-        proxy.roleID              = wire->roleID;
+        UserProxy proxy;
+        proxy.userID              = wire->userID;
         proxy.gatewayConnID       = pit->second.gatewayConnID;
         proxy.gatewayClientConnID = pit->second.gatewayClientConnID;
         proxy.sceneConnID         = pit->second.sceneConnID;
-        m_roles[wire->roleID]     = proxy;
+        m_users[wire->userID]     = proxy;
 
         m_server.SendMsg(pit->second.sceneConnID,
-                         (uint16_t)InternalMsgID::SCE_ROLE_ENTER_REQ,
+                         (uint16_t)InternalMsgID::SCE_USER_ENTER_REQ,
                          reinterpret_cast<char*>(&enter), sizeof(enter));
     }
 
-    void OnRoleEnterRsp(ConnID /*connID*/, const char* data, uint16_t len)
+    void OnUserEnterRsp(ConnID /*connID*/, const char* data, uint16_t len)
     {
-        if (len < sizeof(Msg_SCE_RoleEnterRsp)) return;
-        const auto* rsp = reinterpret_cast<const Msg_SCE_RoleEnterRsp*>(data);
-        auto pit = m_pendingLogins.find(rsp->roleID);
+        if (len < sizeof(Msg_SCE_UserEnterRsp)) return;
+        const auto* rsp = reinterpret_cast<const Msg_SCE_UserEnterRsp*>(data);
+        auto pit = m_pendingLogins.find(rsp->userID);
         if (pit == m_pendingLogins.end()) return;
 
-        Msg_GW_RoleLoginRsp gwRsp{};
+        Msg_GW_UserLoginRsp gwRsp{};
         gwRsp.code                = rsp->code;
         gwRsp.gatewayClientConnID = rsp->gatewayClientConnID;
-        gwRsp.roleID              = rsp->roleID;
+        gwRsp.userID              = rsp->userID;
         gwRsp.mapID               = rsp->mapID;
         if (rsp->code == 0)
         {
-            const auto& w = pit->second.roleData;
+            const auto& w = pit->second.userData;
             gwRsp.x     = w.posX;
             gwRsp.y     = w.posY;
             gwRsp.z     = w.posZ;
@@ -331,50 +339,60 @@ private:
             snprintf(gwRsp.name, sizeof(gwRsp.name), "%s", w.name);
         }
 
-        auto rit = m_roles.find(rsp->roleID);
-        if (rit != m_roles.end())
+        auto rit = m_users.find(rsp->userID);
+        if (rit != m_users.end())
         {
             m_server.SendMsg(rit->second.gatewayConnID,
-                             (uint16_t)InternalMsgID::GW_ROLE_LOGIN_RSP,
+                             (uint16_t)InternalMsgID::GW_USER_LOGIN_RSP,
                              reinterpret_cast<char*>(&gwRsp), sizeof(gwRsp));
         }
 
         if (rsp->code != 0)
-            m_roles.erase(rsp->roleID);
+            m_users.erase(rsp->userID);
         m_pendingLogins.erase(pit);
     }
 
     void SendLoginFailToGateway(ConnID gatewayConnID, uint32_t clientConnID, int32_t code)
     {
-        Msg_GW_RoleLoginRsp gwRsp{};
+        Msg_GW_UserLoginRsp gwRsp{};
         gwRsp.code                = code;
         gwRsp.gatewayClientConnID = clientConnID;
-        m_server.SendMsg(gatewayConnID, (uint16_t)InternalMsgID::GW_ROLE_LOGIN_RSP,
+        m_server.SendMsg(gatewayConnID, (uint16_t)InternalMsgID::GW_USER_LOGIN_RSP,
                          reinterpret_cast<char*>(&gwRsp), sizeof(gwRsp));
     }
 
     /**
      * @brief 处理踢人请求
      *
-     * 通知对应 GatewayServer 踢除指定角色的客户端连接。
+     * 通知对应 GatewayServer 踢除指定用户的客户端连接。
      */
-    void OnKickRole(ConnID /*connID*/, const char* data, uint16_t len)
+    void OnKickUser(ConnID /*connID*/, const char* data, uint16_t len)
     {
-        if (len < sizeof(RoleID)) return;
-        RoleID rid = *reinterpret_cast<const RoleID*>(data);
-        auto it = m_roles.find(rid);
-        if (it == m_roles.end()) return;
+        if (len < sizeof(UserID)) return;
+        UserID uid = *reinterpret_cast<const UserID*>(data);
+        auto it = m_users.find(uid);
+        if (it == m_users.end()) return;
         m_server.SendMsg(it->second.gatewayConnID,
                          (uint16_t)InternalMsgID::GW_KICK_CLIENT,
                          reinterpret_cast<char*>(&it->second.gatewayClientConnID),
                          sizeof(uint32_t));
-        m_roles.erase(it);
+        m_users.erase(it);
     }
 
     /**
      * @brief 定期心跳检查
      *
      * 遍历所有子服务器，超过 90 秒未收到心跳则标记为离线。
+     *
+     * 心跳超时处理流程：
+     * 1. 获取当前时间戳（毫秒）。
+     * 2. 遍历 m_servers 路由表中的所有子服务器条目。
+     * 3. 对每个子服务器，计算当前时间与 lastHeartbeat 的差值。
+     * 4. 若差值超过 90000ms（90 秒），则将该服务器的 alive 标记为 false。
+     * 5. 日志记录超时服务器的 connID 和类型，便于运维排查。
+     * 6. 注意：此处仅标记离线（软断开），不主动关闭 TCP 连接。连接的实际
+     *    断开由底层网络事件触发 OnDisconnect 回调处理。标记为离线的服务器
+     *    将不会被 FindSubServer 选中，从而实现故障隔离。
      */
     void CheckHeartbeat()
     {
@@ -402,10 +420,24 @@ private:
     }
 
     /**
-     * @brief 选择 SceneServer（简单负载均衡策略）
+     * @brief 选择 SceneServer（负载均衡策略）
      *
-     * 当前实现：取第一个存活的 SceneServer。
-     * TODO: 可根据在线人数、地图承载等做更智能的分配。
+     * 负载均衡策略详细说明：
+     * 当前采用"首个存活"策略（First-Alive），遍历 m_servers 路由表，
+     * 返回第一个类型为 SCENE 且 alive == true 的服务器连接。
+     *
+     * 策略特点：
+     * - 实现简单，无需额外统计信息，适合固定数量的 SceneServer 部署。
+     * - 所有登录请求持续分配到同一台 SceneServer，直至该服务器离线。
+     * - 当前选中服务器离线后自动切换到路由表中下一个存活的 SceneServer。
+     *
+     * 可扩展方向（TODO）：
+     * - 轮询（Round-Robin）：在多个存活 SceneServer 间轮流分配，均匀分摊负载。
+     * - 最少连接（Least-Connections）：优先选择当前在线用户数最少的 SceneServer。
+     * - 哈希取模（Hash）：根据 userID 取模固定分配到指定服务器，适合有状态场景。
+     * - 加权分配（Weighted）：根据各 SceneServer 的硬件配置（CPU/内存）赋予不同权重。
+     *
+     * @return 选中的 SceneServer 连接 ID，无可用服务器返回 INVALID_CONN_ID
      */
     ConnID FindSceneServer()
     {
@@ -422,8 +454,8 @@ private:
 
     /** @brief 子服务器路由表：connID → 服务器信息 */
     std::unordered_map<ConnID, SubServerInfo> m_servers;
-    /** @brief 在线角色路由表：roleID → 代理信息 */
-    std::unordered_map<RoleID, RoleProxy>     m_roles;
-    /** @brief 登录中的角色：roleID → 待完成上下文 */
-    std::unordered_map<RoleID, PendingLogin>  m_pendingLogins;
+    /** @brief 在线用户路由表：userID → 代理信息 */
+    std::unordered_map<UserID, UserProxy>     m_users;
+    /** @brief 登录中的用户：userID → 待完成上下文 */
+    std::unordered_map<UserID, PendingLogin>  m_pendingLogins;
 };

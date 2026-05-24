@@ -20,7 +20,7 @@
 #include "../sdk/net/TcpServer.h"
 #include "../sdk/net/TcpClient.h"
 #include "../sdk/util/MsgDispatcher.h"
-#include "../sdk/util/RoleBase.h"
+#include "../sdk/util/UserBase.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
 #include "../protocal/InternalMsg.h"
@@ -29,28 +29,28 @@
 #include <string>
 
 /**
- * @brief 角色社会关系数据
+ * @brief 用户社会关系数据
  *
- * 持久化存储，角色上线时从 DB 加载到内存，下线时写回。
+ * 持久化存储，用户上线时从 DB 加载到内存，下线时写回。
  */
 struct SocialData
 {
-    RoleID               roleID;     /**< 角色 ID */
-    std::vector<RoleID>  friends;    /**< 好友列表 */
-    std::vector<RoleID>  blackList;  /**< 黑名单 */
-    uint64_t             guildID = 0;/**< 公会 ID（0=无公会） */
-    uint32_t             teamID  = 0;/**< 当前队伍 ID（0=未组队） */
+    UserID               userID;              /**< 用户 ID */
+    std::vector<UserID>  friends;             /**< 好友列表（互相关注的其他用户 ID 集合） */
+    std::vector<UserID>  blackList;           /**< 黑名单（被屏蔽的用户 ID 集合） */
+    uint64_t             guildID = 0;         /**< 公会 ID（0=无公会） */
+    uint32_t             teamID  = 0;         /**< 当前队伍 ID（0=未组队） */
 };
 
 /**
- * @brief SessionServer 中维护的角色对象
+ * @brief SessionServer 中维护的用户对象
  *
- * 继承 IRole，额外持有 SocialData。
+ * 继承 IUser，额外持有 SocialData。
  */
-class SessionRole : public IRole
+class SessionUser : public IUser
 {
 public:
-    explicit SessionRole(const RoleBase& base) : IRole(base) {}
+    explicit SessionUser(const UserBase& base) : IUser(base) {}
     SocialData& Social() { return m_social; }  /**< 获取社会关系数据（可写） */
 private:
     SocialData m_social;  /**< 社会关系数据 */
@@ -59,12 +59,12 @@ private:
 /**
  * @brief 离线消息
  *
- * 当目标角色不在线时，消息缓存在 SessionServer 内存中，
- * 角色下次上线时批量推送。
+ * 当目标用户不在线时，消息缓存在 SessionServer 内存中，
+ * 用户下次上线时批量推送。
  */
 struct OfflineMsg
 {
-    RoleID   toID;              /**< 目标角色 ID */
+    UserID   toID;              /**< 目标用户 ID */
     uint16_t msgID;             /**< 原始消息协议号 */
     std::vector<char> data;     /**< 消息体（二进制） */
 };
@@ -132,21 +132,21 @@ private:
     /**
      * @brief 注册消息处理函数
      *
-     * SES_LOAD_ROLE_REQ → OnLoadRoleReq（加载社会关系）
-     * SES_SAVE_ROLE_REQ → OnSaveRoleReq（保存社会关系）
+     * SES_LOAD_USER_REQ → OnLoadUserReq（加载社会关系）
+     * SES_SAVE_USER_REQ → OnSaveUserReq（保存社会关系）
      * SES_FRIEND_UPDATE → OnFriendUpdate（好友变更同步）
      */
     void RegisterHandlers()
     {
         auto& d = MsgDispatcher::Instance();
         d.Register((uint16_t)InternalMsgID::S2S_HEARTBEAT_ACK,
-            [](uint32_t, const char*, uint16_t){ });
-        d.Register((uint16_t)InternalMsgID::SES_LOAD_ROLE_REQ,
-            [this](uint32_t c, const char* d, uint16_t l){ OnLoadRoleReq(c, d, l); });
-        d.Register((uint16_t)InternalMsgID::SES_SAVE_ROLE_REQ,
-            [this](uint32_t c, const char* d, uint16_t l){ OnSaveRoleReq(c, d, l); });
+            [](uint32_t, const char*, uint16_t){ });  /**< 忽略心跳应答（空操作） */
+        d.Register((uint16_t)InternalMsgID::SES_LOAD_USER_REQ,
+            [this](uint32_t c, const char* d, uint16_t l){ OnLoadUserReq(c, d, l); });  /**< 加载用户社会关系数据 */
+        d.Register((uint16_t)InternalMsgID::SES_SAVE_USER_REQ,
+            [this](uint32_t c, const char* d, uint16_t l){ OnSaveUserReq(c, d, l); });  /**< 保存用户社会关系数据 */
         d.Register((uint16_t)InternalMsgID::SES_FRIEND_UPDATE,
-            [this](uint32_t c, const char* d, uint16_t l){ OnFriendUpdate(c, d, l); });
+            [this](uint32_t c, const char* d, uint16_t l){ OnFriendUpdate(c, d, l); });  /**< 好友变更同步处理 */
     }
 
     /** @brief 向 SuperServer 发送注册消息 */
@@ -174,31 +174,31 @@ private:
     /**
      * @brief 处理社会关系数据加载请求
      *
-     * 若角色不在 m_roles 中则新建一个 SessionRole 对象。
+     * 若用户不在 m_users 中则新建一个 SessionUser 对象。
      */
-    void OnLoadRoleReq(ConnID fromConn, const char* data, uint16_t len)
+    void OnLoadUserReq(ConnID fromConn, const char* data, uint16_t len)
     {
-        if (len < sizeof(RoleID)) return;
-        RoleID rid = *reinterpret_cast<const RoleID*>(data);
-        LOG_DEBUG("LoadRole req roleID=%llu", rid);
+        if (len < sizeof(UserID)) return;
+        UserID uid = *reinterpret_cast<const UserID*>(data);
+        LOG_DEBUG("LoadUser req userID=%llu", uid);
 
-        auto it = m_roles.find(rid);
-        if (it == m_roles.end())
+        auto it = m_users.find(uid);
+        if (it == m_users.end())
         {
-            RoleBase base; base.roleID = rid;
-            m_roles.emplace(rid, std::make_shared<SessionRole>(base));
+            UserBase base; base.userID = uid;
+            m_users.emplace(uid, std::make_shared<SessionUser>(base));
         }
 
-        m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::SES_LOAD_ROLE_RSP,
+        m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::SES_LOAD_USER_RSP,
                          data, len);
     }
 
     /** @brief 处理社会关系数据保存请求（当前为占位实现） */
-    void OnSaveRoleReq(ConnID /*fromConn*/, const char* data, uint16_t len)
+    void OnSaveUserReq(ConnID /*fromConn*/, const char* data, uint16_t len)
     {
-        if (len < sizeof(RoleID)) return;
-        RoleID rid = *reinterpret_cast<const RoleID*>(data);
-        LOG_DEBUG("SaveRole req roleID=%llu", rid);
+        if (len < sizeof(UserID)) return;
+        UserID uid = *reinterpret_cast<const UserID*>(data);
+        LOG_DEBUG("SaveUser req userID=%llu", uid);
         // TODO: 将 SocialData 序列化写入 DB
     }
 
@@ -212,13 +212,13 @@ private:
     /**
      * @brief 推送离线消息
      *
-     * 目标角色不在线时将消息缓存在 m_offlineMsgs 中。
-     * @param toID  目标角色 ID
+     * 目标用户不在线时将消息缓存在 m_offlineMsgs 中。
+     * @param toID  目标用户 ID
      * @param msgID 消息协议号
      * @param data  消息体
      * @param len   消息体长度
      */
-    void PushOfflineMsg(RoleID toID, uint16_t msgID,
+    void PushOfflineMsg(UserID toID, uint16_t msgID,
                         const char* data, uint16_t len)
     {
         OfflineMsg msg;
@@ -232,8 +232,8 @@ private:
     TcpClient  m_superClient;    /**< 到 SuperServer 的连接 */
     uint32_t   m_hbSeq = 0;      /**< 心跳序列号 */
 
-    /** @brief 在线角色社会关系数据：roleID → SessionRole */
-    std::unordered_map<RoleID, std::shared_ptr<SessionRole>> m_roles;
-    /** @brief 离线消息队列：roleID → 消息列表 */
-    std::unordered_map<RoleID, std::vector<OfflineMsg>>      m_offlineMsgs;
+    /** @brief 在线用户社会关系数据：userID → SessionUser */
+    std::unordered_map<UserID, std::shared_ptr<SessionUser>> m_users;
+    /** @brief 离线消息队列：userID → 消息列表 */
+    std::unordered_map<UserID, std::vector<OfflineMsg>>      m_offlineMsgs;
 };

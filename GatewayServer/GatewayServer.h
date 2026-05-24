@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file    GatewayServer.h
  * @brief  网关服务器 —— 客户端 TCP 接入点、登录流程控制、消息转发
  *
@@ -10,8 +10,9 @@
  * - 心跳超时检测（60 秒无心跳自动踢除）
  *
  * ## 双端口设计
- * - clientPort（外网）：客户端连接
- * - innerPort（内网）：SceneServer 等内部服务器连接
+ * - 外网端口 (clientPort = 9005)：客户端通过公网连接，进行登录和游戏数据交互
+ * - 内网端口 (innerPort = 19005)：SceneServer 等内部服务器通过内网连接，传递下行消息和踢人指令
+ * - 通过 connID 大小区分客户端连接（< 100000）和内部服务器连接（>= 100000）
  *
  * ## 依赖关系
  * - 依赖 SuperServer + RecordServer + SceneServer
@@ -20,7 +21,7 @@
 #pragma once
 #include "../sdk/net/TcpServer.h"
 #include "../sdk/net/TcpClient.h"
-#include "../sdk/util/RoleBase.h"
+#include "../sdk/util/UserBase.h"
 #include "../sdk/util/MsgDispatcher.h"
 #include "../sdk/util/ConfigLoader.h"
 #include "../sdk/log/Logger.h"
@@ -47,7 +48,7 @@ struct ClientSession
 {
     ConnID      connID;          /**< clientServer 分配的网络连接 ID */
     ClientState state = ClientState::CONNECTED;  /**< 当前状态 */
-    RoleID      roleID = INVALID_ROLE_ID;        /**< 登录成功后的角色 ID */
+    UserID      userID = INVALID_USER_ID;        /**< 登录成功后的用户 ID */
     uint64_t    lastHeartbeat = 0;               /**< 最后一次心跳时间 */
 };
 
@@ -120,6 +121,8 @@ public:
      * @brief 连接建立回调
      *
      * 通过 connID 大小区分客户端和内部连接。
+     * - connID < 100000：客户端连接，创建 ClientSession 记录
+     * - connID >= 100000：内部服务器连接（如 SceneServer），直接记录日志
      */
     void OnConnect(ConnID id) override
     {
@@ -140,17 +143,17 @@ public:
     /**
      * @brief 连接断开回调
      *
-     * 客户端断开时通知 SceneServer 角色下线。
+     * 客户端断开时通知 SceneServer 用户下线。
      */
     void OnDisconnect(ConnID id) override
     {
         auto it = m_clients.find(id);
         if (it != m_clients.end())
         {
-            if (it->second.roleID != INVALID_ROLE_ID)
+            if (it->second.userID != INVALID_USER_ID)
             {
-                m_sceneClient.SendMsg((uint16_t)InternalMsgID::SCE_ROLE_LEAVE,
-                    reinterpret_cast<const char*>(&it->second.roleID), sizeof(RoleID));
+                m_sceneClient.SendMsg((uint16_t)InternalMsgID::SCE_USER_LEAVE,
+                    reinterpret_cast<const char*>(&it->second.userID), sizeof(UserID));
             }
             m_clients.erase(it);
         }
@@ -160,6 +163,8 @@ public:
      * @brief 消息到达回调
      *
      * 区分客户端消息和内部消息分别处理。
+     * - 客户端连接：通过 HandleClientMsg 处理登录、心跳和游戏消息
+     * - 内部连接：通过 MsgDispatcher 分发到对应的处理函数
      */
     void OnMessage(ConnID id, uint16_t msgID, const char* data, uint16_t len) override
     {
@@ -175,7 +180,15 @@ public:
     }
 
 private:
-    /** @brief 注册内部消息处理函数 */
+    /**
+     * @brief 注册内部消息处理函数
+     *
+     * 注册四个内部消息的处理回调：
+     * - GW_SEND_TO_CLIENT：SceneServer 发往客户端的下行消息
+     * - GW_KICK_CLIENT：主动踢除客户端连接
+     * - REC_LOGIN_VERIFY_RSP：RecordServer 的登录验证响应
+     * - GW_USER_LOGIN_RSP：SuperServer 完成登录调度后的响应
+     */
     void RegisterHandlers()
     {
         auto& d = MsgDispatcher::Instance();
@@ -185,18 +198,17 @@ private:
             [this](uint32_t c, const char* d, uint16_t l){ OnKickClient(c, d, l); });
         d.Register((uint16_t)InternalMsgID::REC_LOGIN_VERIFY_RSP,
             [this](uint32_t c, const char* d, uint16_t l){ OnLoginVerifyRsp(c, d, l); });
-        d.Register((uint16_t)InternalMsgID::GW_ROLE_LOGIN_RSP,
-            [this](uint32_t c, const char* d, uint16_t l){ OnRoleLoginRsp(c, d, l); });
+        d.Register((uint16_t)InternalMsgID::GW_USER_LOGIN_RSP,
+            [this](uint32_t c, const char* d, uint16_t l){ OnUserLoginRsp(c, d, l); });
     }
 
     /**
      * @brief 客户端消息处理
      *
-     * @code
-     *   LOGIN_REQ  → OnClientLogin（登录验证流程）
-     *   HEARTBEAT  → OnClientHeartbeat（回包服务器时间）
-     *   其他消息   → ForwardToScene（转发给 SceneServer）
-     * @endcode
+     * 根据消息类型分发到对应处理函数：
+     * - C2S_LOGIN_REQ  → OnClientLogin（登录验证流程，仅 CONNECTED 状态可触发）
+     * - C2S_HEARTBEAT  → OnClientHeartbeat（回包服务器时间）
+     * - 其他消息       → ForwardToScene（将消息转发给 SceneServer，仅 LOGGED_IN 状态可触发）
      */
     void HandleClientMsg(ConnID connID, uint16_t msgID, const char* data, uint16_t len)
     {
@@ -223,7 +235,10 @@ private:
     /**
      * @brief 处理客户端登录请求
      *
-     * 设置客户端状态为 LOGGING，转发账号密码到 RecordServer 验证。
+     * 收到客户端的 C2S_LOGIN_REQ 消息后：
+     * 1. 将客户端状态设为 LOGGING，防止重复登录
+     * 2. 提取账号密码，构造 Msg_REC_LoginVerifyReq
+     * 3. 附上网关侧的 connID，发送给 RecordServer 进行验证
      */
     void OnClientLogin(ConnID connID, const char* data, uint16_t len)
     {
@@ -240,7 +255,12 @@ private:
         LOG_INFO("ClientLogin: account=%s connID=%u", req->account, connID);
     }
 
-    /** @brief 处理客户端心跳 —— 直接回包 S2C_HEARTBEAT */
+    /**
+     * @brief 处理客户端心跳
+     *
+     * 直接回包客户端 S2C_HEARTBEAT，包含客户端发来的序列号和服务器当前时间，
+     * 用于客户端计算 RTT 和维持连接活跃状态。
+     */
     void OnClientHeartbeat(ConnID connID, const char* data, uint16_t len)
     {
         Msg_S2C_Heartbeat rsp{};
@@ -254,7 +274,9 @@ private:
     /**
      * @brief 处理 RecordServer 验证响应
      *
-     * 验证成功：转发 SuperServer 完成登录调度；验证失败：直接回包客户端。
+     * 接收 REC_LOGIN_VERIFY_RSP 消息后的处理逻辑：
+     * - 验证失败（rsp->code != 0）：回包客户端 S2C_LOGIN_RSP 错误信息，状态恢复为 CONNECTED
+     * - 验证成功（rsp->code == 0）：记录 userID，转发 GW_USER_LOGIN_REQ 给 SuperServer 完成服务器调度
      */
     void OnLoginVerifyRsp(ConnID /*fromConn*/, const char* data, uint16_t len)
     {
@@ -276,34 +298,38 @@ private:
             return;
         }
 
-        it->second.roleID = rsp->roleID;
-        m_superClient.SendMsg((uint16_t)InternalMsgID::GW_ROLE_LOGIN_REQ,
+        it->second.userID = rsp->userID;
+        m_superClient.SendMsg((uint16_t)InternalMsgID::GW_USER_LOGIN_REQ,
                               data, len);
-        LOG_INFO("LoginVerifyOK, forwarding to Super: connID=%u roleID=%llu",
-                 clientConn, rsp->roleID);
+        LOG_INFO("LoginVerifyOK, forwarding to Super: connID=%u userID=%llu",
+                 clientConn, rsp->userID);
     }
 
     /**
-     * @brief SuperServer 登录流程完成 → 通知客户端进入游戏
+     * @brief 处理 SuperServer 登录调度响应
+     *
+     * 接收 GW_USER_LOGIN_RSP 消息后的处理逻辑：
+     * - 成功（rsp->code == 0）：客户端状态设为 LOGGED_IN，发送 S2C_LOGIN_RSP 和 S2C_ENTER_GAME
+     * - 失败：状态恢复为 CONNECTED，返回错误信息给客户端
      */
-    void OnRoleLoginRsp(ConnID /*fromConn*/, const char* data, uint16_t len)
+    void OnUserLoginRsp(ConnID /*fromConn*/, const char* data, uint16_t len)
     {
-        if (len < sizeof(Msg_GW_RoleLoginRsp)) return;
-        const auto* rsp = reinterpret_cast<const Msg_GW_RoleLoginRsp*>(data);
+        if (len < sizeof(Msg_GW_UserLoginRsp)) return;
+        const auto* rsp = reinterpret_cast<const Msg_GW_UserLoginRsp*>(data);
         ConnID clientConn = rsp->gatewayClientConnID;
         auto it = m_clients.find(clientConn);
         if (it == m_clients.end()) return;
 
         Msg_S2C_LoginRsp loginRsp{};
         loginRsp.code   = rsp->code;
-        loginRsp.roleID = rsp->roleID;
+        loginRsp.userID = rsp->userID;
         if (rsp->code == 0)
         {
             it->second.state = ClientState::LOGGED_IN;
             strncpy(loginRsp.msg, "Login OK", sizeof(loginRsp.msg));
 
             Msg_S2C_EnterGame enter{};
-            enter.roleID = rsp->roleID;
+            enter.userID = rsp->userID;
             enter.mapID  = rsp->mapID;
             enter.x      = rsp->x;
             enter.y      = rsp->y;
@@ -319,8 +345,8 @@ private:
                                    reinterpret_cast<char*>(&loginRsp), sizeof(loginRsp));
             m_clientServer.SendMsg(clientConn, (uint16_t)ClientMsgID::S2C_ENTER_GAME,
                                    reinterpret_cast<char*>(&enter), sizeof(enter));
-            LOG_INFO("EnterGame: connID=%u roleID=%llu map=%u",
-                     clientConn, rsp->roleID, rsp->mapID);
+            LOG_INFO("EnterGame: connID=%u userID=%llu map=%u",
+                     clientConn, rsp->userID, rsp->mapID);
         }
         else
         {
@@ -334,7 +360,8 @@ private:
     /**
      * @brief SceneServer → Gateway → Client 下行消息转发
      *
-     * 解析包格式：[clientConnID(4)][msgID(2)][data...]
+     * 接收 GW_SEND_TO_CLIENT 消息，解析内部包格式 [clientConnID(4字节)][msgID(2字节)][data...]，
+     * 提取目标客户端连接 ID 后通过 m_clientServer 发送给对应客户端。
      */
     void OnSendToClient(ConnID /*fromConn*/, const char* data, uint16_t len)
     {
@@ -348,7 +375,12 @@ private:
         m_clientServer.SendMsg(clientConnID, msgID, body, bodyLen);
     }
 
-    /** @brief 踢除客户端连接 */
+    /**
+     * @brief 踢除指定客户端连接
+     *
+     * 接收 GW_KICK_CLIENT 消息，包体为 4 字节的 clientConnID。
+     * 主动断开客户端 TCP 连接并从会话表中删除。
+     */
     void OnKickClient(ConnID /*fromConn*/, const char* data, uint16_t len)
     {
         if (len < sizeof(uint32_t)) return;
@@ -361,7 +393,8 @@ private:
     /**
      * @brief 将客户端消息打包成内部消息转发给 SceneServer
      *
-     * 包格式：[Msg_GW_ClientMsg 头部] + [原始客户端消息体]
+     * 构造 Msg_GW_ClientMsg 头部（包含 clientConnID、msgID、dataLen），
+     * 后接原始客户端消息体，通过 m_sceneClient 发送 GW_CLIENT_MSG 给 SceneServer 进行处理。
      */
     void ForwardToScene(ConnID connID, uint16_t msgID, const char* data, uint16_t len)
     {
@@ -378,7 +411,9 @@ private:
     /**
      * @brief 心跳超时检测
      *
-     * 每 30 秒检查一次，超过 60 秒无心跳的客户端踢除。
+     * 每 30 秒由定时器触发一次，遍历所有客户端会话：
+     * - lastHeartbeat 距当前时间超过 60 秒的视为超时
+     * - 超时客户端被踢除并从会话表中删除
      */
     void CheckTimeout()
     {
@@ -394,6 +429,13 @@ private:
         }
     }
 
+    /**
+     * @brief 向 SuperServer 注册
+     *
+     * 500ms 后由定时器触发，发送 S2S_REGISTER_REQ 消息，
+     * 告知 SuperServer 本网关的服务器类型、ID、IP 和客户端端口，
+     * 用于 SuperServer 统一管理所有子服务器。
+     */
     void RegisterToSuper()
     {
         Msg_S2S_Register reg{};
@@ -405,6 +447,13 @@ private:
                                reinterpret_cast<char*>(&reg), sizeof(reg));
     }
 
+    /**
+     * @brief 向 SuperServer 发送心跳
+     *
+     * 每 10 秒由定时器触发，发送 S2S_HEARTBEAT 消息，
+     * 携带递增的序列号和服务器时间戳，维持与 SuperServer 的活跃连接。
+     * SuperServer 可通过此心跳判断网关是否存活。
+     */
     void SendHeartbeat()
     {
         Msg_S2S_Heartbeat hb{}; hb.seq = ++m_hbSeq; hb.timestamp = TimerMgr::NowMs();
@@ -412,15 +461,33 @@ private:
                                reinterpret_cast<char*>(&hb), sizeof(hb));
     }
 
-    TcpServer m_clientServer;   /**< 面向客户端的 TCP Server */
-    TcpServer m_innerServer;    /**< 面向内部服务器的 TCP Server */
-    TcpClient m_superClient;    /**< 到 SuperServer 的连接 */
-    TcpClient m_recordClient;   /**< 到 RecordServer 的连接 */
-    TcpClient m_sceneClient;    /**< 到 SceneServer 的连接 */
-    uint32_t  m_hbSeq = 0;      /**< 心跳序列号 */
-    uint16_t  m_clientPort = 9005;
-    uint16_t  m_innerPort  = 19005;
+    // ======================== 成员变量 ========================
 
-    /** @brief 客户端会话表：connID → ClientSession */
+    // --- 网络服务 ---
+    TcpServer m_clientServer;   /**< 面向客户端的 TCP Server，监听外网端口 9005，接受玩家连接 */
+    TcpServer m_innerServer;    /**< 面向内部服务器的 TCP Server，监听内网端口 19005，接收 SceneServer 等内部连接 */
+
+    // --- 上游连接 ---
+    TcpClient m_superClient;    /**< 到 SuperServer 的连接，用于注册和登录调度 */
+    TcpClient m_recordClient;   /**< 到 RecordServer 的连接，用于账号密码验证 */
+    TcpClient m_sceneClient;    /**< 到 SceneServer 的连接，用于上行消息转发和下行消息接收 */
+
+    // --- 状态 ---
+    uint32_t  m_hbSeq = 0;      /**< 心跳序列号，每次发送心跳递增 */
+
+    // --- 双端口配置 ---
+    uint16_t  m_clientPort = 9005;   /**< 外网端口：客户端通过公网连接此端口进行登录和游戏数据交互 */
+    uint16_t  m_innerPort  = 19005;  /**< 内网端口：内部服务器（SceneServer 等）通过内网连接此端口发送下行消息 */
+
+    // --- 客户端管理 ---
+    /**
+     * @brief 客户端会话表
+     *
+     * key=connID, value=ClientSession。维护所有已建立 TCP 连接的客户端状态，
+     * 包括连接状态、用户 ID 和最后心跳时间，用于：
+     * - 消息路由：根据 connID 找到对应的 ClientSession，完成状态判定和消息转发
+     * - 超时检测：定时器检查 lastHeartbeat，超过阈值则踢除
+     * - 下线通知：客户端断开时获取 userID 通知 SceneServer
+     */
     std::unordered_map<ConnID, ClientSession> m_clients;
 };

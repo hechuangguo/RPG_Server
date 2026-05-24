@@ -4,6 +4,11 @@
 
 QuestMgr = {}
 
+-- ============================================================
+--  任务状态机：接取(Accept) → 进行中(UpdateProgress) → 完成(Complete) → 提交(Submit)
+--  接取后开始追踪进度，进度达标后标记完成，提交后发放奖励并清除任务
+-- ============================================================
+
 -- 任务配置
 local QUEST_CONFIG = {
     [1001] = {
@@ -26,43 +31,48 @@ local QUEST_CONFIG = {
     },
 }
 
--- 角色任务进度 { roleID -> { questID -> progress } }
+-- 用户任务进度 { userID -> { questID -> progress } }
 local _progress = {}
 
-function QuestMgr.Accept(roleID, questID)
+function QuestMgr.Accept(userID, questID)
     local cfg = QUEST_CONFIG[questID]
     if not cfg then return false, "任务不存在" end
-    if not _progress[roleID] then _progress[roleID] = {} end
-    if _progress[roleID][questID] then return false, "任务已接受" end
-    _progress[roleID][questID] = { questID=questID, current=0, target=cfg.count, done=false }
-    log_info(string.format("[QuestMgr] role=%d accepted quest=%d '%s'", roleID, questID, cfg.name))
+    if not _progress[userID] then _progress[userID] = {} end
+    if _progress[userID][questID] then return false, "任务已接受" end
+    _progress[userID][questID] = { questID=questID, current=0, target=cfg.count, done=false }
+    log_info(string.format("[QuestMgr] user=%d accepted quest=%d '%s'", userID, questID, cfg.name))
     return true, "OK"
 end
 
-function QuestMgr.UpdateProgress(roleID, questID, delta)
-    local prog = _progress[roleID] and _progress[roleID][questID]
+function QuestMgr.UpdateProgress(userID, questID, delta)
+    local prog = _progress[userID] and _progress[userID][questID]
     if not prog or prog.done then return end
     prog.current = prog.current + delta
     local cfg = QUEST_CONFIG[questID]
     if prog.current >= prog.target then
         prog.done = true
-        log_info(string.format("[QuestMgr] role=%d quest=%d '%s' COMPLETED!", roleID, questID, cfg.name))
-        EventSystem.Fire("quest_complete", roleID, questID)
+        log_info(string.format("[QuestMgr] user=%d quest=%d '%s' COMPLETED!", userID, questID, cfg.name))
+        EventSystem.Fire("quest_complete", userID, questID)
     end
 end
 
-function QuestMgr.Submit(roleID, questID)
-    local prog = _progress[roleID] and _progress[roleID][questID]
+function QuestMgr.Submit(userID, questID)
+    local prog = _progress[userID] and _progress[userID][questID]
     if not prog then return false, "未接受该任务" end
     if not prog.done then return false, "任务未完成" end
     local cfg = QUEST_CONFIG[questID]
     -- 发放奖励
-    log_info(string.format("[QuestMgr] role=%d submit quest=%d reward: exp=%d gold=%d",
-             roleID, questID, cfg.reward.exp, cfg.reward.gold))
-    EventSystem.Fire("quest_reward", roleID, cfg.reward)
-    _progress[roleID][questID] = nil
+    log_info(string.format("[QuestMgr] user=%d submit quest=%d reward: exp=%d gold=%d",
+             userID, questID, cfg.reward.exp, cfg.reward.gold))
+    EventSystem.Fire("quest_reward", userID, cfg.reward)
+    _progress[userID][questID] = nil
     return true, "OK"
 end
+
+-- ============================================================
+--  事件监听注册：通过 EventSystem.On 绑定战斗/收集/接取等事件
+--  实现击杀计数、物品进度追踪、自动接取任务的解耦联动
+-- ============================================================
 
 -- 监听 NPC 击杀事件，更新击杀类任务进度
 EventSystem.On("npc_die", function(npcID, killerID)
@@ -76,17 +86,17 @@ EventSystem.On("npc_die", function(npcID, killerID)
 end)
 
 -- 监听物品收集事件
-EventSystem.On("item_collect", function(roleID, itemID, count)
-    if not _progress[roleID] then return end
-    for questID, prog in pairs(_progress[roleID]) do
+EventSystem.On("item_collect", function(userID, itemID, count)
+    if not _progress[userID] then return end
+    for questID, prog in pairs(_progress[userID]) do
         local cfg = QUEST_CONFIG[questID]
         if cfg and cfg.type == "collect" and cfg.itemID == itemID then
-            QuestMgr.UpdateProgress(roleID, questID, count)
+            QuestMgr.UpdateProgress(userID, questID, count)
         end
     end
 end)
 
 -- 监听接受任务事件
-EventSystem.On("quest_accept", function(roleID, questID)
-    QuestMgr.Accept(roleID, questID)
+EventSystem.On("quest_accept", function(userID, questID)
+    QuestMgr.Accept(userID, questID)
 end)
