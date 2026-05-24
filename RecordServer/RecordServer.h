@@ -22,47 +22,18 @@
 #pragma once
 #include "../sdk/net/TcpServer.h"
 #include "../sdk/net/TcpClient.h"
-#include "../sdk/util/UserBase.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
 #include "../sdk/util/MsgDispatcher.h"
 #include "../sdk/util/ConfigLoader.h"
+#include "../sdk/util/UserWireUtil.h"
 #include "../protocal/InternalMsg.h"
-#include <unordered_map>
+#include "RecordUser.h"
+#include "RecordUserManager.h"
 #include <string>
 #include <vector>
-#include <mysql/mysql.h>   /**< libmysqlclient C API */
+#include <mysql/mysql.h>
 #include <cinttypes>
-
-/**
- * @brief RecordServer 中的用户数据（完整存档）
- *
- * 包含 UserBase 基础属性以及背包、技能、任务等 JSON 串。
- */
-struct UserRecord
-{
-    UserBase       base;           /**< 基础用户数据 */
-    std::string    bagJson;        /**< 背包数据（JSON 序列化） */
-    std::string    skillJson;      /**< 技能数据（JSON 序列化） */
-    std::string    questJson;      /**< 任务数据（JSON 序列化） */
-    uint64_t       lastSaveTime = 0; /**< 上次存档时间（ms） */
-    bool           dirty        = false; /**< 脏标记（数据变更后置 true） */
-};
-
-/**
- * @brief RecordServer 中的用户对象
- *
- * 继承 IUser，额外持有 UserRecord（完整持久化数据）。
- */
-class RecordUser : public IUser
-{
-public:
-    explicit RecordUser(const UserBase& base)
-        : IUser(base) {}
-    UserRecord& Record() { return m_record; }
-private:
-    UserRecord m_record;
-};
 
 /**
  * @brief RecordServer 核心类
@@ -246,13 +217,13 @@ private:
         if (len < sizeof(UserID)) return;
         UserID rid = *reinterpret_cast<const UserID*>(data);
 
-        if (m_users.find(rid) == m_users.end())
+        if (!m_userManager.contains(rid))
             LoadUserFromDB(rid);
 
         Msg_REC_LoadUserRsp hdr{};
         hdr.userID = rid;
-        auto it = m_users.find(rid);
-        if (it == m_users.end())
+        auto user = m_userManager.findUser(rid);
+        if (!user)
         {
             hdr.code = -1;
             m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::REC_LOAD_USER_RSP,
@@ -261,7 +232,7 @@ private:
         }
 
         hdr.code = 0;
-        const auto& base = it->second->Base();
+        const auto& base = user->Base();
         UserBaseWire wire{};
         wire.userID   = base.userID;
         strncpy(wire.name, base.name.c_str(), sizeof(wire.name) - 1);
@@ -288,8 +259,37 @@ private:
     /** @brief 处理用户保存请求 */
     void OnSaveUser(ConnID fromConn, const char* data, uint16_t len)
     {
-        if (len < sizeof(UserID)) return;
-        UserID rid = *reinterpret_cast<const UserID*>(data);
+        UserID rid = INVALID_USER_ID;
+
+        if (len >= sizeof(Msg_REC_SaveUserReq))
+        {
+            const auto* req = reinterpret_cast<const Msg_REC_SaveUserReq*>(data);
+            rid = req->userID;
+
+            auto user = m_userManager.findUser(rid);
+            if (!user)
+            {
+                UserBase base;
+                applyUserBaseWire(base, req->wire);
+                user = RecordUser::create(base);
+                user->init();
+                m_userManager.addUser(rid, user);
+            }
+            else
+            {
+                applyUserBaseWire(user->Base(), req->wire);
+                user->markDirty();
+            }
+        }
+        else if (len >= sizeof(UserID))
+        {
+            rid = *reinterpret_cast<const UserID*>(data);
+        }
+        else
+        {
+            return;
+        }
+
         SaveUserToDB(rid);
         Msg_REC_LoadUserRsp rsp{};
         rsp.code   = 0;
@@ -301,7 +301,7 @@ private:
     /**
      * @brief 从 MySQL 加载用户数据到内存
      *
-     * 查询 t_user 表所有字段，构建 UserBase 并创建 RecordUser 对象。
+     * 查询 t_charbase 表，构建 UserBase 并创建 RecordUser 对象。
      *
      * @note SELECT 字段与 row 索引映射表：
      *       | 索引 | 字段      | 类型      | 说明               |
@@ -323,8 +323,9 @@ private:
     {
         char sql[256];
         snprintf(sql, sizeof(sql),
-                 "SELECT user_id,name,level,vocation,sex,map_id,pos_x,pos_y,pos_z,hp,mp,gold"
-                 " FROM t_user WHERE user_id=%" PRIu64 " LIMIT 1", rid);
+                 "SELECT user_id,name,level,vocation,sex,map_id,pos_x,pos_y,pos_z,"
+                 "hp,max_hp,mp,max_mp,gold"
+                 " FROM t_charbase WHERE user_id=%" PRIu64 " LIMIT 1", rid);
         if (mysql_query(m_db, sql) != 0) { LOG_ERR("LoadUser SQL err: %s", mysql_error(m_db)); return; }
         MYSQL_RES* res = mysql_store_result(m_db);
         MYSQL_ROW  row = res ? mysql_fetch_row(res) : nullptr;
@@ -341,10 +342,14 @@ private:
             base.posY    = row[7] ? (float)atof(row[7]) : 0.f;
             base.posZ    = row[8] ? (float)atof(row[8]) : 0.f;
             base.hp      = row[9] ? (uint32_t)atoi(row[9])  : 100;
-            base.mp      = row[10]? (uint32_t)atoi(row[10]) : 100;
-            base.gold    = row[11]? (uint64_t)strtoull(row[11], nullptr, 10) : 0;
-            auto role    = std::make_shared<RecordUser>(base);
-            m_users[rid] = role;
+            base.maxHP   = row[10]? (uint32_t)atoi(row[10]) : 100;
+            base.mp      = row[11]? (uint32_t)atoi(row[11]) : 100;
+            base.maxMP   = row[12]? (uint32_t)atoi(row[12]) : 100;
+            base.gold    = row[13]? (uint64_t)strtoull(row[13], nullptr, 10) : 0;
+            auto user = RecordUser::create(base);
+            user->init();
+            user->load();
+            m_userManager.addUser(rid, user);
             LOG_DEBUG("LoadUserFromDB: userID=%llu name=%s", rid, base.name.c_str());
         }
         if (res) mysql_free_result(res);
@@ -353,19 +358,27 @@ private:
     /**
      * @brief 将用户数据写回 MySQL
      *
-     * UPDATE t_user SET level=..., map_id=..., ..., WHERE user_id=...
+     * UPDATE t_charbase SET ... WHERE user_id=...
      */
     void SaveUserToDB(UserID rid)
     {
-        auto it = m_users.find(rid);
-        if (it == m_users.end()) return;
-        const auto& base = it->second->Base();
-        char sql[512];
+        auto user = m_userManager.findUser(rid);
+        if (!user) return;
+        user->save();
+        const auto& base = user->Base();
+        char sql[768];
         snprintf(sql, sizeof(sql),
-                 "UPDATE t_user SET level=%u,map_id=%u,pos_x=%.2f,pos_y=%.2f,pos_z=%.2f,"
-                 "hp=%u,mp=%u,gold=%" PRIu64 " WHERE user_id=%" PRIu64,
-                 base.level, base.mapID, base.posX, base.posY, base.posZ,
-                 base.hp, base.mp, base.gold, rid);
+                 "INSERT INTO t_charbase (user_id,name,level,vocation,sex,map_id,"
+                 "pos_x,pos_y,pos_z,hp,max_hp,mp,max_mp,gold)"
+                 " VALUES (%" PRIu64 ",'%s',%u,%u,%u,%u,%.2f,%.2f,%.2f,%u,%u,%u,%u,%" PRIu64 ")"
+                 " ON DUPLICATE KEY UPDATE name=VALUES(name),level=VALUES(level),"
+                 " vocation=VALUES(vocation),sex=VALUES(sex),map_id=VALUES(map_id),"
+                 " pos_x=VALUES(pos_x),pos_y=VALUES(pos_y),pos_z=VALUES(pos_z),"
+                 " hp=VALUES(hp),max_hp=VALUES(max_hp),mp=VALUES(mp),"
+                 " max_mp=VALUES(max_mp),gold=VALUES(gold)",
+                 rid, base.name.c_str(), base.level, base.vocation, base.sex, base.mapID,
+                 base.posX, base.posY, base.posZ,
+                 base.hp, base.maxHP, base.mp, base.maxMP, base.gold);
         if (mysql_query(m_db, sql) != 0)
             LOG_ERR("SaveUser SQL err: %s", mysql_error(m_db));
         else
@@ -384,9 +397,11 @@ private:
      */
     void AutoSaveAll()
     {
-        for (auto& [rid, role] : m_users)
+        m_userManager.forEach([this](UserID rid, RecordUser& /*user*/)
+        {
             SaveUserToDB(rid);
-        LOG_INFO("AutoSave: %zu users saved.", m_users.size());
+        });
+        LOG_INFO("AutoSave: %zu users saved.", m_userManager.getUserCount());
     }
 
     TcpServer  m_server;          /**< 内部连接监听（接收来自 Gateway/Super/Scene Server 的请求） */
@@ -395,6 +410,5 @@ private:
     MYSQL*     m_db;              /**< MySQL 连接句柄（全局共享，非线程安全） */
     uint32_t   m_hbSeq = 0;       /**< 心跳序列号（每次自增，SuperServer 用于检测丢包） */
 
-    /** @brief 用户数据缓存：userID → RecordUser */
-    std::unordered_map<UserID, std::shared_ptr<RecordUser>> m_users;
+    RecordUserManager m_userManager;
 };

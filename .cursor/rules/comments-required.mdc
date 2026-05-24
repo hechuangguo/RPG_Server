@@ -1,0 +1,53 @@
+---
+description: 新增代码、文件、配置必须附带必要注释
+alwaysApply: true
+---
+
+# 注释规范（新增内容必遵）
+
+本仓库 **C++ / Lua / Shell / XML / CMake** 的新增与修改，必须附带与现有代码风格一致的注释。
+
+## 必须注释的内容
+
+| 类型 | 要求 |
+|------|------|
+| **新文件** | 文件头：`@file`、`@brief`；复杂模块补充职责、依赖、用法 |
+| **新类/结构体** | `@brief` + 关键字段用 `/**< ... */` |
+| **新 public 函数** | `@brief`；非显然参数/返回值用 `@param` / `@return` |
+| **新协议/消息 ID** | 说明方向、触发时机、payload 布局 |
+| **新配置项** | XML/脚本中注释含义、默认值、影响范围 |
+| **新脚本参数** | 用法、参数含义、示例命令 |
+
+## 注释原则
+
+- **解释 why / 约束**，不要复述代码字面意思（如 `i++ // i 加 1`）
+- **与现有风格一致**：参考 `SessionServer.h`、`InternalMsg.h`、`build.sh` 的 Doxygen / `#` 注释
+- **注释块内禁止 `*/` 子串**（会提前结束块注释，见 `InternalMsg.h` 教训）
+- 自解释的一行 getter/setter 可省略；业务逻辑、协议边界、定时/并发语义必须写
+
+## 示例
+
+```cpp
+/**
+ * @brief 处理 RecordServer 加载用户响应
+ * @note  code=0 时 data 后紧跟 UserBaseWire
+ */
+void OnLoadUserRsp(ConnID /*connID*/, const char* data, uint16_t len);
+```
+
+```xml
+<!-- 实时日志路径；归档为 {name}.log.YYYYMMDD-HH -->
+<AOIServer>logs/aoi.log</AOIServer>
+```
+
+```bash
+# rebuild：先 clean 再全量编译（CMake 缓存或目录变更时使用）
+./build rebuild
+```
+
+## 检查清单（提交前）
+
+- [ ] 新文件有文件头注释
+- [ ] 新对外 API / 协议 / 配置项有说明
+- [ ] 非显然分支、魔法数、时序依赖有注释
+- [ ] 未用注释掩盖应修复的命名或结构设计问题

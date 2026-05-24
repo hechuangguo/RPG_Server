@@ -24,6 +24,19 @@ Client → GatewayServer → SuperServer → RecordServer → SceneServer → AO
 
 完整架构说明见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
+## 开发约定
+
+| 规范 | 说明 |
+|------|------|
+| **注释** | 新增代码、文件、配置必须附带必要注释 → [comments-required.mdc](.cursor/rules/comments-required.mdc) |
+| **类名** | 大驼峰 PascalCase，如 `UserManager` |
+| **变量 / 函数** | 小驼峰 camelCase，如 `userCount`、`getUserName()` |
+| **宏 / 常量** | 全大写 + 下划线，如 `MAX_NUM` |
+
+命名细则 → [naming-conventions.mdc](.cursor/rules/naming-conventions.mdc)
+
+存量代码可逐步对齐，**新加内容必须遵守上述规范**。
+
 ## 目录结构
 
 ```
@@ -36,6 +49,7 @@ RPG/
 ├── config/        # config.xml、server_info.xml
 ├── database/      # init.sql
 ├── script/        # Lua 游戏脚本
+├── build          # 编译入口（等价 ./build.sh）
 ├── build.sh       # 编译脚本
 ├── autoinit.sh    # 环境初始化
 ├── RunServer.sh   # 启动所有服务器
@@ -61,7 +75,7 @@ sudo dnf install -y gcc-c++ cmake make curl tar openssl-devel zlib-devel
 
 ```bash
 ./autoinit.sh          # 下载编译 3Party + cmake configure
-./build.sh
+./build                # 或 ./build.sh
 ```
 
 仅重建第三方库：`./3Party/download_and_build.sh`（加 `--force` 强制重编）

@@ -228,7 +228,7 @@ struct Msg_REC_LoadUserRsp
  * - 反序列化：从接收缓冲区 memcpy 到此结构体即可恢复，建议先校验缓冲区长度
  *   不小于 sizeof(UserBaseWire) 以防止越界读取。
  * - 字符串字段（如 name）使用定长 char 数组，空终止字符串，不足部分补零。
- * - 数值字段使用网络字节序（大端）传输，发送/接收时需调用 hton*/ntoh* 转换。
+ * - 数值字段使用网络字节序（大端）传输，发送/接收时需调用 hton 与 ntoh 系列函数转换。
  * - 若需扩展字段，应在结构体末尾追加并同步更新版本号，确保向后兼容。
  */
 struct UserBaseWire
@@ -247,6 +247,15 @@ struct UserBaseWire
     uint32_t mp       = 100;              /**< 当前魔法值 */
     uint32_t maxMP    = 100;              /**< 最大魔法值 */
     uint64_t gold     = 0;                /**< 金币数量 */
+};
+
+/**
+ * @brief SceneServer → RecordServer: 保存 charbase（含完整在线属性）
+ */
+struct Msg_REC_SaveUserReq
+{
+    uint64_t     userID;
+    UserBaseWire wire;
 };
 
 /**
@@ -318,10 +327,11 @@ struct Msg_GW_ClientMsg
  */
 struct Msg_AOI_Move
 {
-    uint64_t entityID;  /**< 实体 ID（玩家/NPC/怪物） */
-    uint32_t mapID;     /**< 所在地图 ID */
-    float    x, y, z;   /**< 坐标 */
-    float    dir;       /**< 朝向 */
+    uint64_t entityID;   /**< 实体 ID（玩家/NPC/怪物） */
+    uint32_t mapID;      /**< 所在地图 ID */
+    float    x, y, z;    /**< 坐标 */
+    float    dir;        /**< 朝向 */
+    uint8_t  entityType; /**< 0=玩家 1=NPC 2=怪物（见 ClientMsg SpawnEntity） */
 };
 
 #pragma pack(pop)

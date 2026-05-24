@@ -8,6 +8,8 @@
 require("scene.event_system")
 require("scene.npc_mgr")
 require("scene.skill_mgr")
+require("scene.entry_api")
+require("scene.npc_dialog")
 
 print("[Lua] scene/init.lua loaded")
 

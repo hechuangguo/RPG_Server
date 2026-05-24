@@ -21,36 +21,16 @@
 #pragma once
 #include "../sdk/net/TcpServer.h"
 #include "../sdk/net/TcpClient.h"
-#include "../sdk/util/UserBase.h"
 #include "../sdk/util/MsgDispatcher.h"
 #include "../sdk/util/ConfigLoader.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
 #include "../common/ClientMsg.h"
 #include "../protocal/InternalMsg.h"
-#include <unordered_map>
+#include "GatewayUser.h"
+#include "GatewayUserManager.h"
 #include <string>
-
-/**
- * @brief 客户端连接状态
- */
-enum class ClientState : uint8_t
-{
-    CONNECTED  = 0,  /**< TCP 已建立，尚未登录验证 */
-    LOGGING    = 1,  /**< 登录验证中（等待 RecordServer 响应） */
-    LOGGED_IN  = 2,  /**< 已登录，可以收发游戏消息 */
-};
-
-/**
- * @brief GatewayServer 维护的客户端会话信息
- */
-struct ClientSession
-{
-    ConnID      connID;          /**< clientServer 分配的网络连接 ID */
-    ClientState state = ClientState::CONNECTED;  /**< 当前状态 */
-    UserID      userID = INVALID_USER_ID;        /**< 登录成功后的用户 ID */
-    uint64_t    lastHeartbeat = 0;               /**< 最后一次心跳时间 */
-};
+#include <vector>
 
 /**
  * @brief GatewayServer 核心类
@@ -128,10 +108,7 @@ public:
     {
         if (id < 100000)
         {
-            ClientSession s;
-            s.connID = id;
-            s.lastHeartbeat = TimerMgr::NowMs();
-            m_clients[id] = s;
+            m_userManager.addUser(id);
             LOG_INFO("Client connected: connID=%u", id);
         }
         else
@@ -147,15 +124,16 @@ public:
      */
     void OnDisconnect(ConnID id) override
     {
-        auto it = m_clients.find(id);
-        if (it != m_clients.end())
+        auto user = m_userManager.findUser(id);
+        if (user)
         {
-            if (it->second.userID != INVALID_USER_ID)
+            if (user->GetID() != INVALID_USER_ID)
             {
+                UserID uid = user->GetID();
                 m_sceneClient.SendMsg((uint16_t)InternalMsgID::SCE_USER_LEAVE,
-                    reinterpret_cast<const char*>(&it->second.userID), sizeof(UserID));
+                    reinterpret_cast<const char*>(&uid), sizeof(UserID));
             }
-            m_clients.erase(it);
+            m_userManager.removeUser(id);
         }
     }
 
@@ -168,8 +146,7 @@ public:
      */
     void OnMessage(ConnID id, uint16_t msgID, const char* data, uint16_t len) override
     {
-        auto cit = m_clients.find(id);
-        if (cit != m_clients.end())
+        if (m_userManager.findUser(id))
         {
             HandleClientMsg(id, msgID, data, len);
         }
@@ -212,21 +189,22 @@ private:
      */
     void HandleClientMsg(ConnID connID, uint16_t msgID, const char* data, uint16_t len)
     {
-        auto& s = m_clients[connID];
-        s.lastHeartbeat = TimerMgr::NowMs();
+        auto user = m_userManager.findUser(connID);
+        if (!user) return;
+        user->touchHeartbeat();
 
         using CID = ClientMsgID;
         switch ((CID)msgID)
         {
         case CID::C2S_LOGIN_REQ:
-            if (s.state == ClientState::CONNECTED)
+            if (user->getClientState() == ClientState::CONNECTED)
                 OnClientLogin(connID, data, len);
             break;
         case CID::C2S_HEARTBEAT:
             OnClientHeartbeat(connID, data, len);
             break;
         default:
-            if (s.state == ClientState::LOGGED_IN)
+            if (user->getClientState() == ClientState::LOGGED_IN)
                 ForwardToScene(connID, msgID, data, len);
             break;
         }
@@ -244,7 +222,7 @@ private:
     {
         if (len < sizeof(Msg_C2S_LoginReq)) return;
         const auto* req = reinterpret_cast<const Msg_C2S_LoginReq*>(data);
-        m_clients[connID].state = ClientState::LOGGING;
+        m_userManager.getUser(connID).setClientState(ClientState::LOGGING);
 
         Msg_REC_LoginVerifyReq verifyReq{};
         strncpy(verifyReq.account,  req->account,  sizeof(verifyReq.account));
@@ -283,22 +261,22 @@ private:
         if (len < sizeof(Msg_REC_LoginVerifyRsp)) return;
         const auto* rsp = reinterpret_cast<const Msg_REC_LoginVerifyRsp*>(data);
         ConnID clientConn = rsp->gatewayConnID;
-        auto it = m_clients.find(clientConn);
-        if (it == m_clients.end()) return;
+        auto user = m_userManager.findUser(clientConn);
+        if (!user) return;
 
         if (rsp->code != 0)
         {
             Msg_S2C_LoginRsp loginRsp{};
             loginRsp.code = rsp->code;
             strncpy(loginRsp.msg, "Account or password error", sizeof(loginRsp.msg));
-            it->second.state = ClientState::CONNECTED;
+            user->setClientState(ClientState::CONNECTED);
             m_clientServer.SendMsg(clientConn, (uint16_t)ClientMsgID::S2C_LOGIN_RSP,
                                    reinterpret_cast<char*>(&loginRsp), sizeof(loginRsp));
             LOG_WARN("LoginFail: connID=%u code=%d", clientConn, rsp->code);
             return;
         }
 
-        it->second.userID = rsp->userID;
+        user->setUserId(rsp->userID);
         m_superClient.SendMsg((uint16_t)InternalMsgID::GW_USER_LOGIN_REQ,
                               data, len);
         LOG_INFO("LoginVerifyOK, forwarding to Super: connID=%u userID=%llu",
@@ -317,15 +295,15 @@ private:
         if (len < sizeof(Msg_GW_UserLoginRsp)) return;
         const auto* rsp = reinterpret_cast<const Msg_GW_UserLoginRsp*>(data);
         ConnID clientConn = rsp->gatewayClientConnID;
-        auto it = m_clients.find(clientConn);
-        if (it == m_clients.end()) return;
+        auto user = m_userManager.findUser(clientConn);
+        if (!user) return;
 
         Msg_S2C_LoginRsp loginRsp{};
         loginRsp.code   = rsp->code;
         loginRsp.userID = rsp->userID;
         if (rsp->code == 0)
         {
-            it->second.state = ClientState::LOGGED_IN;
+            user->setClientState(ClientState::LOGGED_IN);
             strncpy(loginRsp.msg, "Login OK", sizeof(loginRsp.msg));
 
             Msg_S2C_EnterGame enter{};
@@ -350,7 +328,7 @@ private:
         }
         else
         {
-            it->second.state = ClientState::CONNECTED;
+            user->setClientState(ClientState::CONNECTED);
             strncpy(loginRsp.msg, "Enter game failed", sizeof(loginRsp.msg));
             m_clientServer.SendMsg(clientConn, (uint16_t)ClientMsgID::S2C_LOGIN_RSP,
                                    reinterpret_cast<char*>(&loginRsp), sizeof(loginRsp));
@@ -387,7 +365,7 @@ private:
         uint32_t clientConnID = *reinterpret_cast<const uint32_t*>(data);
         LOG_INFO("KickClient: connID=%u", clientConnID);
         m_clientServer.Kick(clientConnID);
-        m_clients.erase(clientConnID);
+        m_userManager.removeUser(clientConnID);
     }
 
     /**
@@ -418,14 +396,11 @@ private:
     void CheckTimeout()
     {
         uint64_t now = TimerMgr::NowMs();
-        std::vector<ConnID> expired;
-        for (auto& [cid, s] : m_clients)
-            if (now - s.lastHeartbeat > 60000) expired.push_back(cid);
-        for (auto cid : expired)
+        for (ConnID cid : m_userManager.collectExpiredConnIds(now, 60000))
         {
             LOG_WARN("ClientTimeout: connID=%u", cid);
             m_clientServer.Kick(cid);
-            m_clients.erase(cid);
+            m_userManager.removeUser(cid);
         }
     }
 
@@ -480,14 +455,5 @@ private:
     uint16_t  m_innerPort  = 19005;  /**< 内网端口：内部服务器（SceneServer 等）通过内网连接此端口发送下行消息 */
 
     // --- 客户端管理 ---
-    /**
-     * @brief 客户端会话表
-     *
-     * key=connID, value=ClientSession。维护所有已建立 TCP 连接的客户端状态，
-     * 包括连接状态、用户 ID 和最后心跳时间，用于：
-     * - 消息路由：根据 connID 找到对应的 ClientSession，完成状态判定和消息转发
-     * - 超时检测：定时器检查 lastHeartbeat，超过阈值则踢除
-     * - 下线通知：客户端断开时获取 userID 通知 SceneServer
-     */
-    std::unordered_map<ConnID, ClientSession> m_clients;
+    GatewayUserManager m_userManager;
 };

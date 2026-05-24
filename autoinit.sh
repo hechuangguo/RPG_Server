@@ -33,7 +33,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 THIRD_DIR="$SCRIPT_DIR/3Party"   # 第三方库根目录（包含 lua/tinyxml2/mysql 子目录）
-BUILD_DIR="$SCRIPT_DIR/build"   # CMake 构建输出目录
+BUILD_DIR="$SCRIPT_DIR/.build"   # CMake 构建输出目录
 LOG_DIR="$SCRIPT_DIR/logs"      # 服务器运行日志目录
 RUN_DIR="$SCRIPT_DIR/run"       # PID 文件目录（进程管理）
 
@@ -53,7 +53,7 @@ step "===== RPG Server AutoInit ====="
 #  第1步：创建必要目录
 #  - logs/：运行期日志输出
 #  - run/：PID 文件存放
-#  - build/：CMake 构建产物
+#  - .build/：CMake 构建产物
 #  - 3Party/：第三方库根目录（若不存在）
 # -------------------------------------------------------
 step "Creating directories..."
@@ -124,7 +124,7 @@ step "Protocol files OK (using header-only structs)."
 chmod +x "$SCRIPT_DIR/RunServer.sh"
 chmod +x "$SCRIPT_DIR/StopServer.sh"
 chmod +x "$SCRIPT_DIR/log.sh"
-chmod +x "$SCRIPT_DIR/build.sh" 2>/dev/null || true  # build.sh 可能尚未创建，忽略错误
+chmod +x build build.sh 2>/dev/null || true
 
 # -------------------------------------------------------
 #  第6步：CMake 配置

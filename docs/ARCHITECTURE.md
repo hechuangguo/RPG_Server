@@ -10,7 +10,7 @@
 | 网络模型 | 单线程 epoll ET + TCP 长连接 |
 | 持久化 | MySQL（RecordServer 直连） |
 | 配置 | XML（tinyxml2 解析） |
-| 构建 | CMake 3.16+，输出至 `build/bin/` |
+| 构建 | CMake 3.16+，输出至 `.build/bin/` |
 
 **设计目标**：按职责拆分进程，SuperServer 统一注册与路由，SceneServer 可水平扩展，GatewayServer 可负载均衡，GlobalServer / ZoneServer 按需启用。
 

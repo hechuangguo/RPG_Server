@@ -11,7 +11,7 @@ set -e
 
 # 脚本所在目录作为项目根目录，用于推导其他路径
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BIN_DIR="$SCRIPT_DIR/build/bin"         # 编译后的二进制文件目录
+BIN_DIR="$SCRIPT_DIR/.build/bin"         # 编译后的二进制文件目录
 LOG_DIR="$SCRIPT_DIR/logs"              # 日志输出目录（按服务器名分别保存）
 CONFIG="$SCRIPT_DIR/config/config.xml"   # 主配置文件（各服务器通用）
 SCENE_INFO="$SCRIPT_DIR/config/server_info.xml"  # 场景信息配置文件

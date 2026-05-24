@@ -1,1 +1,0 @@
-/usr/bin/c++ -O2 -g -DNDEBUG CMakeFiles/RecordServer.dir/RecordServer/main.cpp.o -o bin/RecordServer  -lpthread /home/hechuangguo/RPG/3Party/lua/lib/liblua.a /home/hechuangguo/RPG/3Party/tinyxml2/lib/libtinyxml2.a /home/hechuangguo/RPG/3Party/mysql/lib/libmariadbclient.a /usr/lib64/libssl.so /usr/lib64/libcrypto.so /usr/lib64/libz.so -ldl

@@ -16,6 +16,7 @@
  * | 0x0500 ~ 0x05FF    | 聊天          |
  * | 0x0600 ~ 0x06FF    | 社交（好友/队伍/公会） |
  * | 0x0700 ~ 0x07FF    | 任务          |
+ * | 0x0800 ~ 0x08FF    | NPC 交互      |
  * | 0x0F00 ~ 0x0FFF    | 系统/心跳      |
  *
  * 命名约定：
@@ -102,6 +103,12 @@ enum class ClientMsgID : uint16_t
     S2C_QUEST_INFO       = 0x0702,  /**< S→C: 任务信息同步 */
     C2S_QUEST_SUBMIT_REQ = 0x0703,  /**< C→S: 提交任务 */
     S2C_QUEST_RESULT     = 0x0704,  /**< S→C: 任务提交结果 */
+
+    // ============================================================
+    //  NPC 交互 (0x0801 ~ 0x0802)
+    // ============================================================
+    C2S_NPC_TALK_REQ     = 0x0801,  /**< C→S: 与 NPC 对话（点击 NPC 或选择对话项） */
+    S2C_NPC_TALK_RSP     = 0x0802,  /**< S→C: 对话内容与选项 */
 
     // ============================================================
     //  系统 (0x0F01 ~ 0x0F04)
@@ -280,6 +287,39 @@ struct Msg_S2C_SpawnEntity
 struct Msg_S2C_DespawnEntity
 {
     uint64_t entityID;
+};
+
+/** @brief 单条对话选项（与 guide.lua options 字段对应） */
+struct NpcTalkOptionWire
+{
+    char    text[64];    /**< 选项展示文本 */
+    int32_t nextStep;    /**< 下一对话节点 ID，-1 表示结束 */
+};
+
+/**
+ * @brief C→S: 与 NPC 对话
+ *
+ * dialogStep：对话树节点 ID，首次点击 NPC 传 0。
+ */
+struct Msg_C2S_NpcTalkReq
+{
+    uint64_t npcId;       /**< 目标 NPC entryId */
+    int32_t  dialogStep;  /**< 当前对话节点（0=根节点） */
+};
+
+/**
+ * @brief S→C: NPC 对话响应
+ *
+ * code=0 时 text / options 有效；失败时仅 code 与 npcId 有意义。
+ */
+struct Msg_S2C_NpcTalkRsp
+{
+    int32_t  code;        /**< 0=成功，非 0=失败 */
+    uint64_t npcId;
+    int32_t  dialogStep;  /**< 当前展示的节点 ID */
+    char     text[256];   /**< 对话正文 */
+    uint8_t  optionCount; /**< 选项数量（最多 4） */
+    NpcTalkOptionWire options[4];
 };
 
 #pragma pack(pop)

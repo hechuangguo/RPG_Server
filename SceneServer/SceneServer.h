@@ -14,9 +14,10 @@
  * - 支持多进程负载均衡（多 SceneServer 承载不同地图）
  *
  * ## Lua 集成
- * SceneServer 启动时加载 script/scene/init.lua，注册 C++ 函数到 Lua：
+ * LuaManager 负责虚拟机与 C++→Lua 调用；ScriptFun 注册 Lua→C++ 接口。
  * - log_info(msg)     : 输出日志
  * - send_to_user(userID, msgID, data) : 向客户端发送消息
+ * - SceneEntry userdata : entry:getEntryId() 等
  *
  * Lua 回调约定：
  * - OnUserEnter(userID, mapID) : 用户进入场景
@@ -29,7 +30,6 @@
 #pragma once
 #include "../sdk/net/TcpServer.h"
 #include "../sdk/net/TcpClient.h"
-#include "../sdk/util/UserBase.h"
 #include "../sdk/util/MsgDispatcher.h"
 #include "../sdk/util/SceneInfoLoader.h"
 #include "../sdk/util/ConfigLoader.h"
@@ -37,31 +37,15 @@
 #include "../sdk/timer/TimerMgr.h"
 #include "../protocal/InternalMsg.h"
 #include "../common/ClientMsg.h"
+#include "../sdk/util/UserWireUtil.h"
+#include "SceneUser.h"
+#include "SceneUserManager.h"
+#include "SceneNpcManager.h"
+#include "LuaManager.h"
 #include <unordered_map>
 #include <vector>
 #include <string>
 #include <memory>
-
-// Lua C API
-extern "C"
-{
-    #include "lua.h"
-    #include "lualib.h"
-    #include "lauxlib.h"
-}
-
-/**
- * @brief SceneServer 中的在线用户对象
- *
- * 继承 IUser，额外持有与 GatewayServer 关联的连接信息。
- */
-class SceneUser : public IUser
-{
-public:
-    explicit SceneUser(const UserBase& base) : IUser(base) {}
-    ConnID   gatewayConnID     = INVALID_CONN_ID;  /**< 对应 GatewayServer 的内部连接 */
-    uint32_t gatewayClientConn = 0;                /**< 在 GatewayServer 的客户端连接 ID */
-};
 
 /**
  * @brief 地图实例（运行在 SceneServer 进程中）
@@ -93,10 +77,25 @@ public:
         , m_gatewayClient(this)
         , m_globalClient(this)
         , m_zoneClient(this)
-        , m_lua(nullptr)
         , m_sceneID(0)
     {}
-    ~SceneServer() { if (m_lua) lua_close(m_lua); }
+    ~SceneServer() = default;
+
+    /** @brief 供 ScriptFun 等 Lua 绑定查询在线用户 */
+    std::shared_ptr<SceneUser> findUser(UserID userId) const
+    {
+        return m_userManager.findUser(userId);
+    }
+
+    /** @brief 供 ScriptFun 向客户端发消息 */
+    void sendToClient(uint32_t clientConnId, uint16_t msgId,
+                      const char* data, uint16_t len)
+    {
+        SendToClient(clientConnId, msgId, data, len);
+    }
+
+    LuaManager& getLuaManager() { return m_luaMgr; }
+    const LuaManager& getLuaManager() const { return m_luaMgr; }
 
     /**
      * @brief 初始化 SceneServer
@@ -133,7 +132,10 @@ public:
             LOG_INFO("Map loaded: id=%u name=%s", mc.mapID, mc.mapName.c_str());
         }
 
-        InitLua();      /**< 初始化 Lua 虚拟机 */
+        initMapNpcs();
+
+        if (!m_luaMgr.init())
+            LOG_WARN("SceneServer Lua init failed");
         RegisterHandlers();
 
         /** @brief 定时向 SuperServer 发起注册，确保服务发现 */
@@ -164,6 +166,12 @@ public:
         }
     }
 
+    /** @brief NPC 进入 AOI（创建/复活时由 SceneNpc 调用） */
+    void notifyNpcEnterAoi(const SceneNpc& npc) { sendAoiEnter(npc, 1); }
+
+    /** @brief NPC 离开 AOI（死亡/销毁时由 SceneNpc 调用） */
+    void notifyNpcLeaveAoi(EntryID npcId) { sendAoiLeave(npcId); }
+
     void OnConnect(ConnID /*id*/)    override {}
     void OnDisconnect(ConnID id) override { LOG_WARN("SceneServer conn lost=%u", id); }
     void OnMessage(ConnID id, uint16_t msgID, const char* data, uint16_t len) override
@@ -172,51 +180,6 @@ public:
     }
 
 private:
-    /**
-     * @brief 初始化 Lua 虚拟机
-     *
-     * 打开标准库 → 注册 C++ 函数 → 加载 scene/init.lua。
-     */
-    void InitLua()
-    {
-        m_lua = luaL_newstate();
-        luaL_openlibs(m_lua);
-        lua_register(m_lua, "log_info",     LuaLogInfo);
-        lua_register(m_lua, "send_to_user", LuaSendToUser);
-        luaL_dostring(m_lua, "package.path = package.path .. ';../script/?.lua'");
-        if (luaL_dofile(m_lua, "../script/scene/init.lua") != LUA_OK)
-            LOG_WARN("Lua init.lua load failed: %s", lua_tostring(m_lua, -1));
-    }
-
-    /** @brief Lua → C++: log_info(msg) —— 输出日志 */
-    static int LuaLogInfo(lua_State* L)
-    {
-        const char* msg = luaL_checkstring(L, 1);
-        LOG_INFO("[Lua] %s", msg);
-        return 0;
-    }
-
-    /**
-     * @brief Lua → C++: send_to_user(userID, msgID, data)
-     *
-     * Lua 脚本通过此函数向指定用户发送消息。
-     * 根据 userID 查找在线用户，若找到且拥有有效的 Gateway 连接，
-     * 则通过 SendToClient 将消息转发至客户端。
-     */
-    static int LuaSendToUser(lua_State* L)
-    {
-        UserID userID = (UserID)luaL_checkinteger(L, 1);
-        uint16_t msgID = (uint16_t)luaL_checkinteger(L, 2);
-        size_t len = 0;
-        const char* data = luaL_optlstring(L, 3, "", &len);
-        auto* self = SceneServer::Instance();
-        if (!self) return 0;
-        auto user = self->FindUser(userID);
-        if (!user || user->gatewayClientConn == 0) return 0;
-        self->SendToClient(user->gatewayClientConn, msgID, data, (uint16_t)len);
-        return 0;
-    }
-
     void RegisterHandlers()
     {
         auto& d = MsgDispatcher::Instance();
@@ -271,18 +234,21 @@ private:
         base.maxMP    = req->maxMP;
         base.gold     = req->gold;
 
-        auto user = std::make_shared<SceneUser>(base);
-        user->gatewayClientConn = req->gatewayClientConnID;
-        user->SetState(UserState::ONLINE);
-        m_users[req->userID] = user;
+        auto user = SceneUser::create(base);
+        user->init();
+        user->load();
+        user->setGatewayClientConn(req->gatewayClientConnID);
+        user->onOnline();
+        m_userManager.addUser(req->userID, user);
         it->second.players.push_back(req->userID);
 
         Msg_AOI_Move aoi{};
-        aoi.entityID = req->userID;
-        aoi.mapID    = mapID;
+        aoi.entityID   = req->userID;
+        aoi.mapID      = mapID;
         aoi.x = req->x;
         aoi.y = req->y;
         aoi.z = req->z;
+        aoi.entityType = 0;
         m_aoiClient.SendMsg((uint16_t)InternalMsgID::AOI_ENTER_REQ,
                              reinterpret_cast<char*>(&aoi), sizeof(aoi));
 
@@ -306,37 +272,36 @@ private:
     {
         const auto& base = entering.Base();
         Msg_S2C_SpawnEntity spawn{};
-        spawn.entityID   = base.userID;
-        spawn.level      = base.level;
-        spawn.x          = base.posX;
-        spawn.y          = base.posY;
-        spawn.z          = base.posZ;
-        spawn.dir        = 0.f;
-        spawn.entityType = 0;
-        strncpy(spawn.name, base.name.c_str(), sizeof(spawn.name) - 1);
+        fillSpawnFromEntry(entering, 0, spawn);
 
-        for (auto& [rid, user] : m_users)
+        m_userManager.forEach([&](UserID rid, const std::shared_ptr<SceneUser>& user)
         {
-            if (rid == base.userID) continue;
-            if (user->Base().mapID != base.mapID) continue;
-            if (user->gatewayClientConn == 0) continue;
+            if (rid == base.userID) return;
+            if (user->Base().mapID != base.mapID) return;
+            if (user->getGatewayClientConn() == 0) return;
 
-            SendToClient(user->gatewayClientConn,
+            SendToClient(user->getGatewayClientConn(),
                          (uint16_t)ClientMsgID::S2C_SPAWN_ENTITY,
                          reinterpret_cast<char*>(&spawn), sizeof(spawn));
 
             Msg_S2C_SpawnEntity other{};
-            other.entityID   = user->Base().userID;
-            other.level      = user->Base().level;
-            other.x          = user->Base().posX;
-            other.y          = user->Base().posY;
-            other.z          = user->Base().posZ;
-            other.entityType = 0;
-            strncpy(other.name, user->Base().name.c_str(), sizeof(other.name) - 1);
-            SendToClient(entering.gatewayClientConn,
+            fillSpawnFromEntry(*user, 0, other);
+            SendToClient(entering.getGatewayClientConn(),
                          (uint16_t)ClientMsgID::S2C_SPAWN_ENTITY,
                          reinterpret_cast<char*>(&other), sizeof(other));
-        }
+        });
+
+        m_npcManager.forEach([&](EntryID /*npcId*/, const std::shared_ptr<SceneNpc>& npc)
+        {
+            if (!npc || npc->getMapId() != base.mapID) return;
+            if (!npc->isAlive()) return;
+
+            Msg_S2C_SpawnEntity npcSpawn{};
+            fillSpawnFromEntry(*npc, 1, npcSpawn);
+            SendToClient(entering.getGatewayClientConn(),
+                         (uint16_t)ClientMsgID::S2C_SPAWN_ENTITY,
+                         reinterpret_cast<char*>(&npcSpawn), sizeof(npcSpawn));
+        });
     }
 
     /** @brief 用户离开场景（通知 AOI → 保存到 RecordServer → 调用 Lua → 清理内存） */
@@ -344,16 +309,31 @@ private:
     {
         if (len < sizeof(UserID)) return;
         UserID uid = *reinterpret_cast<const UserID*>(data);
-        auto it = m_users.find(uid);
-        if (it == m_users.end()) return;
+        auto user = m_userManager.findUser(uid);
+        if (!user) return;
+
+        user->onOffline();
+        if (user->needSave())
+        {
+            sendCharBaseToRecord(*user);
+            user->save();
+        }
 
         m_aoiClient.SendMsg((uint16_t)InternalMsgID::AOI_LEAVE_REQ,
                              reinterpret_cast<const char*>(&uid), sizeof(uid));
-        m_recordClient.SendMsg((uint16_t)InternalMsgID::REC_SAVE_USER_REQ,
-                                reinterpret_cast<const char*>(&uid), sizeof(uid));
         CallLuaOnLeave(uid);
-        m_users.erase(it);
+        m_userManager.removeUser(uid);
         LOG_INFO("UserLeave: userID=%llu", uid);
+    }
+
+    /** @brief 将 Scene 在线数据转发 RecordServer 写入 t_charbase */
+    void sendCharBaseToRecord(const SceneUser& user)
+    {
+        Msg_REC_SaveUserReq req{};
+        req.userID = user.GetID();
+        req.wire   = toUserBaseWire(user.Base());
+        m_recordClient.SendMsg((uint16_t)InternalMsgID::REC_SAVE_USER_REQ,
+                               reinterpret_cast<char*>(&req), sizeof(req));
     }
 
     /** @brief 处理 GatewayServer 转发来的客户端消息 */
@@ -381,12 +361,19 @@ private:
         if (len == sizeof(Msg_AOI_Move))
         {
             const auto* move = reinterpret_cast<const Msg_AOI_Move*>(data);
-            auto it = m_users.find(move->entityID);
-            if (it != m_users.end())
+            auto user = m_userManager.findUser(move->entityID);
+            if (user)
             {
-                it->second->Base().posX = move->x;
-                it->second->Base().posY = move->y;
-                it->second->Base().posZ = move->z;
+                user->Base().posX = move->x;
+                user->Base().posY = move->y;
+                user->Base().posZ = move->z;
+                user->markDirty();
+            }
+            else
+            {
+                auto npc = m_npcManager.findNpc(move->entityID);
+                if (npc)
+                    npc->setPos(move->x, move->y, move->z);
             }
 
             Msg_S2C_MoveNotify notify{};
@@ -407,22 +394,26 @@ private:
         memcpy(&entityID, data, sizeof(uint64_t));
         bool enter = data[sizeof(uint64_t)] != 0;
 
-        auto it = m_users.find(entityID);
-        if (it == m_users.end()) return;
-        const auto& user = it->second;
-        if (user->gatewayClientConn == 0) return;
+        auto user = m_userManager.findUser(entityID);
+        auto npc  = m_npcManager.findNpc(entityID);
+
+        uint32_t mapId = 0;
+        if (user)
+            mapId = user->Base().mapID;
+        else if (npc)
+            mapId = npc->getMapId();
+        else
+            return;
 
         if (enter)
         {
             Msg_S2C_SpawnEntity spawn{};
-            spawn.entityID   = entityID;
-            spawn.level      = user->Base().level;
-            spawn.x          = user->Base().posX;
-            spawn.y          = user->Base().posY;
-            spawn.z          = user->Base().posZ;
-            spawn.entityType = 0;
-            strncpy(spawn.name, user->Base().name.c_str(), sizeof(spawn.name) - 1);
-            BroadcastToMap(user->Base().mapID, entityID,
+            if (user)
+                fillSpawnFromEntry(*user, 0, spawn);
+            else
+                fillSpawnFromEntry(*npc, 1, spawn);
+
+            BroadcastToMap(mapId, entityID,
                            (uint16_t)ClientMsgID::S2C_SPAWN_ENTITY,
                            reinterpret_cast<char*>(&spawn), sizeof(spawn));
         }
@@ -430,7 +421,7 @@ private:
         {
             Msg_S2C_DespawnEntity despawn{};
             despawn.entityID = entityID;
-            BroadcastToMap(user->Base().mapID, entityID,
+            BroadcastToMap(mapId, entityID,
                            (uint16_t)ClientMsgID::S2C_DESPAWN_ENTITY,
                            reinterpret_cast<char*>(&despawn), sizeof(despawn));
         }
@@ -452,6 +443,7 @@ private:
         case CID::C2S_MOVE_REQ:   OnMoveReq(clientConnID, data, len); break;
         case CID::C2S_CHAT_REQ:   OnChatReq(clientConnID, data, len); break;
         case CID::C2S_SKILL_REQ:  OnSkillReq(clientConnID, data, len); break;
+        case CID::C2S_NPC_TALK_REQ: OnNpcTalkReq(clientConnID, data, len); break;
         case CID::C2S_HEARTBEAT:  OnHeartbeatReq(clientConnID, data, len); break;
         default:                  CallLuaMsgHandler(clientConnID, msgID, data, len);
         }
@@ -472,17 +464,18 @@ private:
     {
         if (len < sizeof(Msg_C2S_MoveReq)) return;
         const auto* req = reinterpret_cast<const Msg_C2S_MoveReq*>(data);
-        auto it = m_users.find(req->userID);
-        if (it == m_users.end()) return;
-        auto& user = it->second;
+        auto user = m_userManager.findUser(req->userID);
+        if (!user) return;
         user->Base().posX = req->x;
         user->Base().posY = req->y;
         user->Base().posZ = req->z;
+        user->markDirty();
 
         Msg_AOI_Move aoi{};
         aoi.entityID = req->userID;
         aoi.mapID    = user->Base().mapID;
         aoi.x = req->x; aoi.y = req->y; aoi.z = req->z; aoi.dir = req->dir;
+        aoi.entityType = 0;
         m_aoiClient.SendMsg((uint16_t)InternalMsgID::AOI_MOVE_REQ,
                              reinterpret_cast<char*>(&aoi), sizeof(aoi));
     }
@@ -492,7 +485,7 @@ private:
     {
         if (len < sizeof(Msg_C2S_Chat)) return;
         const auto* req = reinterpret_cast<const Msg_C2S_Chat*>(data);
-        auto user = FindUserByClientConn(clientConnID);
+        auto user = m_userManager.findUserByClientConn(clientConnID);
         if (!user) return;
 
         Msg_S2C_Chat notify{};
@@ -510,6 +503,57 @@ private:
     {
         LOG_DEBUG("SkillReq from conn=%u", clientConnID);
         CallLuaSkillHandler(clientConnID, data, len);
+    }
+
+    /**
+     * @brief 处理 NPC 对话：callScriptBool → OnNpcTalk → guide.lua 等
+     *
+     * 成功时由 Lua send_npc_talk_rsp 下发 S2C_NPC_TALK_RSP；
+     * 失败时 C++ 回错误码包。
+     */
+    void OnNpcTalkReq(uint32_t clientConnID, const char* data, uint16_t len)
+    {
+        if (len < sizeof(Msg_C2S_NpcTalkReq))
+            return;
+
+        const auto* req = reinterpret_cast<const Msg_C2S_NpcTalkReq*>(data);
+        auto user = m_userManager.findUserByClientConn(clientConnID);
+        if (!user || user->getGatewayClientConn() == 0)
+            return;
+
+        auto npc = m_npcManager.findNpc(req->npcId);
+        if (!npc || npc->isDead())
+        {
+            sendNpcTalkError(user->getGatewayClientConn(), req->npcId, 1);
+            return;
+        }
+
+        if (npc->getMapId() != user->Base().mapID)
+        {
+            sendNpcTalkError(user->getGatewayClientConn(), req->npcId, 2);
+            return;
+        }
+
+        const bool ok = m_luaMgr.callScriptBool(npc.get(), "OnNpcTalk", {
+            LuaArg::integer(static_cast<int64_t>(user->GetID())),
+            LuaArg::integer(req->dialogStep),
+            LuaArg::integer(npc->getTemplateId()),
+        });
+
+        if (!ok)
+            sendNpcTalkError(user->getGatewayClientConn(), req->npcId, 3);
+    }
+
+    /** @brief 对话失败回包（code: 1=NPC无效 2=不同地图 3=脚本无响应） */
+    void sendNpcTalkError(uint32_t clientConnID, uint64_t npcId, int32_t code)
+    {
+        Msg_S2C_NpcTalkRsp rsp{};
+        rsp.code   = code;
+        rsp.npcId  = npcId;
+        rsp.dialogStep = 0;
+        rsp.optionCount = 0;
+        SendToClient(clientConnID, (uint16_t)ClientMsgID::S2C_NPC_TALK_RSP,
+                     reinterpret_cast<char*>(&rsp), sizeof(rsp));
     }
 
     /** @brief 处理心跳请求：回包服务器时间 */
@@ -557,111 +601,134 @@ private:
     void BroadcastToMap(uint32_t mapID, UserID excludeUserID,
                         uint16_t msgID, const char* data, uint16_t len)
     {
-        for (auto& [uid, user] : m_users)
+        m_userManager.forEach([&](UserID uid, const std::shared_ptr<SceneUser>& user)
         {
-            if (mapID != 0 && user->Base().mapID != mapID) continue;
-            if (uid == excludeUserID) continue;
-            if (user->gatewayClientConn == 0) continue;
-            SendToClient(user->gatewayClientConn, msgID, data, len);
-        }
-    }
-
-    std::shared_ptr<SceneUser> FindUser(UserID userID)
-    {
-        auto it = m_users.find(userID);
-        return it != m_users.end() ? it->second : nullptr;
-    }
-
-    std::shared_ptr<SceneUser> FindUserByClientConn(uint32_t clientConnID)
-    {
-        for (auto& [uid, user] : m_users)
-            if (user->gatewayClientConn == clientConnID) return user;
-        return nullptr;
+            if (mapID != 0 && user->Base().mapID != mapID) return;
+            if (uid == excludeUserID) return;
+            if (user->getGatewayClientConn() == 0) return;
+            SendToClient(user->getGatewayClientConn(), msgID, data, len);
+        });
     }
 
     /** @brief Lua 回调：用户进入场景 */
     void CallLuaOnEnter(UserID userID, uint32_t mapID)
     {
-        if (!m_lua) return;
-        lua_getglobal(m_lua, "OnUserEnter");
-        if (lua_isfunction(m_lua, -1))
-        {
-            lua_pushinteger(m_lua, (lua_Integer)userID);
-            lua_pushinteger(m_lua, (lua_Integer)mapID);
-            lua_pcall(m_lua, 2, 0, 0);
-        }
-        else lua_pop(m_lua, 1);
+        m_luaMgr.callGlobalVoid("OnUserEnter", {
+            LuaArg::integer(static_cast<int64_t>(userID)),
+            LuaArg::integer(mapID),
+        });
     }
 
     /** @brief Lua 回调：用户离开场景 */
     void CallLuaOnLeave(UserID userID)
     {
-        if (!m_lua) return;
-        lua_getglobal(m_lua, "OnUserLeave");
-        if (lua_isfunction(m_lua, -1))
-        {
-            lua_pushinteger(m_lua, (lua_Integer)userID);
-            lua_pcall(m_lua, 1, 0, 0);
-        }
-        else lua_pop(m_lua, 1);
+        m_luaMgr.callGlobalVoid("OnUserLeave", {
+            LuaArg::integer(static_cast<int64_t>(userID)),
+        });
     }
 
     /**
      * @brief Lua 回调：通用消息处理（OnMsg_XXXX）
      *
-     * Lua 消息转发机制：
-     * 1. 根据客户端协议号 msgID 格式化 Lua 函数名 "OnMsg_XXXX"（XXXX 为十六进制）；
-     * 2. 通过 lua_getglobal 在 Lua 全局表中查找该函数；
-     * 3. 若函数存在，将 connID（整数）和 data（二进制字符串）压栈并调用；
-     * 4. 若函数不存在，弹出栈顶的 nil 值，静默忽略。
-     *
-     * 此机制允许游戏策划/脚本开发者在不修改 C++ 代码的情况下，
-     * 通过在 Lua 脚本中定义 OnMsg_XXXX 函数来扩展新的消息处理逻辑。
+     * 根据 msgID 拼全局函数名；connID + 二进制 data 作为参数。
      */
     void CallLuaMsgHandler(uint32_t connID, uint16_t msgID, const char* data, uint16_t len)
     {
-        if (!m_lua) return;
         char funcName[32];
         snprintf(funcName, sizeof(funcName), "OnMsg_%04X", msgID);
-        lua_getglobal(m_lua, funcName);
-        if (lua_isfunction(m_lua, -1))
-        {
-            lua_pushinteger(m_lua, connID);
-            lua_pushlstring(m_lua, data, len);
-            lua_pcall(m_lua, 2, 0, 0);
-        }
-        else lua_pop(m_lua, 1);
+        m_luaMgr.callGlobalVoid(funcName, {
+            LuaArg::integer(connID),
+            LuaArg::binary(data, len),
+        });
     }
 
     /** @brief Lua 回调：技能请求 */
     void CallLuaSkillHandler(uint32_t connID, const char* data, uint16_t len)
     {
-        if (!m_lua) return;
-        lua_getglobal(m_lua, "OnSkillReq");
-        if (lua_isfunction(m_lua, -1))
-        {
-            lua_pushinteger(m_lua, connID);
-            lua_pushlstring(m_lua, data, len);
-            lua_pcall(m_lua, 2, 0, 0);
-        }
-        else lua_pop(m_lua, 1);
+        m_luaMgr.callGlobalVoid("OnSkillReq", {
+            LuaArg::integer(connID),
+            LuaArg::binary(data, len),
+        });
     }
 
-    /** @brief 每帧 Tick（驱动用户 OnTick + Lua OnTick） */
+    /** @brief 每帧 Tick（驱动用户/NPC loop + Lua OnTick） */
     void OnTick()
     {
         uint64_t now = TimerMgr::NowMs();
-        for (auto& [uid, user] : m_users) user->OnTick(now);
-        if (m_lua)
+        m_userManager.forEachMutable([&](UserID /*uid*/, SceneUser& user)
         {
-            lua_getglobal(m_lua, "OnTick");
-            if (lua_isfunction(m_lua, -1))
+            user.loop(now);
+        });
+        m_npcManager.loopAll(now);
+        m_luaMgr.callGlobalVoid("OnTick", { LuaArg::integer(static_cast<int64_t>(now)) });
+    }
+
+    /** @brief 为已加载地图创建默认 NPC（示例：新手引导官） */
+    void initMapNpcs()
+    {
+        for (const auto& [mapId, mi] : m_maps)
+        {
+            (void)mi;
+            SceneNpcDef def{};
+            def.npcId       = 1000000ULL + mapId;
+            def.templateId  = 1;
+            def.name        = "新手引导官";
+            def.level       = 1;
+            def.hp          = 500;
+            def.maxHp       = 500;
+            def.vitality    = 100;
+            def.maxVitality = 100;
+            def.mapId       = mapId;
+            def.posX        = 10.f;
+            def.posY        = 0.f;
+            def.posZ        = 10.f;
+            def.respawnSec  = 30;
+
+            if (m_npcManager.createNpc(def))
             {
-                lua_pushinteger(m_lua, (lua_Integer)now);
-                lua_pcall(m_lua, 1, 0, 0);
+                LOG_INFO("NPC spawned: id=%llu map=%u", def.npcId, mapId);
+                auto npc = m_npcManager.findNpc(def.npcId);
+                if (npc)
+                    notifyNpcEnterAoi(*npc);
             }
-            else lua_pop(m_lua, 1);
         }
+    }
+
+    /** @brief 将 SceneEntry 填入客户端 SpawnEntity 协议 */
+    static void fillSpawnFromEntry(const SceneEntry& entry, uint8_t entityType,
+                                   Msg_S2C_SpawnEntity& spawn)
+    {
+        spawn.entityID   = entry.getEntryId();
+        spawn.level      = entry.getLevel();
+        spawn.x          = entry.getPosX();
+        spawn.y          = entry.getPosY();
+        spawn.z          = entry.getPosZ();
+        spawn.dir        = 0.f;
+        spawn.entityType = entityType;
+        strncpy(spawn.name, entry.getName().c_str(), sizeof(spawn.name) - 1);
+        spawn.name[sizeof(spawn.name) - 1] = '\0';
+    }
+
+    /** @brief 实体进入 AOIServer 视野管理 */
+    void sendAoiEnter(const SceneEntry& entry, uint8_t entityType)
+    {
+        Msg_AOI_Move aoi{};
+        aoi.entityID   = entry.getEntryId();
+        aoi.mapID      = entry.getMapId();
+        aoi.x          = entry.getPosX();
+        aoi.y          = entry.getPosY();
+        aoi.z          = entry.getPosZ();
+        aoi.dir        = 0.f;
+        aoi.entityType = entityType;
+        m_aoiClient.SendMsg((uint16_t)InternalMsgID::AOI_ENTER_REQ,
+                             reinterpret_cast<char*>(&aoi), sizeof(aoi));
+    }
+
+    /** @brief 实体离开 AOIServer 视野管理 */
+    void sendAoiLeave(EntryID entityId)
+    {
+        m_aoiClient.SendMsg((uint16_t)InternalMsgID::AOI_LEAVE_REQ,
+                             reinterpret_cast<const char*>(&entityId), sizeof(entityId));
     }
 
     void RegisterToSuper()
@@ -690,7 +757,7 @@ private:
     TcpClient  m_gatewayClient;   /**< 到 GatewayServer */
     TcpClient  m_globalClient;    /**< 到 GlobalServer（可选） */
     TcpClient  m_zoneClient;      /**< 到 ZoneServer（可选） */
-    lua_State* m_lua;             /**< Lua 虚拟机指针 */
+    LuaManager m_luaMgr;          /**< Lua 虚拟机与 C++↔脚本桥接 */
     uint32_t   m_sceneID;         /**< 场景服务器编号 */
     uint32_t   m_hbSeq = 0;       /**< 心跳序列号 */
     uint16_t   m_listenPort = 9004;
@@ -699,6 +766,6 @@ private:
 
     /** @brief 地图实例：mapID → MapInstance */
     std::unordered_map<uint32_t, MapInstance>             m_maps;
-    /** @brief 在线用户：userID → SceneUser */
-    std::unordered_map<UserID, std::shared_ptr<SceneUser>> m_users;
+    SceneUserManager                                      m_userManager;
+    SceneNpcManager                                       m_npcManager;
 };

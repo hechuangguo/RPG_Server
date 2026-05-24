@@ -52,6 +52,42 @@ CREATE TABLE IF NOT EXISTS t_user (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- -----------------------------------------------------------
+-- 表：t_charbase（角色在线基础属性 —— Scene 经 RecordServer 存档）
+-- 设计意图：存储角色当前等级、坐标、HP/MP 等在线可变属性，
+--           与 t_user 解耦，由 RecordServer 统一读写。
+-- -----------------------------------------------------------
+CREATE TABLE IF NOT EXISTS t_charbase (
+    user_id     INT UNSIGNED PRIMARY KEY COMMENT '用户ID，关联 t_user.user_id',
+    name        VARCHAR(32) NOT NULL DEFAULT '' COMMENT '角色名',
+    level       INT UNSIGNED DEFAULT 1 COMMENT '等级',
+    vocation    TINYINT UNSIGNED DEFAULT 0 COMMENT '职业',
+    sex         TINYINT UNSIGNED DEFAULT 0 COMMENT '性别',
+    map_id      INT UNSIGNED DEFAULT 1001 COMMENT '当前地图',
+    pos_x       FLOAT DEFAULT 0 COMMENT 'X坐标',
+    pos_y       FLOAT DEFAULT 0 COMMENT 'Y坐标',
+    pos_z       FLOAT DEFAULT 0 COMMENT 'Z坐标',
+    hp          INT UNSIGNED DEFAULT 100 COMMENT '当前HP',
+    max_hp      INT UNSIGNED DEFAULT 100 COMMENT '最大HP',
+    mp          INT UNSIGNED DEFAULT 100 COMMENT '当前MP',
+    max_mp      INT UNSIGNED DEFAULT 100 COMMENT '最大MP',
+    gold        BIGINT UNSIGNED DEFAULT 0 COMMENT '金币',
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- -----------------------------------------------------------
+-- 表：t_relation（社会关系 —— SessionServer 直连读写）
+-- 设计意图：好友/黑名单/公会/队伍等社交数据，JSON 存储好友与黑名单列表。
+-- -----------------------------------------------------------
+CREATE TABLE IF NOT EXISTS t_relation (
+    user_id         INT UNSIGNED PRIMARY KEY COMMENT '用户ID',
+    friends_json    TEXT COMMENT '好友ID列表，逗号分隔',
+    blacklist_json  TEXT COMMENT '黑名单ID列表，逗号分隔',
+    guild_id        BIGINT UNSIGNED DEFAULT 0 COMMENT '公会ID',
+    team_id         INT UNSIGNED DEFAULT 0 COMMENT '队伍ID',
+    update_time     DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- -----------------------------------------------------------
 -- 表：t_bag（用户背包表）
 -- 设计意图：存储用户背包中的物品数据，以格子（slot）为单位管理物品。
 --           每个用户有固定数量的背包格子，每个格子存放一个物品及其数量，
@@ -162,3 +198,12 @@ INSERT IGNORE INTO t_account (account, password) VALUES
     ('test001', MD5('123456')),
     ('test002', MD5('123456')),
     ('test003', MD5('123456'));
+
+-- 测试角色 charbase（user_id=1，需与 t_account.user_id 绑定后生效）
+INSERT IGNORE INTO t_charbase (user_id, name, level, map_id, hp, max_hp, mp, max_mp, gold)
+VALUES (1, 'test001', 1, 1001, 100, 100, 100, 100, 0);
+
+INSERT IGNORE INTO t_relation (user_id, friends_json, blacklist_json, guild_id, team_id)
+VALUES (1, '', '', 0, 0);
+
+UPDATE t_account SET user_id=1 WHERE account='test001' AND user_id=0;

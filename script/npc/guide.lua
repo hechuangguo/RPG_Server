@@ -36,13 +36,13 @@ Guide.DIALOGS = {
 
 -- ============================================================
 --  选项处理逻辑：
---    1. 根据 optionIndex 定位对话节点（nil → 根节点 0）
---    2. 遍历 options，若存在 acceptQuest 字段则自动触发任务接取事件
---    3. 返回当前对话节点供客户端渲染
+--    1. dialogStep 为对话树节点 ID（C++ OnNpcTalk 传入，首次为 0）
+--    2. 客户端选择某项后，将该项的 next 作为下一次 C2S_NPC_TALK_REQ.dialogStep
+--    3. 遍历 options，若存在 acceptQuest 则触发任务接取事件
+--    4. 返回当前节点供 npc_dialog.lua 经 send_npc_talk_rsp 下发
 -- ============================================================
-function Guide.OnTalk(userID, npcID, optionIndex)
-    -- optionIndex = nil 表示初始对话
-    local step = optionIndex or 0
+function Guide.OnTalk(userID, npcID, dialogStep)
+    local step = dialogStep or 0
     local dialog = Guide.DIALOGS[step]
     if not dialog then return end
 

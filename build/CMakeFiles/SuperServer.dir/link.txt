@@ -1,1 +1,0 @@
-/usr/bin/c++ -O2 -g -DNDEBUG CMakeFiles/SuperServer.dir/SuperServer/main.cpp.o -o bin/SuperServer  -lpthread /home/hechuangguo/RPG/3Party/lua/lib/liblua.a /home/hechuangguo/RPG/3Party/tinyxml2/lib/libtinyxml2.a

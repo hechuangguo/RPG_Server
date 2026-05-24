@@ -1,0 +1,71 @@
+---
+description: 类/变量/宏与常量的命名规范（新增代码必遵）
+alwaysApply: true
+---
+
+# 命名规范（新增内容必遵）
+
+本仓库 **新增与修改** 的 C++ / Lua / Shell 代码遵循以下命名；存量代码可逐步对齐，不要求一次性全量重命名。
+
+## 规则总览
+
+| 类别 | 风格 | 示例 |
+|------|------|------|
+| **类、结构体、枚举类型** | 大驼峰 PascalCase | `UserManager`、`UserBase`、`MsgDispatcher` |
+| **函数、方法** | 小驼峰 camelCase | `getUserName()`、`loadUserFromDb()` |
+| **变量**（局部、参数、成员） | 小驼峰 camelCase | `userCount`、`gatewayConnId` |
+| **宏、`#define`** | 全大写 + 下划线 | `MAX_NUM`、`LOG_INFO` |
+| **常量**（`constexpr`、全局 `const`、枚举值） | 全大写 + 下划线 | `MAX_NUM`、`INVALID_USER_ID` |
+
+## 细则
+
+### 类名（PascalCase）
+
+```cpp
+class UserManager { ... };
+struct UserBaseWire { ... };
+enum class UserState { ... };
+```
+
+- 文件名与主类名保持一致时优先：`UserManager.h` / `UserManager.cpp`
+- 服务器入口类保持现有模式：`SessionServer`、`RecordServer`
+
+### 变量与函数（camelCase）
+
+```cpp
+void onLoadUserRsp(ConnID connId, const char* data, uint16_t len);
+
+uint32_t userCount = 0;
+UserID userId = req->userId;
+std::unordered_map<UserID, std::shared_ptr<SessionUser>> userMap;
+```
+
+- **禁止**新增 snake_case 变量（如 `user_count`）
+- 成员变量用 camelCase（`userCount`）；存量 `m_` 前缀可在改动相关代码时逐步改为 camelCase
+- 回调/lambda 捕获与局部变量同样适用 camelCase
+
+### 宏与常量（ALL_CAPS）
+
+```cpp
+#define MAX_NUM 100
+constexpr uint32_t MAX_PACKET_SIZE = 4096;
+constexpr UserID INVALID_USER_ID = 0;
+
+enum class LogLevel : int { DEBUG = 0, INFO = 1 };  // 枚举值可用全大写
+```
+
+- 日志宏、协议 magic、缓冲区上限等一律 `ALL_CAPS`
+- 魔法数应提取为命名常量，不得裸写数字
+
+## 与现有代码的关系
+
+- 存量命名（如 `OnRoleEnter`、`m_roles`、`RoleID`）**不强制**立即修改
+- **新文件、新类、新函数、新字段**必须使用本规范
+- 修改存量文件时，若触及某函数/变量，优先在同一次改动中改为新命名
+
+## 检查清单（提交前）
+
+- [ ] 新类/结构体为 PascalCase
+- [ ] 新变量、参数、成员为 camelCase
+- [ ] 新宏与常量为 ALL_CAPS
+- [ ] 未引入新的 snake_case 或匈牙利前缀（除类型别名如 `UserID`）

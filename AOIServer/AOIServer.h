@@ -262,7 +262,7 @@ private:
         e.mapID      = req->mapID;
         e.x          = req->x; e.y = req->y; e.z = req->z;
         e.sceneConnID= fromConn;
-        e.isPlayer   = true;
+        e.isPlayer   = (req->entityType == 0);
         m_entities[e.entityID] = e;
 
         Grid g = WorldToGrid(e.x, e.z);

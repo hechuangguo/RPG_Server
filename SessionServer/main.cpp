@@ -35,8 +35,7 @@ int main(int argc, char* argv[])
     Logger::Instance().SetPath(cfg.logPaths.count("SessionServer")
                                 ? cfg.logPaths.at("SessionServer") : "logs/session.log");
     SessionServer server;
-    if (!server.Init("0.0.0.0", (uint16_t)cfg.sessionPort,
-                     cfg.superIP, (uint16_t)cfg.superPort)) return 1;
+    if (!server.Init("0.0.0.0", (uint16_t)cfg.sessionPort, cfg)) return 1;
     server.Run();
     return 0;
 }
