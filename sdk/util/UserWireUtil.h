@@ -6,14 +6,14 @@
 #pragma once
 #include "../protocal/InternalMsg.h"
 #include "UserBase.h"
-#include <cstdio>
+#include "WireStringUtil.h"
 #include <cstring>
 
 inline UserBaseWire toUserBaseWire(const UserBase& base)
 {
     UserBaseWire wire{};
     wire.userID   = base.userID;
-    snprintf(wire.name, sizeof(wire.name), "%s", base.name.c_str());
+    copyToWire(wire.name, sizeof(wire.name), base.name.c_str());
     wire.level    = base.level;
     wire.vocation = base.vocation;
     wire.sex      = base.sex;

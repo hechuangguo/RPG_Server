@@ -80,6 +80,12 @@ enum class InternalMsgID : uint16_t
     SES_SAVE_USER_REQ    = 0x1103,  /**< 保存用户社会关系数据 */
     SES_FRIEND_UPDATE    = 0x1104,  /**< 好友关系更新 */
     SES_OFFLINE_MSG_PUSH = 0x1105,  /**< 推送离线消息 */
+    SES_SCENE_REGISTER_REQ = 0x1106, /**< SceneServer → Session: 普通/副本场景注册 */
+    SES_SCENE_REGISTER_RSP = 0x1107, /**< Session → SceneServer: 注册响应 */
+    SES_SCENE_UNREGISTER   = 0x1108, /**< SceneServer → Session: 场景注销 */
+    SES_COPY_CREATE_REQ    = 0x1109, /**< SceneServer → Session: 请求创建副本 */
+    SES_COPY_CREATE_RSP    = 0x1110, /**< Session → SceneServer: 副本分配结果 */
+    SES_COPY_CREATE_CMD    = 0x1111, /**< Session → SceneServer: 在目标进程创建副本 */
 
     // ============================================================
     //  RecordServer (0x1201 ~ 0x1206)
@@ -117,6 +123,8 @@ enum class InternalMsgID : uint16_t
     AOI_LEAVE_REQ        = 0x1502,  /**< SceneServer → AOI: 实体离开视野管理 */
     AOI_MOVE_REQ         = 0x1503,  /**< SceneServer → AOI: 实体移动更新 */
     AOI_VIEW_NOTIFY      = 0x1504,  /**< AOI → SceneServer: 视野变化通知 */
+    AOI_SCENE_REGISTER   = 0x1505,  /**< SceneServer → AOI: 场景注册 */
+    AOI_SCENE_UNREGISTER = 0x1506,  /**< SceneServer → AOI: 场景注销 */
 
     // ============================================================
     //  LoggerServer (0x1601)
@@ -332,6 +340,118 @@ struct Msg_AOI_Move
     float    x, y, z;    /**< 坐标 */
     float    dir;        /**< 朝向 */
     uint8_t  entityType; /**< 0=玩家 1=NPC 2=怪物（见 ClientMsg SpawnEntity） */
+};
+
+/** @brief 无效场景实例 ID */
+constexpr uint64_t INVALID_SCENE_INSTANCE_ID = 0;
+
+inline uint64_t makeNormalSceneInstanceId(uint32_t sceneServerId, uint32_t mapId)
+{
+    return (static_cast<uint64_t>(sceneServerId) << 32) | mapId;
+}
+
+/** @brief 场景类型（普通 / 副本） */
+enum class SceneKind : uint8_t
+{
+    NORMAL = 0,
+    COPY   = 1,
+};
+
+/** @brief 场景运行状态 */
+enum class SceneState : uint8_t
+{
+    CREATING = 0,
+    RUNNING  = 1,
+    CLOSING  = 2,
+    CLOSED   = 3,
+};
+
+/** @brief 副本类型（可扩展，工厂按类型创建子类） */
+enum class CopyType : uint32_t
+{
+    TEAM  = 1,  /**< 组队副本 */
+    SOLO  = 2,  /**< 单人副本 */
+    GUILD = 3,  /**< 公会副本 */
+};
+
+/** @brief SceneServer → SessionServer：场景注册 */
+struct Msg_SES_SceneRegisterReq
+{
+    uint32_t sceneServerId;
+    uint64_t sceneInstanceId;
+    uint32_t mapId;
+    uint8_t  sceneKind;   /**< SceneKind */
+    char     mapName[32];
+    char     mapFile[64];
+    uint32_t maxPlayer;
+};
+
+struct Msg_SES_SceneRegisterRsp
+{
+    int32_t  code;
+    uint64_t sceneInstanceId;
+};
+
+/** @brief SceneServer → SessionServer：场景注销 */
+struct Msg_SES_SceneUnregister
+{
+    uint64_t sceneInstanceId;
+    uint32_t sceneServerId;
+};
+
+/** @brief SceneServer → SessionServer：请求创建副本 */
+struct Msg_SES_CopyCreateReq
+{
+    uint32_t reqSceneServerId;
+    uint32_t copyType;
+    uint32_t mapId;
+    uint64_t ownerId;
+    uint32_t maxPlayer;
+    char     mapName[32];
+    char     mapFile[64];
+};
+
+/** @brief SessionServer → SceneServer：副本创建/复用结果（回复请求方） */
+struct Msg_SES_CopyCreateRsp
+{
+    int32_t  code;
+    uint32_t targetSceneServerId;
+    uint64_t copyInstanceId;
+    uint32_t copyType;
+    uint32_t mapId;
+    uint64_t ownerId;
+    uint32_t maxPlayer;
+    char     mapName[32];
+    char     mapFile[64];
+    uint8_t  reused;
+};
+
+/** @brief SessionServer → 目标 SceneServer：在本进程创建副本 */
+struct Msg_SES_CopyCreateCmd
+{
+    uint64_t copyInstanceId;
+    uint32_t copyType;
+    uint32_t mapId;
+    uint64_t ownerId;
+    uint32_t maxPlayer;
+    char     mapName[32];
+    char     mapFile[64];
+};
+
+/** @brief SceneServer → AOIServer：注册场景实例 */
+struct Msg_AOI_SceneRegister
+{
+    uint32_t sceneServerId;
+    uint64_t sceneInstanceId;
+    uint32_t mapId;
+    uint8_t  sceneKind;
+    uint32_t maxPlayer;
+};
+
+/** @brief SceneServer → AOIServer：注销场景实例 */
+struct Msg_AOI_SceneUnregister
+{
+    uint64_t sceneInstanceId;
 };
 
 #pragma pack(pop)

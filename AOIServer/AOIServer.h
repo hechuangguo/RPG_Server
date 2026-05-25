@@ -91,6 +91,7 @@
 #include "../sdk/net/TcpClient.h"
 #include "../sdk/util/UserBase.h"
 #include "../sdk/util/MsgDispatcher.h"
+#include "../sdk/util/WireStringUtil.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
 #include "../protocal/InternalMsg.h"
@@ -195,6 +196,10 @@ private:
             [this](uint32_t c, const char* d, uint16_t l){ OnLeave(c, d, l); });
         d.Register((uint16_t)InternalMsgID::AOI_MOVE_REQ,
             [this](uint32_t c, const char* d, uint16_t l){ OnMove(c, d, l); });
+        d.Register((uint16_t)InternalMsgID::AOI_SCENE_REGISTER,
+            [this](uint32_t c, const char* d, uint16_t l){ OnSceneRegister(c, d, l); });
+        d.Register((uint16_t)InternalMsgID::AOI_SCENE_UNREGISTER,
+            [this](uint32_t c, const char* d, uint16_t l){ OnSceneUnregister(c, d, l); });
     }
 
     /**
@@ -331,6 +336,25 @@ private:
         m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::AOI_VIEW_NOTIFY, data, len);
     }
 
+    /** @brief SceneServer 注册场景实例到 AOI */
+    void OnSceneRegister(ConnID /*fromConn*/, const char* data, uint16_t len)
+    {
+        if (len < sizeof(Msg_AOI_SceneRegister)) return;
+        const auto* req = reinterpret_cast<const Msg_AOI_SceneRegister*>(data);
+        m_scenes[req->sceneInstanceId] = *req;
+        LOG_INFO("AOI scene register: instance=%llu map=%u server=%u kind=%u",
+                 req->sceneInstanceId, req->mapId, req->sceneServerId, req->sceneKind);
+    }
+
+    /** @brief SceneServer 注销场景实例 */
+    void OnSceneUnregister(ConnID /*fromConn*/, const char* data, uint16_t len)
+    {
+        if (len < sizeof(Msg_AOI_SceneUnregister)) return;
+        const auto* req = reinterpret_cast<const Msg_AOI_SceneUnregister*>(data);
+        m_scenes.erase(req->sceneInstanceId);
+        LOG_INFO("AOI scene unregister: instance=%llu", req->sceneInstanceId);
+    }
+
     /**
      * @brief 通知 SceneServer 视野变化（实体进入/离开）
      * @param entityID 实体 ID
@@ -355,7 +379,7 @@ private:
         Msg_S2S_Register reg{};
         reg.serverType = (uint8_t)SubServerType::AOI;
         reg.serverID   = 1;
-        strncpy(reg.ip, "127.0.0.1", sizeof(reg.ip));
+        copyToWire(reg.ip, sizeof(reg.ip), "127.0.0.1");
         reg.port       = 9003;
         m_superClient.SendMsg((uint16_t)InternalMsgID::S2S_REGISTER_REQ,
                                reinterpret_cast<char*>(&reg), sizeof(reg));
@@ -375,6 +399,8 @@ private:
 
     /** @brief 实体索引：entityID → AOIEntity */
     std::unordered_map<uint64_t, AOIEntity>                    m_entities;
+    /** @brief 已注册场景：sceneInstanceId → Msg_AOI_SceneRegister */
+    std::unordered_map<uint64_t, Msg_AOI_SceneRegister>        m_scenes;
     /** @brief 实体所在格子：entityID → Grid */
     std::unordered_map<uint64_t, Grid>                         m_entityGrid;
     /**

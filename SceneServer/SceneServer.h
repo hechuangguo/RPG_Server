@@ -38,25 +38,17 @@
 #include "../protocal/InternalMsg.h"
 #include "../common/ClientMsg.h"
 #include "../sdk/util/UserWireUtil.h"
+#include "../sdk/util/WireStringUtil.h"
 #include "SceneUser.h"
 #include "SceneUserManager.h"
 #include "SceneNpcManager.h"
+#include "SceneManager.h"
+#include "Scene.h"
 #include "LuaManager.h"
 #include <unordered_map>
 #include <vector>
 #include <string>
 #include <memory>
-
-/**
- * @brief 地图实例（运行在 SceneServer 进程中）
- */
-struct MapInstance
-{
-    uint32_t                   mapID;      /**< 地图唯一 ID */
-    std::string                mapName;    /**< 地图名称 */
-    uint32_t                   maxPlayer;  /**< 最大容纳玩家数 */
-    std::vector<UserID>        players;    /**< 当前在本地图内的用户 ID 列表 */
-};
 
 /**
  * @brief SceneServer 核心类
@@ -121,16 +113,11 @@ public:
         m_gatewayClient.Connect("127.0.0.1",     (uint16_t)(cfg.gatewayPort + 10000));
         m_listenPort = port;
 
-        // ── 加载地图配置 ──
-        for (auto& mc : sceneInfo.maps)
-        {
-            MapInstance mi;
-            mi.mapID     = mc.mapID;
-            mi.mapName   = mc.mapName;
-            mi.maxPlayer = mc.maxPlayer;
-            m_maps[mc.mapID] = mi;
-            LOG_INFO("Map loaded: id=%u name=%s", mc.mapID, mc.mapName.c_str());
-        }
+        m_sceneManager.setStartedCallback([this](Scene& scene) { onSceneStarted(scene); });
+        m_sceneManager.setStoppedCallback([this](Scene& scene) { onSceneStopped(scene); });
+
+        if (!m_sceneManager.createNormalScenesFromConfig(m_sceneID, sceneInfo))
+            LOG_WARN("Some normal scenes failed to start on SceneServer %u", m_sceneID);
 
         initMapNpcs();
 
@@ -172,6 +159,25 @@ public:
     /** @brief NPC 离开 AOI（死亡/销毁时由 SceneNpc 调用） */
     void notifyNpcLeaveAoi(EntryID npcId) { sendAoiLeave(npcId); }
 
+    /** @brief 请求 SessionServer 创建副本（异步，结果见 OnCopyCreateRsp） */
+    void requestCreateCopy(CopyType copyType, uint32_t mapId, uint64_t ownerId,
+                           const std::string& mapName, const std::string& mapFile,
+                           uint32_t maxPlayer = 5)
+    {
+        Msg_SES_CopyCreateReq req{};
+        req.reqSceneServerId = m_sceneID;
+        req.copyType         = static_cast<uint32_t>(copyType);
+        req.mapId            = mapId;
+        req.ownerId          = ownerId;
+        req.maxPlayer        = maxPlayer;
+        copyToWire(req.mapName, sizeof(req.mapName), mapName.c_str());
+        copyToWire(req.mapFile, sizeof(req.mapFile), mapFile.c_str());
+        m_sessionClient.SendMsg((uint16_t)InternalMsgID::SES_COPY_CREATE_REQ,
+                                 reinterpret_cast<char*>(&req), sizeof(req));
+        LOG_INFO("CopyCreateReq sent: type=%u map=%u owner=%llu",
+                 req.copyType, mapId, ownerId);
+    }
+
     void OnConnect(ConnID /*id*/)    override {}
     void OnDisconnect(ConnID id) override { LOG_WARN("SceneServer conn lost=%u", id); }
     void OnMessage(ConnID id, uint16_t msgID, const char* data, uint16_t len) override
@@ -195,6 +201,10 @@ private:
         /** @brief 注册 AOI 视野变化通知处理 */
         d.Register((uint16_t)InternalMsgID::AOI_VIEW_NOTIFY,
             [this](uint32_t c, const char* d, uint16_t l){ OnViewNotify(c, d, l); });
+        d.Register((uint16_t)InternalMsgID::SES_COPY_CREATE_RSP,
+            [this](uint32_t c, const char* d, uint16_t l){ OnCopyCreateRsp(c, d, l); });
+        d.Register((uint16_t)InternalMsgID::SES_COPY_CREATE_CMD,
+            [this](uint32_t c, const char* d, uint16_t l){ OnCopyCreateCmd(c, d, l); });
     }
 
     /**
@@ -210,8 +220,8 @@ private:
                  req->userID, req->mapID, req->gatewayClientConnID);
 
         uint32_t mapID = req->mapID ? req->mapID : 1001;
-        auto it = m_maps.find(mapID);
-        if (it == m_maps.end())
+        auto scene = m_sceneManager.findNormalSceneByMapId(mapID);
+        if (!scene)
         {
             LOG_WARN("Map %u not found on SceneServer %u", mapID, m_sceneID);
             SendUserEnterRsp(req, -1);
@@ -240,7 +250,7 @@ private:
         user->setGatewayClientConn(req->gatewayClientConnID);
         user->onOnline();
         m_userManager.addUser(req->userID, user);
-        it->second.players.push_back(req->userID);
+        scene->addPlayer(req->userID);
 
         Msg_AOI_Move aoi{};
         aoi.entityID   = req->userID;
@@ -311,6 +321,9 @@ private:
         UserID uid = *reinterpret_cast<const UserID*>(data);
         auto user = m_userManager.findUser(uid);
         if (!user) return;
+
+        if (auto scene = m_sceneManager.findNormalSceneByMapId(user->Base().mapID))
+            scene->removePlayer(uid);
 
         user->onOffline();
         if (user->needSave())
@@ -666,9 +679,12 @@ private:
     /** @brief 为已加载地图创建默认 NPC（示例：新手引导官） */
     void initMapNpcs()
     {
-        for (const auto& [mapId, mi] : m_maps)
+        m_sceneManager.forEach([this](const std::shared_ptr<Scene>& scene)
         {
-            (void)mi;
+            if (!scene || scene->getSceneKind() != SceneKind::NORMAL)
+                return;
+
+            const uint32_t mapId = scene->getMapId();
             SceneNpcDef def{};
             def.npcId       = 1000000ULL + mapId;
             def.templateId  = 1;
@@ -691,7 +707,78 @@ private:
                 if (npc)
                     notifyNpcEnterAoi(*npc);
             }
-        }
+        });
+    }
+
+    /** @brief 场景启动成功：注册 AOI + SessionServer */
+    void onSceneStarted(Scene& scene)
+    {
+        Msg_AOI_SceneRegister aoiReg{};
+        aoiReg.sceneServerId   = m_sceneID;
+        aoiReg.sceneInstanceId = scene.getSceneInstanceId();
+        aoiReg.mapId           = scene.getMapId();
+        aoiReg.sceneKind       = static_cast<uint8_t>(scene.getSceneKind());
+        aoiReg.maxPlayer       = scene.getMaxPlayer();
+        m_aoiClient.SendMsg((uint16_t)InternalMsgID::AOI_SCENE_REGISTER,
+                             reinterpret_cast<char*>(&aoiReg), sizeof(aoiReg));
+
+        Msg_SES_SceneRegisterReq sesReg{};
+        sesReg.sceneServerId   = m_sceneID;
+        sesReg.sceneInstanceId = scene.getSceneInstanceId();
+        sesReg.mapId           = scene.getMapId();
+        sesReg.sceneKind       = static_cast<uint8_t>(scene.getSceneKind());
+        sesReg.maxPlayer       = scene.getMaxPlayer();
+        copyToWire(sesReg.mapName, sizeof(sesReg.mapName), scene.getMapName().c_str());
+        copyToWire(sesReg.mapFile, sizeof(sesReg.mapFile), scene.getMapFile().c_str());
+        m_sessionClient.SendMsg((uint16_t)InternalMsgID::SES_SCENE_REGISTER_REQ,
+                                 reinterpret_cast<char*>(&sesReg), sizeof(sesReg));
+
+        LOG_INFO("Scene registered AOI+Session: instance=%llu map=%u kind=%u",
+                 scene.getSceneInstanceId(), scene.getMapId(),
+                 static_cast<unsigned>(scene.getSceneKind()));
+    }
+
+    /** @brief 场景关闭：注销 AOI + SessionServer */
+    void onSceneStopped(Scene& scene)
+    {
+        Msg_AOI_SceneUnregister aoiUnreg{};
+        aoiUnreg.sceneInstanceId = scene.getSceneInstanceId();
+        m_aoiClient.SendMsg((uint16_t)InternalMsgID::AOI_SCENE_UNREGISTER,
+                             reinterpret_cast<char*>(&aoiUnreg), sizeof(aoiUnreg));
+
+        Msg_SES_SceneUnregister sesUnreg{};
+        sesUnreg.sceneInstanceId = scene.getSceneInstanceId();
+        sesUnreg.sceneServerId   = m_sceneID;
+        m_sessionClient.SendMsg((uint16_t)InternalMsgID::SES_SCENE_UNREGISTER,
+                                 reinterpret_cast<char*>(&sesUnreg), sizeof(sesUnreg));
+    }
+
+    void OnCopyCreateRsp(ConnID /*fromConn*/, const char* data, uint16_t len)
+    {
+        if (len < sizeof(Msg_SES_CopyCreateRsp)) return;
+        const auto* rsp = reinterpret_cast<const Msg_SES_CopyCreateRsp*>(data);
+        LOG_INFO("CopyCreateRsp: code=%d targetServer=%u instance=%llu reused=%u",
+                 rsp->code, rsp->targetSceneServerId, rsp->copyInstanceId, rsp->reused);
+    }
+
+    void OnCopyCreateCmd(ConnID /*fromConn*/, const char* data, uint16_t len)
+    {
+        if (len < sizeof(Msg_SES_CopyCreateCmd)) return;
+        const auto* cmd = reinterpret_cast<const Msg_SES_CopyCreateCmd*>(data);
+
+        CopySceneDef def{};
+        def.copyInstanceId = cmd->copyInstanceId;
+        def.copyType       = static_cast<CopyType>(cmd->copyType);
+        def.mapId          = cmd->mapId;
+        def.ownerId        = cmd->ownerId;
+        def.maxPlayer      = cmd->maxPlayer;
+        def.mapName        = cmd->mapName;
+        def.mapFile        = cmd->mapFile;
+
+        if (m_sceneManager.createCopyScene(m_sceneID, def))
+            LOG_INFO("CopyScene created locally: instance=%llu", cmd->copyInstanceId);
+        else
+            LOG_ERR("CopyScene create failed: instance=%llu", cmd->copyInstanceId);
     }
 
     /** @brief 将 SceneEntry 填入客户端 SpawnEntity 协议 */
@@ -705,8 +792,7 @@ private:
         spawn.z          = entry.getPosZ();
         spawn.dir        = 0.f;
         spawn.entityType = entityType;
-        strncpy(spawn.name, entry.getName().c_str(), sizeof(spawn.name) - 1);
-        spawn.name[sizeof(spawn.name) - 1] = '\0';
+        copyToWire(spawn.name, sizeof(spawn.name), entry.getName().c_str());
     }
 
     /** @brief 实体进入 AOIServer 视野管理 */
@@ -736,7 +822,7 @@ private:
         Msg_S2S_Register reg{};
         reg.serverType = (uint8_t)SubServerType::SCENE;
         reg.serverID   = m_sceneID;
-        strncpy(reg.ip, "127.0.0.1", sizeof(reg.ip));
+        copyToWire(reg.ip, sizeof(reg.ip), "127.0.0.1");
         reg.port       = m_listenPort;
         m_superClient.SendMsg((uint16_t)InternalMsgID::S2S_REGISTER_REQ,
                                reinterpret_cast<char*>(&reg), sizeof(reg));
@@ -764,8 +850,8 @@ private:
 
     inline static SceneServer* s_instance = nullptr;
 
-    /** @brief 地图实例：mapID → MapInstance */
-    std::unordered_map<uint32_t, MapInstance>             m_maps;
+    /** @brief 地图实例管理 */
+    SceneManager                                          m_sceneManager;
     SceneUserManager                                      m_userManager;
     SceneNpcManager                                       m_npcManager;
 };

@@ -92,7 +92,6 @@ bool LuaManager::init(const char* initScriptPath)
     }
 
     luaL_openlibs(m_lua);
-    ensureSceneEntryMetatable(m_lua);
     ScriptFun::registerAll(m_lua);
 
     luaL_dostring(m_lua, "package.path = package.path .. ';../script/?.lua'");

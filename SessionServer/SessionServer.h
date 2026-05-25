@@ -1,6 +1,6 @@
 /**
  * @file    SessionServer.h
- * @brief  会话服务器 —— 社会关系直连 MySQL（t_relation）
+ * @brief  会话服务器 —— 社会关系 + 全区场景/副本管理
  */
 
 #pragma once
@@ -8,11 +8,13 @@
 #include "../sdk/net/TcpClient.h"
 #include "../sdk/util/MsgDispatcher.h"
 #include "../sdk/util/ConfigLoader.h"
+#include "../sdk/util/WireStringUtil.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
 #include "../protocal/InternalMsg.h"
 #include "SessionUser.h"
 #include "SessionUserManager.h"
+#include "SessionSceneManager.h"
 #include <mysql/mysql.h>
 #include <string>
 
@@ -38,7 +40,7 @@ public:
         TimerMgr::Instance().Register(500, 0, [this]{ RegisterToSuper(); });
         TimerMgr::Instance().Register(10000, 10000, [this]{ SendHeartbeat(); });
         TimerMgr::Instance().Register(60000, 60000, [this]{ AutoSaveAll(); });
-        LOG_INFO("SessionServer started (MySQL t_relation).");
+        LOG_INFO("SessionServer started (MySQL + SceneManager).");
         return true;
     }
 
@@ -53,7 +55,13 @@ public:
     }
 
     void OnConnect(ConnID id) override { LOG_INFO("InnerConn connected=%u", id); }
-    void OnDisconnect(ConnID id) override { LOG_INFO("InnerConn disconnected=%u", id); }
+
+    void OnDisconnect(ConnID id) override
+    {
+        m_sceneManager.unbindConn(id);
+        LOG_INFO("InnerConn disconnected=%u", id);
+    }
+
     void OnMessage(ConnID id, uint16_t msgID, const char* data, uint16_t len) override
     {
         MsgDispatcher::Instance().Dispatch(id, msgID, data, len);
@@ -89,6 +97,12 @@ private:
             [this](uint32_t c, const char* d, uint16_t l){ OnSaveUserReq(c, d, l); });
         d.Register((uint16_t)InternalMsgID::SES_FRIEND_UPDATE,
             [this](uint32_t c, const char* d, uint16_t l){ OnFriendUpdate(c, d, l); });
+        d.Register((uint16_t)InternalMsgID::SES_SCENE_REGISTER_REQ,
+            [this](uint32_t c, const char* d, uint16_t l){ OnSceneRegisterReq(c, d, l); });
+        d.Register((uint16_t)InternalMsgID::SES_SCENE_UNREGISTER,
+            [this](uint32_t c, const char* d, uint16_t l){ OnSceneUnregister(c, d, l); });
+        d.Register((uint16_t)InternalMsgID::SES_COPY_CREATE_REQ,
+            [this](uint32_t c, const char* d, uint16_t l){ OnCopyCreateReq(c, d, l); });
     }
 
     void RegisterToSuper()
@@ -96,7 +110,7 @@ private:
         Msg_S2S_Register reg{};
         reg.serverType = (uint8_t)SubServerType::SESSION;
         reg.serverID   = 1;
-        strncpy(reg.ip, "127.0.0.1", sizeof(reg.ip));
+        copyToWire(reg.ip, sizeof(reg.ip), "127.0.0.1");
         reg.port       = 9001;
         m_superClient.SendMsg((uint16_t)InternalMsgID::S2S_REGISTER_REQ,
                                reinterpret_cast<char*>(&reg), sizeof(reg));
@@ -111,12 +125,10 @@ private:
                                reinterpret_cast<char*>(&hb), sizeof(hb));
     }
 
-    /** @brief 从 t_relation 加载社会关系并上线 */
     void OnLoadUserReq(ConnID fromConn, const char* data, uint16_t len)
     {
         if (len < sizeof(UserID)) return;
         UserID uid = *reinterpret_cast<const UserID*>(data);
-        LOG_DEBUG("LoadUser req userID=%llu", uid);
 
         auto user = m_userManager.getOrCreateUser(uid);
         user->load(m_db);
@@ -126,7 +138,6 @@ private:
                          data, len);
     }
 
-    /** @brief 保存社会关系到 t_relation */
     void OnSaveUserReq(ConnID /*fromConn*/, const char* data, uint16_t len)
     {
         if (len < sizeof(UserID)) return;
@@ -142,6 +153,101 @@ private:
         LOG_DEBUG("FriendUpdate len=%d", len);
     }
 
+    /** @brief SceneServer 注册普通/副本场景 */
+    void OnSceneRegisterReq(ConnID fromConn, const char* data, uint16_t len)
+    {
+        if (len < sizeof(Msg_SES_SceneRegisterReq)) return;
+        const auto* req = reinterpret_cast<const Msg_SES_SceneRegisterReq*>(data);
+
+        m_sceneManager.registerScene(fromConn, *req);
+
+        Msg_SES_SceneRegisterRsp rsp{};
+        rsp.code             = 0;
+        rsp.sceneInstanceId  = req->sceneInstanceId;
+        m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::SES_SCENE_REGISTER_RSP,
+                          reinterpret_cast<char*>(&rsp), sizeof(rsp));
+    }
+
+    void OnSceneUnregister(ConnID /*fromConn*/, const char* data, uint16_t len)
+    {
+        if (len < sizeof(Msg_SES_SceneUnregister)) return;
+        const auto* req = reinterpret_cast<const Msg_SES_SceneUnregister*>(data);
+        m_sceneManager.unregisterScene(req->sceneInstanceId, req->sceneServerId);
+    }
+
+    /** @brief 副本创建：复用已有或负载均衡分配新副本 */
+    void OnCopyCreateReq(ConnID fromConn, const char* data, uint16_t len)
+    {
+        if (len < sizeof(Msg_SES_CopyCreateReq)) return;
+        const auto* req = reinterpret_cast<const Msg_SES_CopyCreateReq*>(data);
+
+        m_sceneManager.bindSceneServer(fromConn, req->reqSceneServerId);
+
+        Msg_SES_CopyCreateRsp rsp{};
+        rsp.code = 0;
+
+        const CopyType copyType = static_cast<CopyType>(req->copyType);
+        SessionCopyScene* existing = m_sceneManager.findReusableCopy(
+            copyType, req->mapId, req->ownerId);
+
+        if (existing)
+        {
+            rsp.targetSceneServerId = existing->getSceneServerId();
+            rsp.copyInstanceId      = existing->getCopyInstanceId();
+            rsp.copyType            = req->copyType;
+            rsp.mapId               = req->mapId;
+            rsp.ownerId             = req->ownerId;
+            rsp.maxPlayer           = existing->getMaxPlayer();
+            rsp.reused              = 1;
+            copyWireField(rsp.mapName, req->mapName);
+            copyWireField(rsp.mapFile, req->mapFile);
+        }
+        else
+        {
+            uint32_t targetId = m_sceneManager.pickSceneServerId();
+            if (targetId == 0)
+                targetId = req->reqSceneServerId;
+
+            const uint64_t copyId = m_sceneManager.generateCopyInstanceId();
+            m_sceneManager.createCopyRecord(targetId, copyId, *req);
+
+            rsp.targetSceneServerId = targetId;
+            rsp.copyInstanceId      = copyId;
+            rsp.copyType            = req->copyType;
+            rsp.mapId               = req->mapId;
+            rsp.ownerId             = req->ownerId;
+            rsp.maxPlayer           = req->maxPlayer;
+            rsp.reused              = 0;
+            copyWireField(rsp.mapName, req->mapName);
+            copyWireField(rsp.mapFile, req->mapFile);
+
+            Msg_SES_CopyCreateCmd cmd{};
+            cmd.copyInstanceId = copyId;
+            cmd.copyType       = req->copyType;
+            cmd.mapId          = req->mapId;
+            cmd.ownerId        = req->ownerId;
+            cmd.maxPlayer      = req->maxPlayer;
+            copyWireField(cmd.mapName, req->mapName);
+            copyWireField(cmd.mapFile, req->mapFile);
+
+            ConnID targetConn = m_sceneManager.findConnBySceneServerId(targetId);
+            if (targetConn != INVALID_CONN_ID)
+            {
+                m_server.SendMsg(targetConn,
+                                 (uint16_t)InternalMsgID::SES_COPY_CREATE_CMD,
+                                 reinterpret_cast<char*>(&cmd), sizeof(cmd));
+            }
+            else
+            {
+                LOG_WARN("CopyCreateCmd: target SceneServer %u not connected", targetId);
+                rsp.code = -1;
+            }
+        }
+
+        m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::SES_COPY_CREATE_RSP,
+                          reinterpret_cast<char*>(&rsp), sizeof(rsp));
+    }
+
     void AutoSaveAll()
     {
         m_userManager.forEach([this](UserID uid, const std::shared_ptr<SessionUser>& user)
@@ -152,15 +258,10 @@ private:
         });
     }
 
-    void PushOfflineMsg(UserID toID, uint16_t msgID,
-                        const char* data, uint16_t len)
-    {
-        m_userManager.pushOfflineMsg(toID, msgID, data, len);
-    }
-
-    TcpServer          m_server;
-    TcpClient          m_superClient;
-    MYSQL*             m_db;
-    uint32_t           m_hbSeq = 0;
-    SessionUserManager m_userManager;
+    TcpServer             m_server;
+    TcpClient             m_superClient;
+    MYSQL*                m_db;
+    uint32_t              m_hbSeq = 0;
+    SessionUserManager    m_userManager;
+    SessionSceneManager   m_sceneManager;
 };

@@ -23,6 +23,7 @@
 #include "../sdk/net/TcpClient.h"
 #include "../sdk/util/MsgDispatcher.h"
 #include "../sdk/util/ConfigLoader.h"
+#include "../sdk/util/WireStringUtil.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
 #include "../common/ClientMsg.h"
@@ -225,8 +226,8 @@ private:
         m_userManager.getUser(connID).setClientState(ClientState::LOGGING);
 
         Msg_REC_LoginVerifyReq verifyReq{};
-        strncpy(verifyReq.account,  req->account,  sizeof(verifyReq.account));
-        strncpy(verifyReq.password, req->password, sizeof(verifyReq.password));
+        copyToWire(verifyReq.account, sizeof(verifyReq.account), req->account);
+        copyToWire(verifyReq.password, sizeof(verifyReq.password), req->password);
         verifyReq.gatewayConnID = connID;
         m_recordClient.SendMsg((uint16_t)InternalMsgID::REC_LOGIN_VERIFY_REQ,
                                 reinterpret_cast<char*>(&verifyReq), sizeof(verifyReq));
@@ -268,7 +269,7 @@ private:
         {
             Msg_S2C_LoginRsp loginRsp{};
             loginRsp.code = rsp->code;
-            strncpy(loginRsp.msg, "Account or password error", sizeof(loginRsp.msg));
+            copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "Account or password error");
             user->setClientState(ClientState::CONNECTED);
             m_clientServer.SendMsg(clientConn, (uint16_t)ClientMsgID::S2C_LOGIN_RSP,
                                    reinterpret_cast<char*>(&loginRsp), sizeof(loginRsp));
@@ -304,7 +305,7 @@ private:
         if (rsp->code == 0)
         {
             user->setClientState(ClientState::LOGGED_IN);
-            strncpy(loginRsp.msg, "Login OK", sizeof(loginRsp.msg));
+            copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "Login OK");
 
             Msg_S2C_EnterGame enter{};
             enter.userID = rsp->userID;
@@ -329,7 +330,7 @@ private:
         else
         {
             user->setClientState(ClientState::CONNECTED);
-            strncpy(loginRsp.msg, "Enter game failed", sizeof(loginRsp.msg));
+            copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "Enter game failed");
             m_clientServer.SendMsg(clientConn, (uint16_t)ClientMsgID::S2C_LOGIN_RSP,
                                    reinterpret_cast<char*>(&loginRsp), sizeof(loginRsp));
         }
@@ -416,7 +417,7 @@ private:
         Msg_S2S_Register reg{};
         reg.serverType = (uint8_t)SubServerType::GATEWAY;
         reg.serverID   = 1;
-        strncpy(reg.ip, "127.0.0.1", sizeof(reg.ip));
+        copyToWire(reg.ip, sizeof(reg.ip), "127.0.0.1");
         reg.port       = m_clientPort;
         m_superClient.SendMsg((uint16_t)InternalMsgID::S2S_REGISTER_REQ,
                                reinterpret_cast<char*>(&reg), sizeof(reg));

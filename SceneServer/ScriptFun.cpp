@@ -1,90 +1,42 @@
 /**
  * @file    ScriptFun.cpp
- * @brief  Lua → C++ 绑定实现
+ * @brief  Lua → C++ 绑定实现（LUA_*_FUNC 宏自动注册）
+ *
+ * 新增接口示例：
+ * @code
+ *   LUA_GLOBAL_FUNC("foo", foo)
+ *   {
+ *       // luaL_check* 取参
+ *       return 0;
+ *   }
+ * @endcode
  */
 
 #include "ScriptFun.h"
-#include "LuaManager.h"
+#include "LuaBinder.h"
 #include "SceneServer.h"
 #include "SceneEntry.h"
 #include "../common/ClientMsg.h"
 #include "../sdk/log/Logger.h"
 
-constexpr int MAX_NPC_TALK_OPTIONS = 4;
-
 extern "C"
 {
 #include "lua.h"
-#include "lualib.h"
 #include "lauxlib.h"
 }
 
-namespace
-{
+constexpr int MAX_NPC_TALK_OPTIONS = 4;
 
-struct SceneEntryUd
-{
-    SceneEntry* entry = nullptr;
-};
+// ── 全局函数 ──────────────────────────────────────────────
 
-SceneEntryUd* getEntryUd(lua_State* L, int index)
-{
-    if (!lua_isuserdata(L, index))
-        return nullptr;
-    if (!lua_getmetatable(L, index))
-        return nullptr;
-    luaL_getmetatable(L, LUA_SCENE_ENTRY_MT);
-    bool match = lua_rawequal(L, -1, -2);
-    lua_pop(L, 2);
-    if (!match)
-        return nullptr;
-    return static_cast<SceneEntryUd*>(lua_touserdata(L, index));
-}
-
-} // namespace
-
-void ScriptFun::registerAll(lua_State* L)
-{
-    lua_register(L, "log_info", logInfo);
-    lua_register(L, "send_to_user", sendToUser);
-    lua_register(L, "send_npc_talk_rsp", sendNpcTalkRsp);
-
-    if (luaL_newmetatable(L, LUA_SCENE_ENTRY_MT))
-    {
-        static const luaL_Reg entryMethods[] = {
-            {"getEntryId",   entryGetId},
-            {"getEntryType", entryGetType},
-            {"getName",      entryGetName},
-            {"getLevel",     entryGetLevel},
-            {"getHp",        entryGetHp},
-            {"getMaxHp",     entryGetMaxHp},
-            {"getMapId",     entryGetMapId},
-            {"getPos",       entryGetPos},
-            {"setHp",        entrySetHp},
-            {"setPos",       entrySetPos},
-            {nullptr, nullptr},
-        };
-        luaL_setfuncs(L, entryMethods, 0);
-        lua_pushvalue(L, -1);
-        lua_setfield(L, -2, "__index");
-    }
-    lua_pop(L, 1);
-}
-
-SceneEntry* ScriptFun::checkSceneEntry(lua_State* L, int index)
-{
-    auto* ud = getEntryUd(L, index);
-    return ud ? ud->entry : nullptr;
-}
-
-int ScriptFun::logInfo(lua_State* L)
+LUA_GLOBAL_FUNC("log_info", logInfo)
 {
     const char* msg = luaL_checkstring(L, 1);
     LOG_INFO("[Lua] %s", msg);
     return 0;
 }
 
-int ScriptFun::sendToUser(lua_State* L)
+LUA_GLOBAL_FUNC("send_to_user", sendToUser)
 {
     UserID userId = static_cast<UserID>(luaL_checkinteger(L, 1));
     uint16_t msgId = static_cast<uint16_t>(luaL_checkinteger(L, 2));
@@ -104,7 +56,7 @@ int ScriptFun::sendToUser(lua_State* L)
     return 0;
 }
 
-int ScriptFun::sendNpcTalkRsp(lua_State* L)
+LUA_GLOBAL_FUNC("send_npc_talk_rsp", sendNpcTalkRsp)
 {
     UserID userId = static_cast<UserID>(luaL_checkinteger(L, 1));
     EntryID npcId = static_cast<EntryID>(luaL_checkinteger(L, 2));
@@ -159,72 +111,74 @@ int ScriptFun::sendNpcTalkRsp(lua_State* L)
     return 0;
 }
 
-int ScriptFun::entryGetId(lua_State* L)
+// ── SceneEntry 元方法 ─────────────────────────────────────
+
+LUA_ENTRY_FUNC("getEntryId", entryGetId)
 {
-    auto* entry = checkSceneEntry(L, 1);
+    auto* entry = LuaBinder::checkSceneEntry(L, 1);
     if (!entry)
         return luaL_error(L, "invalid SceneEntry");
     lua_pushinteger(L, static_cast<lua_Integer>(entry->getEntryId()));
     return 1;
 }
 
-int ScriptFun::entryGetType(lua_State* L)
+LUA_ENTRY_FUNC("getEntryType", entryGetType)
 {
-    auto* entry = checkSceneEntry(L, 1);
+    auto* entry = LuaBinder::checkSceneEntry(L, 1);
     if (!entry)
         return luaL_error(L, "invalid SceneEntry");
     lua_pushinteger(L, static_cast<lua_Integer>(entry->getEntryType()));
     return 1;
 }
 
-int ScriptFun::entryGetName(lua_State* L)
+LUA_ENTRY_FUNC("getName", entryGetName)
 {
-    auto* entry = checkSceneEntry(L, 1);
+    auto* entry = LuaBinder::checkSceneEntry(L, 1);
     if (!entry)
         return luaL_error(L, "invalid SceneEntry");
     lua_pushstring(L, entry->getName().c_str());
     return 1;
 }
 
-int ScriptFun::entryGetLevel(lua_State* L)
+LUA_ENTRY_FUNC("getLevel", entryGetLevel)
 {
-    auto* entry = checkSceneEntry(L, 1);
+    auto* entry = LuaBinder::checkSceneEntry(L, 1);
     if (!entry)
         return luaL_error(L, "invalid SceneEntry");
     lua_pushinteger(L, static_cast<lua_Integer>(entry->getLevel()));
     return 1;
 }
 
-int ScriptFun::entryGetHp(lua_State* L)
+LUA_ENTRY_FUNC("getHp", entryGetHp)
 {
-    auto* entry = checkSceneEntry(L, 1);
+    auto* entry = LuaBinder::checkSceneEntry(L, 1);
     if (!entry)
         return luaL_error(L, "invalid SceneEntry");
     lua_pushinteger(L, static_cast<lua_Integer>(entry->getHp()));
     return 1;
 }
 
-int ScriptFun::entryGetMaxHp(lua_State* L)
+LUA_ENTRY_FUNC("getMaxHp", entryGetMaxHp)
 {
-    auto* entry = checkSceneEntry(L, 1);
+    auto* entry = LuaBinder::checkSceneEntry(L, 1);
     if (!entry)
         return luaL_error(L, "invalid SceneEntry");
     lua_pushinteger(L, static_cast<lua_Integer>(entry->getMaxHp()));
     return 1;
 }
 
-int ScriptFun::entryGetMapId(lua_State* L)
+LUA_ENTRY_FUNC("getMapId", entryGetMapId)
 {
-    auto* entry = checkSceneEntry(L, 1);
+    auto* entry = LuaBinder::checkSceneEntry(L, 1);
     if (!entry)
         return luaL_error(L, "invalid SceneEntry");
     lua_pushinteger(L, static_cast<lua_Integer>(entry->getMapId()));
     return 1;
 }
 
-int ScriptFun::entryGetPos(lua_State* L)
+LUA_ENTRY_FUNC("getPos", entryGetPos)
 {
-    auto* entry = checkSceneEntry(L, 1);
+    auto* entry = LuaBinder::checkSceneEntry(L, 1);
     if (!entry)
         return luaL_error(L, "invalid SceneEntry");
     lua_pushnumber(L, entry->getPosX());
@@ -233,9 +187,9 @@ int ScriptFun::entryGetPos(lua_State* L)
     return 3;
 }
 
-int ScriptFun::entrySetHp(lua_State* L)
+LUA_ENTRY_FUNC("setHp", entrySetHp)
 {
-    auto* entry = checkSceneEntry(L, 1);
+    auto* entry = LuaBinder::checkSceneEntry(L, 1);
     if (!entry)
         return luaL_error(L, "invalid SceneEntry");
     uint32_t hp = static_cast<uint32_t>(luaL_checkinteger(L, 2));
@@ -243,9 +197,9 @@ int ScriptFun::entrySetHp(lua_State* L)
     return 0;
 }
 
-int ScriptFun::entrySetPos(lua_State* L)
+LUA_ENTRY_FUNC("setPos", entrySetPos)
 {
-    auto* entry = checkSceneEntry(L, 1);
+    auto* entry = LuaBinder::checkSceneEntry(L, 1);
     if (!entry)
         return luaL_error(L, "invalid SceneEntry");
     float x = static_cast<float>(luaL_checknumber(L, 2));
@@ -253,4 +207,9 @@ int ScriptFun::entrySetPos(lua_State* L)
     float z = static_cast<float>(luaL_checknumber(L, 4));
     entry->setPos(x, y, z);
     return 0;
+}
+
+void ScriptFun::registerAll(lua_State* L)
+{
+    LuaBinder::install(L);
 }

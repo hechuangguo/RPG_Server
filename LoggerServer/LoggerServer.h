@@ -78,6 +78,7 @@
 #include "../sdk/net/TcpServer.h"
 #include "../sdk/net/TcpClient.h"
 #include "../sdk/util/MsgDispatcher.h"
+#include "../sdk/util/WireStringUtil.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/log/LogFileWriter.h"
 #include "../sdk/timer/TimerMgr.h"
@@ -240,7 +241,7 @@ private:
         Msg_S2S_Register reg{};
         reg.serverType = (uint8_t)SubServerType::LOGGER;
         reg.serverID   = 1;
-        strncpy(reg.ip, "127.0.0.1", sizeof(reg.ip));
+        copyToWire(reg.ip, sizeof(reg.ip), "127.0.0.1");
         reg.port       = 9006;
         m_superClient.SendMsg((uint16_t)InternalMsgID::S2S_REGISTER_REQ,
                                reinterpret_cast<char*>(&reg), sizeof(reg));

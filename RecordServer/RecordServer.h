@@ -27,6 +27,7 @@
 #include "../sdk/util/MsgDispatcher.h"
 #include "../sdk/util/ConfigLoader.h"
 #include "../sdk/util/UserWireUtil.h"
+#include "../sdk/util/WireStringUtil.h"
 #include "../protocal/InternalMsg.h"
 #include "RecordUser.h"
 #include "RecordUserManager.h"
@@ -144,7 +145,7 @@ private:
         Msg_S2S_Register reg{};
         reg.serverType = (uint8_t)SubServerType::RECORD;
         reg.serverID   = 1;
-        strncpy(reg.ip, "127.0.0.1", sizeof(reg.ip));
+        copyToWire(reg.ip, sizeof(reg.ip), "127.0.0.1");
         reg.port       = 9002;
         m_superClient.SendMsg((uint16_t)InternalMsgID::S2S_REGISTER_REQ,
                                reinterpret_cast<char*>(&reg), sizeof(reg));
@@ -235,7 +236,7 @@ private:
         const auto& base = user->Base();
         UserBaseWire wire{};
         wire.userID   = base.userID;
-        strncpy(wire.name, base.name.c_str(), sizeof(wire.name) - 1);
+        copyToWire(wire.name, sizeof(wire.name), base.name.c_str());
         wire.level    = base.level;
         wire.vocation = base.vocation;
         wire.sex      = base.sex;
