@@ -1,8 +1,11 @@
 # Build output
 .build/
 
-# Logs
+# Logs（运行期输出，config.xml / RunServer.sh 写入 logs/）
 logs/
 
 # Cache
 .cache/
+
+# Runtime PID files
+run/
