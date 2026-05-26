@@ -185,3 +185,6 @@ install(TARGETS
 )
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/config/ DESTINATION config)  # 配置文件安装到 <prefix>/config/
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/script/ DESTINATION script)  # Lua脚本安装到 <prefix>/script/
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/database/ DESTINATION database
+        FILES_MATCHING PATTERN "*.lua" PATTERN "*.sql")
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/basefile/ DESTINATION basefile)

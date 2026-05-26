@@ -9,3 +9,6 @@ logs/
 
 # Runtime PID files
 run/
+
+# Excel 临时锁文件
+DataDoc/~$*

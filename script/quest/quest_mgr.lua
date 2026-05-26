@@ -7,29 +7,13 @@ QuestMgr = {}
 -- ============================================================
 --  任务状态机：接取(Accept) → 进行中(UpdateProgress) → 完成(Complete) → 提交(Submit)
 --  接取后开始追踪进度，进度达标后标记完成，提交后发放奖励并清除任务
+--  配置来源：database/quest_config.lua（DataDoc/quest.xlsx 生成）
 -- ============================================================
 
--- 任务配置
-local QUEST_CONFIG = {
-    [1001] = {
-        id      = 1001,
-        name    = "初出茅庐",
-        desc    = "消灭 5 只哥布林，收集耳朵",
-        type    = "kill",
-        target  = 3,     -- NPC ID（哥布林）
-        count   = 5,
-        reward  = { exp=500, gold=100, itemID=2001, itemCount=1 },
-    },
-    [1002] = {
-        id      = 1002,
-        name    = "铁匠的委托",
-        desc    = "收集 10 块铁矿石",
-        type    = "collect",
-        itemID  = 5001,
-        count   = 10,
-        reward  = { exp=800, gold=200, itemID=3001, itemCount=1 },
-    },
-}
+require("data_table")
+
+--- 策划任务表（Excel → database/quest_config.lua）
+local QUEST_CONFIG = DataTable.load("quest_config") or {}
 
 -- 用户任务进度 { userID -> { questID -> progress } }
 local _progress = {}

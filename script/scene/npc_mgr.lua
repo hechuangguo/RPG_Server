@@ -1,16 +1,14 @@
 -- ============================================================
 --  script/scene/npc_mgr.lua  —— NPC 管理器
+--  配置来源：database/npc_config.lua（DataDoc/npc.xlsx 生成）
 -- ============================================================
 
 NpcMgr = {}
 
--- NPC 配置表（实际项目从 database 目录加载）
-local NPC_CONFIG = {
-    [1] = { id=1, name="史密斯铁匠",  mapID=1002, x=100, z=200, type="npc",  dialog="npc/smith.lua"  },
-    [2] = { id=2, name="新手引导官",  mapID=1001, x= 50, z= 50, type="npc",  dialog="npc/guide.lua"  },
-    [3] = { id=3, name="哥布林",      mapID=2001, x=300, z=400, type="mob",  ai="npc/goblin_ai.lua"  },
-    [4] = { id=4, name="精英哥布林",  mapID=2001, x=350, z=420, type="boss", ai="npc/goblin_boss.lua"},
-}
+require("data_table")
+
+--- 策划 NPC 表（Excel → database/npc_config.lua）
+local NPC_CONFIG = DataTable.load("npc_config") or {}
 
 -- 运行时 NPC 实例
 local _npcs = {}
@@ -96,4 +94,9 @@ end
 -- 获取 NPC 信息
 function NpcMgr.GetNpc(npcID)
     return _npcs[npcID]
+end
+
+-- 获取策划行（供对话等模块查询 dialog/ai 字段）
+function NpcMgr.GetConfig(npcID)
+    return DataTable.getById(NPC_CONFIG, npcID)
 end

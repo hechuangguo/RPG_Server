@@ -66,8 +66,12 @@ RPG/
 ├── SceneServer/   # Scene、CopyScene、SceneManager、SceneEntry/Npc/User
 ├── SessionServer/ # SessionScene、SessionCopyScene、SessionSceneManager
 ├── config/        # config.xml、server_info.xml
-├── database/      # init.sql
+├── DataDoc/       # 策划 Excel 表（源数据）
+├── database/      # init.sql + 生成的 *_config.lua 配表
+├── basefile/      # 配表加载工具（data_table.lua）
 ├── script/        # Lua 游戏脚本
+├── tools/         # gen_datadoc.py（Excel→Lua）
+├── gen_data.sh    # 配表生成入口
 ├── build          # 编译入口（等价 ./build.sh）
 ├── build.sh       # 编译脚本
 ├── autoinit.sh    # 环境初始化
@@ -94,8 +98,19 @@ sudo dnf install -y gcc-c++ cmake make curl tar openssl-devel zlib-devel
 
 ```bash
 ./autoinit.sh          # 下载编译 3Party + cmake configure
+./gen_data.sh          # DataDoc Excel → database/*.lua（可选 --init 生成示例表）
 ./build                # 或 ./build.sh
 ```
+
+### 策划配表（DataDoc）
+
+| 步骤 | 说明 |
+|------|------|
+| 编辑 | `DataDoc/*.xlsx` |
+| 生成 | `./gen_data.sh` → `database/*_config.lua` |
+| 加载 | SceneServer 经 `basefile/data_table.lua` 的 `DataTable.load()` |
+
+详见 [DataDoc/README.md](DataDoc/README.md)。
 
 仅重建第三方库：`./3Party/download_and_build.sh`（加 `--force` 强制重编）
 

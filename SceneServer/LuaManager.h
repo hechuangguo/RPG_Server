@@ -67,7 +67,7 @@ public:
      * @brief 初始化虚拟机并加载入口脚本
      * @param initScriptPath init.lua 路径（相对进程 cwd）
      */
-    bool init(const char* initScriptPath = "../script/scene/init.lua");
+    bool init(const char* initScriptPath = "script/scene/init.lua");
 
     /** @brief 关闭虚拟机 */
     void shutdown();

@@ -1,0 +1,2 @@
+# Excel → Lua 配表生成（tools/gen_datadoc.py）
+openpyxl>=3.1.0

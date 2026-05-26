@@ -4,12 +4,16 @@
 --  C++ 通过此模块调用 Lua 逻辑，实现场景核心流程调度
 -- ============================================================
 
+-- 配表工具（basefile/data_table.lua）
+require("data_table")
+
 -- 引入框架模块
 require("scene.event_system")
 require("scene.npc_mgr")
 require("scene.skill_mgr")
 require("scene.entry_api")
 require("scene.npc_dialog")
+require("quest.quest_mgr")
 
 print("[Lua] scene/init.lua loaded")
 

@@ -94,14 +94,32 @@ bool LuaManager::init(const char* initScriptPath)
     luaL_openlibs(m_lua);
     ScriptFun::registerAll(m_lua);
 
-    luaL_dostring(m_lua, "package.path = package.path .. ';../script/?.lua'");
+    /* 兼容项目根目录与 .build/bin 两种 cwd */
+    luaL_dostring(m_lua,
+        "package.path = package.path"
+        " .. ';script/?.lua;../script/?.lua'"
+        " .. ';database/?.lua;../database/?.lua'"
+        " .. ';basefile/?.lua;../basefile/?.lua'");
 
-    if (luaL_dofile(m_lua, initScriptPath) != LUA_OK)
+    const char* initCandidates[] = {
+        initScriptPath,
+        "../script/scene/init.lua",
+        nullptr,
+    };
+    bool scriptLoaded = false;
+    for (const char** p = initCandidates; *p != nullptr; ++p)
     {
-        LOG_WARN("LuaManager: load %s failed: %s", initScriptPath,
-                 lua_tostring(m_lua, -1));
+        if (luaL_dofile(m_lua, *p) == LUA_OK)
+        {
+            scriptLoaded = true;
+            LOG_INFO("LuaManager: loaded %s", *p);
+            break;
+        }
+        LOG_WARN("LuaManager: load %s failed: %s", *p, lua_tostring(m_lua, -1));
         lua_pop(m_lua, 1);
     }
+    if (!scriptLoaded)
+        LOG_WARN("LuaManager: no init script loaded");
 
     LOG_INFO("LuaManager initialized");
     return true;

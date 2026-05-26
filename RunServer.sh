@@ -66,7 +66,8 @@ start_server() {
 
     # 后台启动，将标准输出和错误都重定向到日志文件，
     # 实际业务日志由各服务器自行写入 super.log 等文件
-    nohup "$BINARY" $ARGS > "$LOG_DIR/${NAME}_stdout.log" 2>&1 &
+    # cwd 固定为项目根，便于 Lua 加载 script/database/basefile
+    (cd "$SCRIPT_DIR" && nohup "$BINARY" $ARGS > "$LOG_DIR/${NAME}_stdout.log" 2>&1) &
     local PID=$!
     echo $PID > "$PIDFILE"
     log_info "Started $NAME (pid=$PID)"

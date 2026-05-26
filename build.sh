@@ -279,6 +279,21 @@ print_result() {
 }
 
 # ──────────────────────────────────────────────
+# 策划表生成：DataDoc/*.xlsx -> database/*.lua
+# 失败不阻断编译（可能尚未安装 openpyxl）
+# ──────────────────────────────────────────────
+gen_datadoc() {
+    if [[ -x "${SCRIPT_DIR}/gen_data.sh" ]]; then
+        info "生成策划配表 (DataDoc -> database)..."
+        if "${SCRIPT_DIR}/gen_data.sh"; then
+            success "配表生成完成"
+        else
+            warn "配表生成跳过，可稍后执行: ./gen_data.sh"
+        fi
+    fi
+}
+
+# ──────────────────────────────────────────────
 # 主流程控制
 # 执行顺序：参数解析 -> 依赖检查 -> 环境信息 -> (清理?) -> (cmake配置?) -> 编译 -> 结果展示
 # ──────────────────────────────────────────────
@@ -286,6 +301,7 @@ main() {
     parse_args "$@"          # 步骤1：解析命令行参数
 
     check_deps               # 步骤2：检查工具链和第三方依赖
+    gen_datadoc              # 步骤2b：Excel 配表 -> Lua
     print_env                 # 步骤3：打印构建环境信息摘要
 
     # 步骤4：处理 clean / rebuild 标志

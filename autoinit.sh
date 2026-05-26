@@ -15,7 +15,7 @@
 #      （CentOS: yum install openssl-devel zlib-devel）
 #
 #  初始化流程（6 步）：
-#    1. 创建必要目录（logs/、run/、build/、3Party/）
+#    1. 创建必要目录（logs/、run/、.build/、3Party/、DataDoc/）
 #    2. 构建 3Party 第三方依赖（Lua / tinyxml2 / MariaDB Client）
 #    3. 检查配置文件完整性（config.xml、server_info.xml）
 #    4. 验证协议文件（头文件定义，无需代码生成）
@@ -57,7 +57,7 @@ step "===== RPG Server AutoInit ====="
 #  - 3Party/：第三方库根目录（若不存在）
 # -------------------------------------------------------
 step "Creating directories..."
-mkdir -p "$LOG_DIR" "$RUN_DIR" "$BUILD_DIR" "$THIRD_DIR"
+mkdir -p "$LOG_DIR" "$RUN_DIR" "$BUILD_DIR" "$THIRD_DIR" "$SCRIPT_DIR/DataDoc"
 
 # -------------------------------------------------------
 #  第2步：构建 3Party 第三方依赖
@@ -110,14 +110,30 @@ step "Checking config files..."
 step "Config files OK."
 
 # -------------------------------------------------------
-#  第4步：协议文件检查（预留步骤）
+#  第4步：策划表生成（DataDoc Excel → database Lua）
+#  依赖 Python3 + openpyxl；失败时仅警告，不阻断环境初始化
+# -------------------------------------------------------
+step "Generating data tables from DataDoc..."
+chmod +x "$SCRIPT_DIR/gen_data.sh" 2>/dev/null || true
+if [[ -x "$SCRIPT_DIR/gen_data.sh" ]]; then
+    if "$SCRIPT_DIR/gen_data.sh" 2>/dev/null; then
+        step "DataDoc -> database/*.lua OK."
+    else
+        warn "DataDoc gen skipped (install: pip3 install -r tools/requirements-datadoc.txt)"
+        warn "  Or run later: ./gen_data.sh --init && ./gen_data.sh"
+    fi
+else
+    warn "gen_data.sh not found, skip data table generation."
+fi
+
+# -------------------------------------------------------
+#  第5步：协议文件检查
 #  当前协议采用 header-only struct 定义方式，无需 proto 编译步骤。
-#  未来如需支持 protobuf/flatbuffers 等序列化方案，在此接入代码生成流程。
 # -------------------------------------------------------
 step "Protocol files OK (using header-only structs)."
 
 # -------------------------------------------------------
-#  第5步：设置脚本执行权限
+#  第6步：设置脚本执行权限
 #  确保后续可直接调用 ./RunServer.sh 等脚本，
 #  特别是在 git clone 后文件权限可能丢失的场景
 # -------------------------------------------------------
@@ -127,7 +143,7 @@ chmod +x "$SCRIPT_DIR/log.sh"
 chmod +x build build.sh 2>/dev/null || true
 
 # -------------------------------------------------------
-#  第6步：CMake 配置
+#  第7步：CMake 配置
 #
 #  配置说明：
 #    - CMAKE_BUILD_TYPE=Release：Release 模式编译
