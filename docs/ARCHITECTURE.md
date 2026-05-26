@@ -1,6 +1,7 @@
 ﻿# RPG Server 架构文档
 
-本文档描述 Linux 下 C++/Lua 分布式 MMORPG 服务器的整体架构，供开发与运维参考。
+本文档描述 Linux 下 C++/Lua 分布式 MMORPG 服务器的整体架构，供开发与运维参考。  
+项目说明与总结见 [PROJECT.md](PROJECT.md)。
 
 ## 1. 项目概述
 
@@ -126,6 +127,8 @@ RPG/
 
 - 好友、离线消息、用户社会关系内存管理
 - `SessionUser` 继承 `IUser`，扩展 `SocialData`
+- 接收 Gateway 转发的 `GW_CLIENT_MSG`（社交 module=0x06、任务 module=0x07）
+- 全区场景/副本：`SessionSceneManager` 登记与负载均衡
 
 ### RecordServer — 数据库读写
 
@@ -141,15 +144,18 @@ RPG/
 ### SceneServer — 核心游戏逻辑
 
 - 在线用户与地图实例管理
-- 处理客户端游戏消息（移动、聊天、技能、心跳）
-- 内嵌 Lua VM，加载 `script/scene/init.lua`
+- 经 `GW_CLIENT_MSG` 接收 Gateway 转发的场景/战斗/技能/NPC 等客户端消息
+- 内嵌 Lua VM，加载 `script/scene/init.lua`；扩展消息 `OnMsg_{module}{sub}`
+- 下行经 `Msg_GW_SendToClient` 回 Gateway 再发往客户端
 - 唯一可水平扩展的进程
 
 ### GatewayServer — 客户端接入
 
 - 双端口：clientPort（玩家）+ innerPort（内部下行）
-- 登录验证、客户端 ↔ SceneServer 消息透传
-- 60 秒心跳超时踢人
+- 连接 Super / Record / Scene / **Session**
+- `ClientMsgValidator`：白名单、包长、登录状态、userID、payload 基础校验
+- `ClientMsgRouter`：Login/System 本地处理；玩法包转发 Scene 或 Session
+- 校验失败回 `S2C_ERROR`（0x0F/0x05）；60 秒心跳超时踢人
 
 ### LoggerServer — 集中日志
 
@@ -174,11 +180,14 @@ while (true) {
 
 ### 消息帧
 
-`MsgHeader { length, msgID }` + body（见 `sdk/net/NetDefine.h`）
+`MsgHeader { bodyLen, module, sub }`（6 字节）+ body（见 `sdk/net/NetDefine.h`）。
+
+扁平 ID：`makeMsgId(module, sub)`，见 `sdk/net/MsgId.h`。
 
 ### 消息分发
 
-`OnMessage` → `MsgDispatcher::Dispatch(msgID)` → 已注册 handler
+`OnMessage(connId, module, sub, data, len)` → `MsgDispatcher::Dispatch(module, sub)` → handler。
+仍可使用 `Register(uint16_t flatMsgId)` 兼容存量枚举。
 
 ### 用户基类体系
 
@@ -194,15 +203,65 @@ UserBase（纯数据结构）
 
 ## 6. 协议体系
 
+### 线上帧格式（客户端与服间共用）
+
+定义于 `sdk/net/NetDefine.h`：
+
+```
+| bodyLen (2B) | module (1B) | sub (1B) | body (变长) |
+```
+
+- **module**：功能模块（见 `ClientModule` / 服间高字节）
+- **sub**：模块内具体消息
+- 扁平 ID（兼容查表）：`makeMsgId(module, sub) == (module << 8) | sub`
+
+工具函数：`sdk/net/MsgId.h`。
+
+### Gateway 客户端消息处理
+
+```mermaid
+flowchart TB
+    Client --> GW[TcpServer clientPort]
+    GW --> V[ClientMsgValidator]
+    V -->|OK| R[ClientMsgRouter]
+    V -->|fail| Err[S2C_ERROR]
+    R --> Local[Gateway 本地 Login/Heartbeat]
+    R --> Scene[GW_CLIENT_MSG to SceneServer]
+    R --> Session[GW_CLIENT_MSG to SessionServer]
+    Scene --> GW2[GW_SEND_TO_CLIENT]
+    Session --> GW2
+    GW2 --> Client
+```
+
+| 步骤 | 说明 |
+|------|------|
+| 拆包 | `TcpConnection` 解析 6 字节头 |
+| 校验 | `ClientMsgValidator.h` |
+| 路由 | `ClientMsgRouter.h` |
+| 转发 | `Msg_GW_ClientMsg` + body |
+| 下行 | `Msg_GW_SendToClient` + body |
+
 ### 客户端协议（common/ClientMsg.h）
 
-| 范围 | 模块 |
-|------|------|
-| 0x0001–0x00FF | 登录/注册 |
-| 0x0100–0x01FF | 场景/移动 |
-| 0x0200–0x02FF | 战斗 |
-| 0x0500–0x05FF | 聊天 |
-| 0x0F00–0x0FFF | 系统/心跳 |
+| module | 说明 |
+|--------|------|
+| 0x00 | 登录/注册 |
+| 0x01 | 场景/移动 |
+| 0x02 | 战斗 |
+| 0x05 | 聊天 |
+| 0x06 | 社交 |
+| 0x07 | 任务 |
+| 0x08 | NPC 交互 |
+| 0x0F | 系统/心跳/错误（含 `S2C_ERROR` sub=0x05） |
+
+常用 C2S 示例：`C2S_LOGIN_REQ` = module **0x00** sub **0x01**；`C2S_MOVE_REQ` = **0x01/0x01**；`C2S_HEARTBEAT` = **0x0F/0x01**。
+
+### 服间转发结构（protocal/InternalMsg.h）
+
+| 结构体 | 方向 | 说明 |
+|--------|------|------|
+| `Msg_GW_ClientMsg` | Gateway → Scene/Session | `clientConnID` + module + sub + body |
+| `Msg_GW_SendToClient` | Scene/Session → Gateway | 同上，Gateway 再组 6 字节头发给客户端 |
 
 ### 服务器内部协议（protocal/InternalMsg.h）
 
@@ -262,13 +321,15 @@ sequenceDiagram
 
 ### 新增客户端消息
 
-1. 在 `common/ClientMsg.h` 添加 msgID 和结构体
-2. 在 `SceneServer::RegisterHandlers()` 或 Lua `OnMsg_XXXX` 中处理
+1. 在 `common/ClientMsg.h` 定义 `ClientModule`、sub、body 结构体（扁平 `ClientMsgID` 可选）
+2. 在 `GatewayServer/ClientMsgValidator.h` 增加白名单规则（长度、状态、payload）
+3. 在 `GatewayServer/ClientMsgRouter.h` 指定转发目标（Scene / Session / LOCAL）
+4. 在 SceneServer 或 SessionServer 处理 `GW_CLIENT_MSG`（或 Lua `OnMsg_{module}{sub}`）
 
 ### 新增 S2S 消息
 
-1. 在 `protocal/InternalMsg.h` 添加 msgID 和结构体
-2. 在发送方/接收方 `RegisterHandlers()` 注册
+1. 在 `protocal/InternalMsg.h` 添加 module/sub（扁平 `InternalMsgID`）和结构体
+2. 在发送方/接收方 `RegisterHandlers()` 注册（支持 `Register(module, sub)` 或扁平 ID）
 
 ### 水平扩展
 

@@ -151,16 +151,20 @@ public:
 
     /**
      * @brief 向远端发送消息
-     * @param msgID 协议消息 ID
-     * @param data  消息体数据指针
-     * @param len   消息体长度
-     * @return 写入发送缓冲区成功返回 true；连接已关闭或缓冲区满返回 false
-     * @see TcpConnection::SendMsg —— 实际数据由后续 OnWritable() 异步写出
+     * @param module 功能模块号
+     * @param sub    子消息号
      */
-    bool SendMsg(uint16_t msgID, const char* data, uint16_t len)
+    bool SendMsg(uint8_t module, uint8_t sub, const char* data, uint16_t len)
     {
         if (!m_conn || m_conn->IsClosed()) return false;
-        return m_conn->SendMsg(msgID, data, len);
+        return m_conn->SendMsg(module, sub, data, len);
+    }
+
+    /** @brief 使用扁平协议号发送 */
+    bool SendMsg(uint16_t flatMsgId, const char* data, uint16_t len)
+    {
+        if (!m_conn || m_conn->IsClosed()) return false;
+        return m_conn->SendMsg(flatMsgId, data, len);
     }
 
     /**

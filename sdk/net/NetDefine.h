@@ -42,20 +42,21 @@ constexpr ConnID INVALID_CONN_ID = 0;
 #pragma pack(push, 1)
 
 /**
- * @brief 二进制消息头（定长 4 字节）
+ * @brief 二进制消息头（定长 6 字节）
  *
- * 网络层自动追加/解析此头部，上层只需关心 msgID 与消息体。
- * length 字段仅包含消息体长度，不含消息头自身。
+ * 线上帧 = MsgHeader + Body。
+ * bodyLen 仅含消息体长度；module/sub 区分功能模块与具体消息。
  */
 struct MsgHeader
 {
-    uint16_t length;   /**< 消息体长度（不含本头部的 4 字节） */
-    uint16_t msgID;    /**< 协议号，对应 ClientMsgID 或 InternalMsgID */
+    uint16_t bodyLen;  /**< 消息体长度（不含本头部） */
+    uint8_t  module;   /**< 功能模块号 */
+    uint8_t  sub;      /**< 模块内子消息号 */
 };
 
 #pragma pack(pop)
 
-/** @brief 消息头固定字节数（= sizeof(MsgHeader)） */
+/** @brief 消息头固定字节数 */
 constexpr uint16_t MSG_HEADER_SIZE = sizeof(MsgHeader);
 
 // ============================================================
@@ -66,7 +67,6 @@ constexpr uint16_t MSG_HEADER_SIZE = sizeof(MsgHeader);
  * @brief 网络层异步事件回调接口
  *
  * TcpServer / TcpClient 通过此接口将连接事件与消息派发给上层逻辑。
- * 上层服务器类（如 SuperServer）实现此接口即可接收网络事件。
  */
 struct INetCallback
 {
@@ -80,11 +80,12 @@ struct INetCallback
 
     /**
      * @brief 收到一条完整消息
-     * @param id    来源连接 ID
-     * @param msgID 协议号
-     * @param data  消息体指针（可能为 nullptr）
-     * @param len   消息体长度
+     * @param id     来源连接 ID
+     * @param module 功能模块号
+     * @param sub    子消息号
+     * @param data   消息体指针（可能为 nullptr）
+     * @param len    消息体长度
      */
-    virtual void OnMessage(ConnID id, uint16_t msgID,
+    virtual void OnMessage(ConnID id, uint8_t module, uint8_t sub,
                            const char* data, uint16_t len)                = 0;
 };

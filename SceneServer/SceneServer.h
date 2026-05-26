@@ -180,9 +180,10 @@ public:
 
     void OnConnect(ConnID /*id*/)    override {}
     void OnDisconnect(ConnID id) override { LOG_WARN("SceneServer conn lost=%u", id); }
-    void OnMessage(ConnID id, uint16_t msgID, const char* data, uint16_t len) override
+    void OnMessage(ConnID id, uint8_t module, uint8_t sub,
+                   const char* data, uint16_t len) override
     {
-        MsgDispatcher::Instance().Dispatch(id, msgID, data, len);
+        MsgDispatcher::Instance().Dispatch(id, module, sub, data, len);
     }
 
 private:
@@ -356,8 +357,9 @@ private:
         const auto* hdr = reinterpret_cast<const Msg_GW_ClientMsg*>(data);
         const char* body = data + sizeof(Msg_GW_ClientMsg);
         uint16_t bodyLen = hdr->dataLen;
-        LOG_DEBUG("ClientMsg: connID=%u msgID=0x%04X", hdr->clientConnID, hdr->msgID);
-        HandleClientMsg(hdr->clientConnID, hdr->msgID, body, bodyLen);
+        LOG_DEBUG("ClientMsg: connID=%u mod=0x%02X sub=0x%02X",
+                  hdr->clientConnID, hdr->module, hdr->sub);
+        HandleClientMsg(hdr->clientConnID, hdr->module, hdr->sub, body, bodyLen);
     }
 
     /**
@@ -447,19 +449,21 @@ private:
      * 未知协议号统一委派给 Lua 脚本处理（OnMsg_XXXX）。
      * 路由优先级：C++ 原生处理 > Lua 脚本扩展处理。
      */
-    void HandleClientMsg(uint32_t clientConnID, uint16_t msgID,
+    void HandleClientMsg(uint32_t clientConnID, uint8_t module, uint8_t sub,
                          const char* data, uint16_t len)
     {
-        using CID = ClientMsgID;
-        switch ((CID)msgID)
-        {
-        case CID::C2S_MOVE_REQ:   OnMoveReq(clientConnID, data, len); break;
-        case CID::C2S_CHAT_REQ:   OnChatReq(clientConnID, data, len); break;
-        case CID::C2S_SKILL_REQ:  OnSkillReq(clientConnID, data, len); break;
-        case CID::C2S_NPC_TALK_REQ: OnNpcTalkReq(clientConnID, data, len); break;
-        case CID::C2S_HEARTBEAT:  OnHeartbeatReq(clientConnID, data, len); break;
-        default:                  CallLuaMsgHandler(clientConnID, msgID, data, len);
-        }
+        if (module == static_cast<uint8_t>(ClientModule::SCENE) && sub == 0x01)
+            OnMoveReq(clientConnID, data, len);
+        else if (module == static_cast<uint8_t>(ClientModule::CHAT) && sub == 0x01)
+            OnChatReq(clientConnID, data, len);
+        else if (module == static_cast<uint8_t>(ClientModule::SKILL) && sub == 0x01)
+            OnSkillReq(clientConnID, data, len);
+        else if (module == static_cast<uint8_t>(ClientModule::NPC) && sub == 0x01)
+            OnNpcTalkReq(clientConnID, data, len);
+        else if (module == static_cast<uint8_t>(ClientModule::SYSTEM) && sub == 0x01)
+            OnHeartbeatReq(clientConnID, data, len);
+        else
+            CallLuaMsgHandler(clientConnID, module, sub, data, len);
     }
 
     /**
@@ -583,16 +587,30 @@ private:
     /**
      * @brief 向客户端发送消息（通过 GatewayServer 转发）
      *
-     * 包格式：[clientConnID(4)][msgID(2)][data...]
+     * 包格式：Msg_GW_SendToClient + body
      */
-    void SendToClient(uint32_t clientConnID, uint16_t msgID, const char* data, uint16_t len)
+    void SendToClient(uint32_t clientConnID, uint8_t module, uint8_t sub,
+                      const char* data, uint16_t len)
     {
-        std::vector<char> buf(sizeof(uint32_t) + sizeof(uint16_t) + len);
-        memcpy(buf.data(), &clientConnID, sizeof(uint32_t));
-        memcpy(buf.data() + sizeof(uint32_t), &msgID, sizeof(uint16_t));
-        if (len > 0) memcpy(buf.data() + sizeof(uint32_t) + sizeof(uint16_t), data, len);
-        m_gatewayClient.SendMsg((uint16_t)InternalMsgID::GW_SEND_TO_CLIENT,
-                                 buf.data(), (uint16_t)buf.size());
+        std::vector<char> buf(sizeof(Msg_GW_SendToClient) + len);
+        auto* hdr = reinterpret_cast<Msg_GW_SendToClient*>(buf.data());
+        hdr->clientConnID = clientConnID;
+        hdr->module       = module;
+        hdr->sub          = sub;
+        hdr->dataLen      = len;
+        if (len > 0)
+            memcpy(buf.data() + sizeof(Msg_GW_SendToClient), data, len);
+        m_gatewayClient.SendMsg(static_cast<uint16_t>(InternalMsgID::GW_SEND_TO_CLIENT),
+                                buf.data(), static_cast<uint16_t>(buf.size()));
+    }
+
+    void SendToClient(uint32_t clientConnID, uint16_t flatMsgId,
+                      const char* data, uint16_t len)
+    {
+        SendToClient(clientConnID,
+                     static_cast<uint8_t>(flatMsgId >> 8),
+                     static_cast<uint8_t>(flatMsgId & 0xFF),
+                     data, len);
     }
 
     /**
@@ -645,10 +663,11 @@ private:
      *
      * 根据 msgID 拼全局函数名；connID + 二进制 data 作为参数。
      */
-    void CallLuaMsgHandler(uint32_t connID, uint16_t msgID, const char* data, uint16_t len)
+    void CallLuaMsgHandler(uint32_t connID, uint8_t module, uint8_t sub,
+                           const char* data, uint16_t len)
     {
         char funcName[32];
-        snprintf(funcName, sizeof(funcName), "OnMsg_%04X", msgID);
+        snprintf(funcName, sizeof(funcName), "OnMsg_%02X%02X", module, sub);
         m_luaMgr.callGlobalVoid(funcName, {
             LuaArg::integer(connID),
             LuaArg::binary(data, len),

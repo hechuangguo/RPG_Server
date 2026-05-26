@@ -181,9 +181,10 @@ public:
 
     void OnConnect(ConnID id)    override { LOG_DEBUG("AOI InnerConn=%u", id); }
     void OnDisconnect(ConnID id) override { LOG_WARN("AOI InnerConn=%u lost", id); }
-    void OnMessage(ConnID id, uint16_t msgID, const char* data, uint16_t len) override
+    void OnMessage(ConnID id, uint8_t module, uint8_t sub,
+                   const char* data, uint16_t len) override
     {
-        MsgDispatcher::Instance().Dispatch(id, msgID, data, len);
+        MsgDispatcher::Instance().Dispatch(id, module, sub, data, len);
     }
 
 private:

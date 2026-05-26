@@ -3,7 +3,8 @@
  * @brief  服务器内部消息协议定义
  *
  * 微服务架构中，各服务器进程通过 TCP 长连接发送此文件定义的消息进行通信。
- * 协议号按责任服务器分段：
+ * 线上帧：MsgHeader(6B: bodyLen + module + sub) + body，与客户端共用 sdk/net/NetDefine.h。
+ * 协议号按责任服务器分段（扁平 ID 高字节多为 module）：
  *
  * | 范围               | 归属服务器      |
  * |--------------------|---------------|
@@ -316,16 +317,29 @@ struct Msg_GW_UserLoginRsp
 };
 
 /**
- * @brief GatewayServer → SceneServer: 客户端消息转发
+ * @brief GatewayServer → SceneServer/SessionServer: 客户端消息转发
  *
- * 后跟 dataLen 字节的原始消息体。
+ * 后跟 dataLen 字节的原始消息体（与客户端线上 body 一致）。
  */
 struct Msg_GW_ClientMsg
 {
-    uint32_t clientConnID;  /**< GatewayServer 中的客户端连接 ID */
-    uint16_t msgID;         /**< 原始客户端协议号 */
+    uint32_t clientConnID;  /**< Gateway 侧客户端连接 ID */
+    uint8_t  module;        /**< 客户端 module */
+    uint8_t  sub;           /**< 客户端 sub */
     uint16_t dataLen;       /**< 消息体长度 */
-    // 后跟 dataLen 字节的消息体 ...
+};
+
+/**
+ * @brief SceneServer/SessionServer → GatewayServer: 下行到客户端
+ *
+ * 后跟 dataLen 字节消息体。
+ */
+struct Msg_GW_SendToClient
+{
+    uint32_t clientConnID;
+    uint8_t  module;
+    uint8_t  sub;
+    uint16_t dataLen;
 };
 
 /**

@@ -158,18 +158,23 @@ public:
     /**
      * @brief 向指定连接发送消息
      * @param id    目标连接 ID（由 OnConnect 回调提供）
-     * @param msgID 协议消息 ID
-     * @param data  消息体数据指针
-     * @param len   消息体长度
-     * @return 成功写入发送缓冲区返回 true；连接不存在或已关闭返回 false
-     *
-     * @note  通过 ConnID 索引 m_connMap 查找 TcpConnection，委托其 SendMsg()。
+     * @param module 功能模块号
+     * @param sub    子消息号
      */
-    bool SendMsg(ConnID id, uint16_t msgID, const char* data, uint16_t len)
+    bool SendMsg(ConnID id, uint8_t module, uint8_t sub,
+                 const char* data, uint16_t len)
     {
         auto it = m_connMap.find(id);
         if (it == m_connMap.end()) return false;
-        return it->second->SendMsg(msgID, data, len);
+        return it->second->SendMsg(module, sub, data, len);
+    }
+
+    /** @brief 使用扁平协议号发送 */
+    bool SendMsg(ConnID id, uint16_t flatMsgId, const char* data, uint16_t len)
+    {
+        auto it = m_connMap.find(id);
+        if (it == m_connMap.end()) return false;
+        return it->second->SendMsg(flatMsgId, data, len);
     }
 
     /**

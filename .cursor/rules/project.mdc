@@ -1,0 +1,79 @@
+---
+description: RPG 分布式服务端项目总则、架构约束与开发边界
+alwaysApply: true
+---
+
+# RPG Server 项目 Rules
+
+Linux 下 **C++17 + Lua 5.4** 分布式 MMORPG 服务端（9 进程）。详细说明见 `docs/PROJECT.md`、`docs/ARCHITECTURE.md`。
+
+## 架构红线（禁止破坏）
+
+| 约束 | 说明 |
+|------|------|
+| **单线程事件循环** | 每进程 `Poll()` + `TimerMgr::Update()`；**禁止**在 handler 内阻塞 IO、长锁、跨线程写共享状态 |
+| **DB 唯一入口** | 仅 **RecordServer** 直连 MySQL；其它服经内部协议访问存档 |
+| **Super 注册路由** | 新服/新连接须走 `S2S_REGISTER`；跨服消息经 SuperServer 或已约定直连，勿随意旁路 |
+| **Scene 扩展** | 多 SceneServer 由 **SessionServer** `SessionSceneManager` 登记与选服；本进程只管 `SceneManager` 内实例 |
+| **AOI 独立** | 视野逻辑在 AOIServer；Scene 只发 enter/leave/move，不在 Scene 内实现九宫格 |
+
+## 代码应放哪里
+
+| 新增内容 | 目录 |
+|----------|------|
+| 新服务器进程 | `{Name}Server/` + `CMakeLists.txt` 中 `add_server` |
+| 公共网络/工具 | `sdk/`（优先复用 `NetDefine`、`MsgDispatcher`、`Logger`、`ConfigLoader`） |
+| 客户端协议 | `common/ClientMsg.h` |
+| 服间协议 | `protocal/InternalMsg.h`（拼写保持 `protocal`） |
+| 网关校验/路由 | `GatewayServer/ClientMsgValidator.h`、`ClientMsgRouter.h` |
+| 玩法逻辑（可热更） | `script/`（SceneServer Lua） |
+| 静态策划表源 | `DataDoc/*.xlsx` |
+| 生成的 Lua 配表 | `database/*_config.lua`（**勿手改**，改 Excel 后 `./gen_data.sh`） |
+| 配表加载 API | `basefile/`（如 `data_table.lua`） |
+| 运行时配置 | `config/config.xml`、`config/server_info.xml` |
+| SQL 表结构 | `database/init.sql` |
+| 构建/运维脚本 | 项目根 `build.sh`、`RunServer.sh` 等 |
+
+## 协议与 Wire 字段
+
+- 线上帧：`MsgHeader`（bodyLen + module + sub，6 字节）+ body，见 `sdk/net/NetDefine.h`、`MsgId.h`。
+- 新消息：在头文件定义 module/sub 与 body 结构体，并注释**方向、触发时机**。
+- 客户端上行：**必须**经 Gateway `ClientMsgValidator` + `ClientMsgRouter`，禁止绕过校验直转 Scene。
+- 定长 `char[N]`：**禁止** `strncpy` 写协议字段；使用 `sdk/util/WireStringUtil.h`。
+- 服间场景/副本：优先复用 `SES_*`、`AOI_SCENE_*`；转发客户端包用 `Msg_GW_ClientMsg`（含 module/sub）。
+
+## 场景 / 副本开发约定
+
+- 普通地图：Scene 启动 → `loadResources` → 注册 AOI + Session（`SES_SCENE_REGISTER_REQ`）。
+- 副本：Scene 发 `SES_COPY_CREATE_REQ` → Session 复用或 `pickSceneServerId()` → `SES_COPY_CREATE_CMD`。
+- 新增 `CopyType`：`CopyScene` 子类 + `CopySceneFactory` 分支 + Session 复用条件（若需要）。
+
+## Lua（SceneServer）
+
+- 入口：`script/scene/init.lua`；`package.path` 含 `script/`、`database/`、`basefile/`。
+- C++ 调 Lua：`LuaManager::callGlobal*` / `callScript*`；Lua 调 C++：`ScriptFun` / `LuaBinder` 注册。
+- 静态表：用 `DataTable.load("xxx_config")`，不要在 Lua 里硬编码大表（应走 DataDoc 管线）。
+
+## 实现原则
+
+1. **最小 diff**：只改与任务相关的文件，不顺手大重构存量命名。
+2. **复用优先**：扩展现有类/宏/脚本，避免平行实现一套网络或配置加载。
+3. **魔法数**：提取为 `constexpr` / 命名常量（ALL_CAPS）。
+4. **构建目录**：产物在 `.build/bin/`，勿提交 `.build/`、`logs/`、`run/`、`.cache/`。
+
+## 构建与验证
+
+```bash
+./gen_data.sh          # 改 DataDoc 后
+./build.sh [Server]    # 如 SceneServer
+./RunServer.sh         # 从项目根启动（cwd 影响 Lua 路径）
+```
+
+改协议或跨服流程时，对照 `docs/ARCHITECTURE.md` 启动顺序与登录序列。
+
+## 与其它 Rules 的关系
+
+- **命名**：`.cursor/rules/naming-conventions.mdc`（新代码必遵）
+- **注释**：`.cursor/rules/comments-required.mdc`（新代码必遵）
+
+新增 C++/Lua/Shell/XML 时同时满足本总则 + 命名 + 注释三条。

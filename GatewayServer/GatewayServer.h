@@ -30,6 +30,8 @@
 #include "../protocal/InternalMsg.h"
 #include "GatewayUser.h"
 #include "GatewayUserManager.h"
+#include "ClientMsgValidator.h"
+#include "ClientMsgRouter.h"
 #include <string>
 #include <vector>
 
@@ -48,6 +50,7 @@ public:
         , m_superClient(this)
         , m_recordClient(this)
         , m_sceneClient(this)
+        , m_sessionClient(this)
     {}
 
     /**
@@ -71,6 +74,7 @@ public:
         m_superClient.Connect(cfg.superIP,   (uint16_t)cfg.superPort);
         m_recordClient.Connect("127.0.0.1",  (uint16_t)cfg.recordPort);
         m_sceneClient.Connect("127.0.0.1",   (uint16_t)cfg.scenePort);
+        m_sessionClient.Connect("127.0.0.1", (uint16_t)cfg.sessionPort);
 
         m_clientPort = clientPort;
         m_innerPort  = innerPort;
@@ -92,6 +96,7 @@ public:
             m_superClient.Poll(0);
             m_recordClient.Poll(0);
             m_sceneClient.Poll(0);
+            m_sessionClient.Poll(0);
             m_clientServer.Poll(5);
             m_innerServer.Poll(5);
             TimerMgr::Instance().Update();
@@ -145,16 +150,13 @@ public:
      * - 客户端连接：通过 HandleClientMsg 处理登录、心跳和游戏消息
      * - 内部连接：通过 MsgDispatcher 分发到对应的处理函数
      */
-    void OnMessage(ConnID id, uint16_t msgID, const char* data, uint16_t len) override
+    void OnMessage(ConnID id, uint8_t module, uint8_t sub,
+                   const char* data, uint16_t len) override
     {
         if (m_userManager.findUser(id))
-        {
-            HandleClientMsg(id, msgID, data, len);
-        }
+            HandleClientMsg(id, module, sub, data, len);
         else
-        {
-            MsgDispatcher::Instance().Dispatch(id, msgID, data, len);
-        }
+            MsgDispatcher::Instance().Dispatch(id, module, sub, data, len);
     }
 
 private:
@@ -188,27 +190,74 @@ private:
      * - C2S_HEARTBEAT  → OnClientHeartbeat（回包服务器时间）
      * - 其他消息       → ForwardToScene（将消息转发给 SceneServer，仅 LOGGED_IN 状态可触发）
      */
-    void HandleClientMsg(ConnID connID, uint16_t msgID, const char* data, uint16_t len)
+    void HandleClientMsg(ConnID connID, uint8_t module, uint8_t sub,
+                         const char* data, uint16_t len)
     {
         auto user = m_userManager.findUser(connID);
         if (!user) return;
         user->touchHeartbeat();
 
-        using CID = ClientMsgID;
-        switch ((CID)msgID)
+        const ValidateResult vr =
+            ClientMsgValidator::check(user.get(), module, sub, data, len);
+        if (vr != ValidateResult::OK)
         {
-        case CID::C2S_LOGIN_REQ:
-            if (user->getClientState() == ClientState::CONNECTED)
-                OnClientLogin(connID, data, len);
+            sendClientError(connID, vr);
+            LOG_WARN("ClientMsg rejected: conn=%u mod=0x%02X sub=0x%02X vr=%u",
+                     connID, module, sub, static_cast<unsigned>(vr));
+            return;
+        }
+
+        const ClientForwardTarget target = ClientMsgRouter::resolve(module, sub);
+        switch (target)
+        {
+        case ClientForwardTarget::LOCAL:
+            if (module == static_cast<uint8_t>(ClientModule::LOGIN) && sub == 0x01)
+            {
+                if (user->getClientState() == ClientState::CONNECTED)
+                    OnClientLogin(connID, data, len);
+            }
+            else if (module == static_cast<uint8_t>(ClientModule::SYSTEM) && sub == 0x01)
+            {
+                OnClientHeartbeat(connID, data, len);
+            }
             break;
-        case CID::C2S_HEARTBEAT:
-            OnClientHeartbeat(connID, data, len);
-            break;
-        default:
+        case ClientForwardTarget::SCENE:
             if (user->getClientState() == ClientState::LOGGED_IN)
-                ForwardToScene(connID, msgID, data, len);
+                forwardClientMsg(m_sceneClient, connID, module, sub, data, len);
+            else
+                sendClientError(connID, ValidateResult::BAD_STATE);
+            break;
+        case ClientForwardTarget::SESSION:
+            if (user->getClientState() == ClientState::LOGGED_IN)
+                forwardClientMsg(m_sessionClient, connID, module, sub, data, len);
+            else
+                sendClientError(connID, ValidateResult::BAD_STATE);
+            break;
+        case ClientForwardTarget::DROP:
+        default:
+            sendClientError(connID, ValidateResult::UNKNOWN_MSG);
             break;
         }
+    }
+
+    void sendClientError(ConnID connID, ValidateResult vr)
+    {
+        Msg_S2C_Error err{};
+        err.code = ClientMsgValidator::toErrorCode(vr);
+        const char* text = "Request rejected";
+        switch (vr)
+        {
+        case ValidateResult::UNKNOWN_MSG:  text = "Unknown message"; break;
+        case ValidateResult::BAD_LENGTH:   text = "Invalid packet length"; break;
+        case ValidateResult::BAD_STATE:    text = "Invalid client state"; break;
+        case ValidateResult::BAD_PAYLOAD:  text = "Invalid payload"; break;
+        case ValidateResult::RATE_LIMITED: text = "Rate limited"; break;
+        default: break;
+        }
+        copyToWire(err.msg, sizeof(err.msg), text);
+        m_clientServer.SendMsg(connID,
+                               static_cast<uint8_t>(ClientModule::SYSTEM), 0x05,
+                               reinterpret_cast<char*>(&err), sizeof(err));
     }
 
     /**
@@ -344,14 +393,12 @@ private:
      */
     void OnSendToClient(ConnID /*fromConn*/, const char* data, uint16_t len)
     {
-        if (len < sizeof(uint32_t) + sizeof(uint16_t)) return;
-        uint32_t clientConnID;
-        uint16_t msgID;
-        memcpy(&clientConnID, data, sizeof(uint32_t));
-        memcpy(&msgID,  data + sizeof(uint32_t), sizeof(uint16_t));
-        const char* body    = data + sizeof(uint32_t) + sizeof(uint16_t);
-        uint16_t    bodyLen = len  - sizeof(uint32_t) - sizeof(uint16_t);
-        m_clientServer.SendMsg(clientConnID, msgID, body, bodyLen);
+        if (len < sizeof(Msg_GW_SendToClient)) return;
+        const auto* hdr = reinterpret_cast<const Msg_GW_SendToClient*>(data);
+        const char* body = data + sizeof(Msg_GW_SendToClient);
+        if (len < sizeof(Msg_GW_SendToClient) + hdr->dataLen) return;
+        m_clientServer.SendMsg(hdr->clientConnID, hdr->module, hdr->sub,
+                               body, hdr->dataLen);
     }
 
     /**
@@ -375,16 +422,20 @@ private:
      * 构造 Msg_GW_ClientMsg 头部（包含 clientConnID、msgID、dataLen），
      * 后接原始客户端消息体，通过 m_sceneClient 发送 GW_CLIENT_MSG 给 SceneServer 进行处理。
      */
-    void ForwardToScene(ConnID connID, uint16_t msgID, const char* data, uint16_t len)
+    void forwardClientMsg(TcpClient& target, ConnID connID,
+                          uint8_t module, uint8_t sub,
+                          const char* data, uint16_t len)
     {
         std::vector<char> buf(sizeof(Msg_GW_ClientMsg) + len);
         auto* hdr = reinterpret_cast<Msg_GW_ClientMsg*>(buf.data());
         hdr->clientConnID = connID;
-        hdr->msgID        = msgID;
+        hdr->module       = module;
+        hdr->sub          = sub;
         hdr->dataLen      = len;
-        if (len > 0) memcpy(buf.data() + sizeof(Msg_GW_ClientMsg), data, len);
-        m_sceneClient.SendMsg((uint16_t)InternalMsgID::GW_CLIENT_MSG,
-                               buf.data(), (uint16_t)buf.size());
+        if (len > 0)
+            memcpy(buf.data() + sizeof(Msg_GW_ClientMsg), data, len);
+        target.SendMsg(static_cast<uint16_t>(InternalMsgID::GW_CLIENT_MSG),
+                       buf.data(), static_cast<uint16_t>(buf.size()));
     }
 
     /**
@@ -446,7 +497,8 @@ private:
     // --- 上游连接 ---
     TcpClient m_superClient;    /**< 到 SuperServer 的连接，用于注册和登录调度 */
     TcpClient m_recordClient;   /**< 到 RecordServer 的连接，用于账号密码验证 */
-    TcpClient m_sceneClient;    /**< 到 SceneServer 的连接，用于上行消息转发和下行消息接收 */
+    TcpClient m_sceneClient;    /**< 到 SceneServer 的连接 */
+    TcpClient m_sessionClient;  /**< 到 SessionServer 的连接（社交/任务） */
 
     // --- 状态 ---
     uint32_t  m_hbSeq = 0;      /**< 心跳序列号，每次发送心跳递增 */

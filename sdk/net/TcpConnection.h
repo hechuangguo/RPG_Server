@@ -46,6 +46,7 @@
 
 #pragma once
 #include "NetDefine.h"
+#include "MsgId.h"
 #include "RingBuffer.h"
 #include <unistd.h>
 #include <sys/socket.h>
@@ -92,31 +93,30 @@ public:
 
     /**
      * @brief 发送一条消息（自动添加 MsgHeader）
-     * @param msgID 协议消息 ID
-     * @param data  消息体指针（可为 nullptr，此时 len 必须为 0）
-     * @param len   消息体长度（字节）
-     * @return 写入发送缓冲区成功返回 true
-     * @retval false 连接已关闭 或 发送缓冲区空间不足
-     *
-     * 写入流程：
-     * 1. 构造 MsgHeader（length = len, msgID = msgID）
-     * 2. 将 MsgHeader 写入 m_sendBuf（RingBuffer）
-     * 3. 若有消息体（len > 0），将消息体数据追加写入 m_sendBuf
-     * 4. 实际数据由后续 OnWritable() 事件驱动异步写出
-     *
-     * @note   此方法仅操作内存缓冲区，不会阻塞。发送失败不触发 Close()。
+     * @param module 功能模块号
+     * @param sub    子消息号
+     * @param data   消息体指针（可为 nullptr，此时 len 必须为 0）
+     * @param len    消息体长度（字节）
      */
-    bool SendMsg(uint16_t msgID, const char* data, uint16_t len)
+    bool SendMsg(uint8_t module, uint8_t sub, const char* data, uint16_t len)
     {
         if (m_closed) return false;
-        MsgHeader hdr;
-        hdr.length = len;
-        hdr.msgID  = msgID;
+        if (len > MAX_PACKET_SIZE) return false;
+        MsgHeader hdr{};
+        hdr.bodyLen = len;
+        hdr.module  = module;
+        hdr.sub     = sub;
         if (!m_sendBuf.Write(reinterpret_cast<const char*>(&hdr), MSG_HEADER_SIZE))
             return false;
         if (len > 0 && data)
             return m_sendBuf.Write(data, len);
         return true;
+    }
+
+    /** @brief 使用扁平协议号发送（高字节 module，低字节 sub） */
+    bool SendMsg(uint16_t flatMsgId, const char* data, uint16_t len)
+    {
+        return SendMsg(msgModule(flatMsgId), msgSub(flatMsgId), data, len);
     }
 
     /**
@@ -214,29 +214,32 @@ private:
      * @brief 从接收缓冲区中解析完整消息
      *
      * 拆包算法（基于长度前缀协议）：
-     * 1. Peek MSG_HEADER_SIZE 字节 → 解析 MsgHeader（length, msgID）
-     * 2. 计算完整消息长度 = MSG_HEADER_SIZE + hdr.length
-     * 3. 检查 m_recvBuf 中可用字节是否 >= 完整消息长度
-     *    - 不足 → 半包，退出循环等待下次 OnReadable() 补齐
-     *    - 足够 → Consume 消息头，Read 消息体，触发 OnMessage 回调
-     * 4. 循环处理直到缓冲区中不足一条完整消息
-     *
-     * @note  消息体最大长度受 MAX_PACKET_SIZE 限制（在 NetDefine.h 中定义）
+     * 1. Peek MSG_HEADER_SIZE 字节 → 解析 MsgHeader（bodyLen, module, sub）
+     * 2. 计算完整消息长度 = MSG_HEADER_SIZE + hdr.bodyLen
      */
     void ProcessMessages()
     {
         while (m_recvBuf.ReadableBytes() >= MSG_HEADER_SIZE)
         {
-            MsgHeader hdr;
+            MsgHeader hdr{};
             m_recvBuf.Peek(reinterpret_cast<char*>(&hdr), MSG_HEADER_SIZE);
-            uint32_t total = MSG_HEADER_SIZE + hdr.length;
-            if (m_recvBuf.ReadableBytes() < total) break;  /**< 半包，等待更多数据 */
+            if (hdr.bodyLen > MAX_PACKET_SIZE)
+            {
+                Close();
+                return;
+            }
+            uint32_t total = MSG_HEADER_SIZE + hdr.bodyLen;
+            if (m_recvBuf.ReadableBytes() < total)
+                break;
             m_recvBuf.Consume(MSG_HEADER_SIZE);
             char body[MAX_PACKET_SIZE];
-            if (hdr.length > 0)
-                m_recvBuf.Read(body, hdr.length);
+            if (hdr.bodyLen > 0)
+                m_recvBuf.Read(body, hdr.bodyLen);
             if (m_cb)
-                m_cb->OnMessage(m_id, hdr.msgID, hdr.length > 0 ? body : nullptr, hdr.length);
+            {
+                m_cb->OnMessage(m_id, hdr.module, hdr.sub,
+                                hdr.bodyLen > 0 ? body : nullptr, hdr.bodyLen);
+            }
         }
     }
 

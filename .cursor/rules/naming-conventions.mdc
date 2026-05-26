@@ -1,5 +1,5 @@
 ---
-description: 类/变量/宏与常量的命名规范（新增代码必遵）
+description: C++/Lua/Shell 命名规范（PascalCase、camelCase、ALL_CAPS）
 alwaysApply: true
 ---
 
@@ -10,7 +10,7 @@ alwaysApply: true
 ## 规则总览
 
 | 类别 | 风格 | 示例 |
-|------|------|------|
+|---|---|---|
 | **类、结构体、枚举类型** | 大驼峰 PascalCase | `UserManager`、`UserBase`、`MsgDispatcher` |
 | **函数、方法** | 小驼峰 camelCase | `getUserName()`、`loadUserFromDb()` |
 | **变量**（局部、参数、成员） | 小驼峰 camelCase | `userCount`、`gatewayConnId` |

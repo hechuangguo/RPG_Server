@@ -3,7 +3,8 @@
  * @brief  客户端 ↔ 服务器 消息协议定义
  *
  * 包含所有 GameClient 与 GameServer 之间的协议号枚举及消息结构体。
- * 采用定长二进制封包（非 protobuf），协议号编码规则如下：
+ * 线上帧：MsgHeader(6B: bodyLen + module + sub) + Body，见 sdk/net/NetDefine.h。
+ * 扁平协议号 = (module << 8) | sub，与 ClientMsgID 枚举值一致。
  *
  * 协议号范围约定：
  * | 范围               | 模块       |
@@ -28,7 +29,24 @@
 #include <cstdint>
 
 /**
- * @brief 客户端消息协议号枚举
+ * @brief 客户端功能模块号（消息头 module 字段）
+ */
+enum class ClientModule : uint8_t
+{
+    LOGIN  = 0x00,
+    SCENE  = 0x01,
+    BATTLE = 0x02,
+    BAG    = 0x03,
+    SKILL  = 0x04,
+    CHAT   = 0x05,
+    SOCIAL = 0x06,
+    QUEST  = 0x07,
+    NPC    = 0x08,
+    SYSTEM = 0x0F,
+};
+
+/**
+ * @brief 客户端消息协议号枚举（扁平 ID = module<<8 | sub）
  */
 enum class ClientMsgID : uint16_t
 {
@@ -117,6 +135,7 @@ enum class ClientMsgID : uint16_t
     S2C_HEARTBEAT        = 0x0F02,  /**< S→C: 心跳响应 */
     S2C_KICK             = 0x0F03,  /**< S→C: 服务器踢人通知 */
     S2C_NOTICE           = 0x0F04,  /**< S→C: 系统公告 */
+    S2C_ERROR            = 0x0F05,  /**< S→C: 网关校验失败等通用错误 */
 };
 
 // ============================================================
@@ -214,6 +233,26 @@ struct Msg_S2C_Heartbeat
 {
     uint32_t seq;        /**< 回显客户端序列号 */
     uint64_t serverTime; /**< 服务器当前时间（毫秒时间戳） */
+};
+
+/**
+ * @brief S→C: 通用错误（网关校验失败等）
+ */
+struct Msg_S2C_Error
+{
+    int32_t code;     /**< 错误码，见 GatewayValidateCode */
+    char    msg[64];  /**< 可读描述 */
+};
+
+/** @brief 网关校验错误码（S2C_ERROR.code） */
+enum class GatewayValidateCode : int32_t
+{
+    OK           = 0,
+    UNKNOWN_MSG  = 1,
+    BAD_LENGTH   = 2,
+    BAD_STATE    = 3,
+    BAD_PAYLOAD  = 4,
+    RATE_LIMITED = 5,
 };
 
 /**

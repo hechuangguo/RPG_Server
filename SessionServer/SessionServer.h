@@ -12,6 +12,8 @@
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
 #include "../protocal/InternalMsg.h"
+#include "../common/ClientMsg.h"
+#include "../sdk/net/MsgId.h"
 #include "SessionUser.h"
 #include "SessionUserManager.h"
 #include "SessionSceneManager.h"
@@ -62,9 +64,10 @@ public:
         LOG_INFO("InnerConn disconnected=%u", id);
     }
 
-    void OnMessage(ConnID id, uint16_t msgID, const char* data, uint16_t len) override
+    void OnMessage(ConnID id, uint8_t module, uint8_t sub,
+                   const char* data, uint16_t len) override
     {
-        MsgDispatcher::Instance().Dispatch(id, msgID, data, len);
+        MsgDispatcher::Instance().Dispatch(id, module, sub, data, len);
     }
 
 private:
@@ -103,6 +106,39 @@ private:
             [this](uint32_t c, const char* d, uint16_t l){ OnSceneUnregister(c, d, l); });
         d.Register((uint16_t)InternalMsgID::SES_COPY_CREATE_REQ,
             [this](uint32_t c, const char* d, uint16_t l){ OnCopyCreateReq(c, d, l); });
+        d.Register((uint16_t)InternalMsgID::GW_CLIENT_MSG,
+            [this](uint32_t c, const char* d, uint16_t l){ OnGatewayClientMsg(c, d, l); });
+    }
+
+    /**
+     * @brief Gateway 转发的客户端消息（社交/任务等）
+     */
+    void OnGatewayClientMsg(ConnID /*fromConn*/, const char* data, uint16_t len)
+    {
+        if (len < sizeof(Msg_GW_ClientMsg)) return;
+        const auto* hdr = reinterpret_cast<const Msg_GW_ClientMsg*>(data);
+        const char* body = data + sizeof(Msg_GW_ClientMsg);
+        if (len < sizeof(Msg_GW_ClientMsg) + hdr->dataLen) return;
+
+        LOG_INFO("GatewayClientMsg: conn=%u mod=0x%02X sub=0x%02X len=%u",
+                 hdr->clientConnID, hdr->module, hdr->sub, hdr->dataLen);
+
+        if (hdr->module == static_cast<uint8_t>(ClientModule::SOCIAL))
+            handleSocialClientMsg(hdr->clientConnID, hdr->sub, body, hdr->dataLen);
+        else if (hdr->module == static_cast<uint8_t>(ClientModule::QUEST))
+            handleQuestClientMsg(hdr->clientConnID, hdr->sub, body, hdr->dataLen);
+    }
+
+    void handleSocialClientMsg(uint32_t clientConnId, uint8_t sub,
+                               const char* /*data*/, uint16_t len)
+    {
+        LOG_DEBUG("SocialClientMsg: conn=%u sub=0x%02X len=%u", clientConnId, sub, len);
+    }
+
+    void handleQuestClientMsg(uint32_t clientConnId, uint8_t sub,
+                              const char* /*data*/, uint16_t len)
+    {
+        LOG_DEBUG("QuestClientMsg: conn=%u sub=0x%02X len=%u", clientConnId, sub, len);
     }
 
     void RegisterToSuper()
