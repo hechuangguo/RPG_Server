@@ -1,0 +1,28 @@
+{
+  // 本仓库：保存时不自动缩进/重排代码（避免 Ctrl+S 整文件被 formatter 改写）
+  "editor.formatOnSave": false,
+  "editor.formatOnPaste": false,
+  "editor.formatOnType": false,
+
+  "[cpp]": {
+    "editor.formatOnSave": false,
+    "editor.defaultFormatter": null
+  },
+  "[c]": {
+    "editor.formatOnSave": false,
+    "editor.defaultFormatter": null
+  },
+  "[lua]": {
+    "editor.formatOnSave": false
+  },
+  "[sql]": {
+    "editor.formatOnSave": false
+  },
+  "[xml]": {
+    "editor.formatOnSave": false
+  },
+
+  // Microsoft C/C++ 扩展：不用其内置格式化（若已安装）
+  "C_Cpp.formatting": "disabled",
+  "C_Cpp.clang_format_fallbackStyle": "none"
+}

@@ -28,56 +28,71 @@
     <!--  数据库配置段                                                    -->
     <!--  用途：提供 MySQL 数据库连接参数，仅由 RecordServer 直接连接      -->
     <!--        其他服务器通过 RecordServer 代理进行数据读写               -->
+    <!--  host：MySQL 主机地址（IP 或域名）                               -->
+    <!--  port：MySQL 端口号，默认 3306                                    -->
+    <!--  user：MySQL 登录用户名                                          -->
+    <!--  pass：MySQL 登录密码（生产环境部署时必须修改）                    -->
+    <!--  name：数据库名称，需与 tables/init.sql 中库名一致                -->
     <!-- ================================================================ -->
-    <Database
-        host="127.0.0.1"         <!-- MySQL 主机地址（IP或域名） -->
-        port="3306"               <!-- MySQL 端口号，默认3306 -->
-        user="root"               <!-- MySQL 登录用户名 -->
-        pass="your_password"      <!-- MySQL 登录密码（生产环境部署时必须修改） -->
-        name="rpg_game"           <!-- 数据库名称，需与 init.sql 中创建的库名一致 -->
-    />
+    <Database host="127.0.0.1" port="3306" user="root" pass="your_password" name="rpg_game"/>
 
     <!-- ================================================================ -->
     <!--  SuperServer 配置                                                -->
     <!--  用途：定义中心服务器的监听地址                                   -->
-    <!--        所有子服务器（Session/Record/AOI/Scene/Gateway等）          -->
+    <!--        所有子服务器（Session/Record/AOI/Scene/Gateway 等）        -->
     <!--        启动后均通过 TcpClient 连接到此地址进行内部通信              -->
+    <!--  ip：监听 IP（通常为本机回环或内网 IP）                            -->
+    <!--  port：监听端口，子服务器连接的目标端口                            -->
     <!-- ================================================================ -->
-    <SuperServer
-        ip="127.0.0.1"    <!-- 监听 IP 地址（通常绑定本机回环或内网IP） -->
-        port="9000"       <!-- 监听端口号，子服务器连接的目标端口 -->
-    />
+    <SuperServer ip="127.0.0.1" port="9000"/>
 
     <!-- ================================================================ -->
     <!--  各服务器内部监听端口配置                                         -->
     <!--  用途：定义每个子服务器启动时本地 bind 的端口                      -->
     <!--        GatewayServer 对外暴露给客户端，其他端口仅内网使用           -->
     <!-- ================================================================ -->
-    <SessionServer port="9001"/>   <!-- SessionServer：社会关系/离线数据管理，处理好友、邮件等社交功能 -->
-    <RecordServer  port="9002"/>   <!-- RecordServer：数据库读写代理，唯一直接连接MySQL的服务器，负责所有数据持久化 -->
-    <AOIServer     port="9003"/>   <!-- AOIServer：兴趣范围管理（AOI），基于9宫格算法管理用户视野范围内的实体列表 -->
-    <SceneServer   port="9004"/>   <!-- SceneServer：场景逻辑服务器，运行Lua脚本驱动的游戏逻辑（战斗/NPC/怪物等） -->
-    <GatewayServer port="9005"/>   <!-- GatewayServer：客户端接入网关，负责玩家客户端的TCP连接管理、消息转发和会话维持 -->
-    <LoggerServer  port="9006"/>   <!-- LoggerServer：日志收集服务器，接收各服务器的远程日志并统一写入文件 -->
-    <GlobalServer  port="9007"/>   <!-- GlobalServer：全区数据服务器（可选），处理跨场景的全局数据如排行榜、全局公告等 -->
-    <ZoneServer    port="9008"/>   <!-- ZoneServer：跨区转发服务器（可选），用于多区架构下跨区域的消息路由和数据同步 -->
+    <!-- SessionServer：社会关系/离线数据，好友、邮件等社交功能 -->
+    <SessionServer port="9001"/>
+    <!-- RecordServer：数据库读写代理，唯一直连 MySQL，负责持久化 -->
+    <RecordServer port="9002"/>
+    <!-- AOIServer：兴趣范围（AOI），9 宫格视野管理 -->
+    <AOIServer port="9003"/>
+    <!-- SceneServer：场景逻辑，Lua 驱动战斗/NPC 等 -->
+    <SceneServer port="9004"/>
+    <!-- GatewayServer：客户端接入网关，连接管理与消息转发 -->
+    <GatewayServer port="9005"/>
+    <!-- LoggerServer：集中收集各服远程日志并写文件 -->
+    <LoggerServer port="9006"/>
+    <!-- GlobalServer：全区数据（可选），排行榜、全服公告等 -->
+    <GlobalServer port="9007"/>
+    <!-- ZoneServer：跨区转发（可选），多区架构消息路由 -->
+    <ZoneServer port="9008"/>
 
     <!-- ================================================================ -->
     <!--  日志输出路径配置                                                 -->
-    <!--  用途：按服务器名称映射到对应的日志文件路径                        -->
-    <!--        由 LoggerServer 负责接收远程日志并写入这些文件              -->
-    <!--        日志目录相对于程序工作目录                                  -->
+    <!--  用途：按服务器名称映射到日志文件路径                              -->
+    <!--        LoggerServer 接收远程日志并写入；路径相对进程工作目录        -->
+    <!--  实时日志为 logs/xxx.log；跨小时归档为 xxx.log.YYYYMMDD-HH        -->
     <!-- ================================================================ -->
     <LogPaths>
-        <SuperServer>logs/super.log</SuperServer>     <!-- SuperServer 日志文件路径 -->
-        <SessionServer>logs/session.log</SessionServer> <!-- SessionServer 日志文件路径 -->
-        <RecordServer>logs/record.log</RecordServer>   <!-- RecordServer 日志文件路径 -->
-        <AOIServer>logs/aoi.log</AOIServer>             <!-- AOIServer 日志文件路径 -->
-        <SceneServer>logs/scene.log</SceneServer>       <!-- SceneServer 日志文件路径 -->
-        <GatewayServer>logs/gateway.log</GatewayServer> <!-- GatewayServer 日志文件路径 -->
-        <LoggerServer>logs/logger.log</LoggerServer>   <!-- LoggerServer 自身日志文件路径 -->
-        <GlobalServer>logs/global.log</GlobalServer>     <!-- GlobalServer 日志文件路径 -->
-        <ZoneServer>logs/zone.log</ZoneServer>           <!-- ZoneServer 日志文件路径 -->
+        <!-- SuperServer 日志 -->
+        <SuperServer>logs/super.log</SuperServer>
+        <!-- SessionServer 日志 -->
+        <SessionServer>logs/session.log</SessionServer>
+        <!-- RecordServer 日志 -->
+        <RecordServer>logs/record.log</RecordServer>
+        <!-- AOIServer 日志 -->
+        <AOIServer>logs/aoi.log</AOIServer>
+        <!-- SceneServer 日志 -->
+        <SceneServer>logs/scene.log</SceneServer>
+        <!-- GatewayServer 日志 -->
+        <GatewayServer>logs/gateway.log</GatewayServer>
+        <!-- LoggerServer 自身日志 -->
+        <LoggerServer>logs/logger.log</LoggerServer>
+        <!-- GlobalServer 日志 -->
+        <GlobalServer>logs/global.log</GlobalServer>
+        <!-- ZoneServer 日志 -->
+        <ZoneServer>logs/zone.log</ZoneServer>
     </LogPaths>
 
 </ServerConfig>

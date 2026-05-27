@@ -107,7 +107,8 @@ RPG/
 ├── protocal/InternalMsg.h  # 服务器间协议
 ├── config/config.xml       # 全局配置
 ├── config/server_info.xml  # SceneServer 地图配置
-├── database/init.sql
+├── database/               # Lua 策划配表
+├── tables/                 # MySQL DDL（入口 init.sql）
 ├── script/                 # Lua 脚本
 └── *Server/                # 各服务器 *Server.h + main.cpp
 ```
@@ -361,7 +362,7 @@ flowchart TB
 
     subgraph data [数据层]
         XML[config.xml + server_info.xml]
-        SQL[MySQL init.sql]
+        SQL[tables/init.sql]
         LuaScript[script/*.lua]
     end
 

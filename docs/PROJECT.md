@@ -76,7 +76,8 @@ RPG/
 ├── ZoneServer/
 ├── config/           # config.xml、server_info.xml
 ├── DataDoc/          # 策划 Excel 源表
-├── database/         # init.sql + 生成的 *_config.lua
+├── database/         # 生成的 *_config.lua 策划配表
+├── tables/           # MySQL DDL（入口 init.sql）
 ├── basefile/         # 配表加载工具 data_table.lua
 ├── script/           # 游戏 Lua（scene/quest/npc 等）
 ├── 3Party/           # 第三方静态库
@@ -109,7 +110,7 @@ RPG/
 UserBase → IUser → SessionUser / RecordUser / SceneUser
 ```
 
-- RecordServer：账号、角色持久化（`database/init.sql`）
+- RecordServer：账号、角色持久化（`tables/init.sql`）
 - SceneServer：在线实体 `SceneUser`、`SceneNpc`（`SceneEntry`）
 
 #### 场景与副本
@@ -148,13 +149,14 @@ Client → Gateway（验证）→ Super → Record（加载）→ Scene → AOI
 ./autoinit.sh          # 3Party + CMake 配置
 ./gen_data.sh          # Excel → Lua 配表（首次可加 --init）
 ./build.sh             # 编译全部服务器
-mysql -u root -p < database/init.sql
+mysql -u root -p < tables/init.sql          # 建库建表
+mysql -u root -p < tables/seed_test_data.sql  # 可选：开发测试账号
 ./RunServer.sh         # 按依赖顺序启动
 ./log.sh               # 实时日志
 ./StopServer.sh        # 停止
 ```
 
-测试账号（见 README）：`test001` / `123456`
+测试账号（执行 `seed_test_data.sql` 后可用）：`test001` / `123456`
 
 ### 1.7 开发规范
 
@@ -237,7 +239,9 @@ mysql -u root -p < database/init.sql
 | [README.md](../README.md) | 快速上手、场景流程、日志 |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | 架构图、协议、扩展指南 |
 | [DataDoc/README.md](../DataDoc/README.md) | Excel 配表规范 |
-| [database/README.md](../database/README.md) | SQL 与 Lua 配表说明 |
+| [database/README.md](../database/README.md) | Lua 策划配表说明 |
+| [tables/README.md](../tables/README.md) | MySQL 表结构脚本 |
+| [COMMENTS.md](COMMENTS.md) | 头文件 / XML / SQL / 源码注释规范 |
 | [3Party/README.md](../3Party/README.md) | 第三方库构建 |
 
 ### 2.6 一句话总结

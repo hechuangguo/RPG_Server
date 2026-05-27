@@ -76,7 +76,7 @@ last_log_match() {
 failure_hint_for() {
     local MSG=$1
     if echo "$MSG" | grep -qiE 'MySQL|mysql_|DB init failed|SQL err'; then
-        echo "Database error: verify MySQL is running, run database/init.sql, and check Database in config/config.xml."
+        echo "Database error: verify MySQL is running, run tables/init.sql, and check Database in config/config.xml."
     elif echo "$MSG" | grep -qiE 'Address already in use|EADDRINUSE|bind.*failed|listen failed|Start failed'; then
         echo "Port bind failed: run ./StopServer.sh, or change the port in config/config.xml."
     elif echo "$MSG" | grep -qiE 'config|ConfigLoader|xml|parse'; then

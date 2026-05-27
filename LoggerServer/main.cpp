@@ -7,7 +7,7 @@
  *
  * 启动流程：
  *   1. 忽略 SIGPIPE 信号
- *   2. 通过 ConfigLoader 加载 XML 配置（默认 ../config/config.xml）
+ *   2. 通过 ConfigLoader 加载 XML 配置（默认 config/config.xml）
  *   3. 初始化自身日志（默认 logs/logger.log），并从路径中提取日志目录
  *   4. 创建 LoggerServer 实例，绑定 0.0.0.0:loggerPort 并连接 SuperServer 与 SessionServer
  *   5. 进入 Run() 主循环
@@ -18,28 +18,27 @@
  */
 
 #include "LoggerServer.h"
-#include "../sdk/util/ConfigLoader.h"
+#include "../sdk/util/ServerBootstrap.h"
 #include <csignal>
 
-/**
- * @brief 日志服务器启动入口
- * @param argc 命令行参数个数
- * @param argv[1] 可选：配置文件路径（默认 ../config/config.xml）
- * @return 0 正常退出，1 初始化失败
- */
 int main(int argc, char* argv[])
 {
     signal(SIGPIPE, SIG_IGN);
+
     ServerConfig cfg;
-    const char* cfgPath = (argc > 1) ? argv[1] : "../config/config.xml";
-    ConfigLoader::Load(cfgPath, cfg);
-    std::string loggerPath = cfg.logPaths.count("LoggerServer")
-                             ? cfg.logPaths.at("LoggerServer") : "logs/logger.log";
+    const char* cfgPath = nullptr;
+    if (!ServerBootstrap::loadGlobalConfig(argc, argv, cfg, cfgPath))
+        return 1;
+
+    std::string loggerPath =
+        ServerBootstrap::logPathFor(cfg, "LoggerServer", "logs/logger.log");
     Logger::Instance().SetPath(loggerPath);
+
     std::string logDir = "logs";
     const size_t slash = loggerPath.rfind('/');
     if (slash != std::string::npos)
         logDir = loggerPath.substr(0, slash);
+
     LoggerServer server;
     if (!server.Init("0.0.0.0", (uint16_t)cfg.loggerPort,
                      cfg.superIP, (uint16_t)cfg.superPort,

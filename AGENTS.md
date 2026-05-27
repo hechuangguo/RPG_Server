@@ -13,7 +13,8 @@
 |----------|------|
 | `.cursor/rules/project.mdc` | 架构红线、目录约定、**6 字节消息头**、网关必校验 |
 | `.cursor/rules/naming-conventions.mdc` | PascalCase / camelCase / ALL_CAPS |
-| `.cursor/rules/comments-required.mdc` | 新文件、协议、API 注释要求 |
+| `.cursor/rules/comments-required.mdc` | **所有 `.h` / `config/*.xml` / `tables/*.sql`** 及新增源码的注释要求 |
+| `docs/COMMENTS.md` | 注释规范人类可读版（与上表一致） |
 
 以上规则均为 **alwaysApply**，修改代码时默认生效。
 
@@ -23,6 +24,7 @@
 - 仅 **RecordServer** 访问 MySQL
 - 全区场景/副本调度在 **SessionServer** `SessionSceneManager`
 - 策划静态数据：**DataDoc Excel** → `./gen_data.sh` → **database/*.lua** → **basefile** 加载
+- MySQL 表结构：**tables/**（入口 `init.sql`，与 `database/` Lua 配表平级）
 - **客户端上行**必须经 Gateway `ClientMsgValidator` + `ClientMsgRouter`，禁止绕过
 
 ## 协议帧（客户端与服间共用）
@@ -55,7 +57,7 @@ script/scene/init.lua
 ## 提交前自检
 
 - [ ] 未破坏单线程 / DB 唯一入口 / Session 调度边界
-- [ ] 新命名与注释符合 `.cursor/rules/*`
+- [ ] 新命名与注释符合 `.cursor/rules/*`（`.h` 文件头+API；XML 段/属性；SQL 表/字段 `COMMENT`）
 - [ ] 新客户端消息：Validator 规则 + Router 目标 + `ClientMsg.h` 注释
 - [ ] 协议字段用 `WireStringUtil`；线上帧为 6 字节头（非旧 4 字节）
 - [ ] 改策划表已跑 `./gen_data.sh`，未手改 `AUTO-GENERATED` 的 lua

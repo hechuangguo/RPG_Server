@@ -1,6 +1,8 @@
 /**
  * @file    SceneUser.cpp
  * @brief  SceneUser 生命周期与 UserBase ↔ SceneEntry 同步
+ *
+ * 子系统管理器在 init/load/save/loop 中按成员依次调用，不做按类型枚举分发。
  */
 
 #include "SceneUser.h"
@@ -46,6 +48,53 @@ void SceneUser::syncToUserBase()
     Base().posZ   = posZ;
 }
 
+bool SceneUser::initManagers()
+{
+    return bagManager.init() &&
+           itemManager.init() &&
+           spellManager.init() &&
+           buffManager.init() &&
+           taskManager.init();
+}
+
+bool SceneUser::loadManagers()
+{
+    return bagManager.load() &&
+           itemManager.load() &&
+           spellManager.load() &&
+           buffManager.load() &&
+           taskManager.load();
+}
+
+bool SceneUser::saveManagers()
+{
+    bool ok = true;
+    if (bagManager.needSave()) ok = bagManager.save() && ok;
+    if (itemManager.needSave()) ok = itemManager.save() && ok;
+    if (spellManager.needSave()) ok = spellManager.save() && ok;
+    if (buffManager.needSave()) ok = buffManager.save() && ok;
+    if (taskManager.needSave()) ok = taskManager.save() && ok;
+    return ok;
+}
+
+void SceneUser::loopManagers(uint64_t nowMs)
+{
+    bagManager.loop(nowMs);
+    itemManager.loop(nowMs);
+    spellManager.loop(nowMs);
+    buffManager.loop(nowMs);
+    taskManager.loop(nowMs);
+}
+
+bool SceneUser::needSaveManagers() const
+{
+    return bagManager.needSave() ||
+           itemManager.needSave() ||
+           spellManager.needSave() ||
+           buffManager.needSave() ||
+           taskManager.needSave();
+}
+
 bool SceneUser::init()
 {
     if (m_initialized) return true;
@@ -59,6 +108,7 @@ bool SceneUser::init()
     setState(SceneEntryState::OFFLINE);
 
     syncFromUserBase();
+    initManagers();
     LOG_DEBUG("SceneUser::init userID=%llu", GetID());
     return true;
 }
@@ -86,22 +136,23 @@ bool SceneUser::save()
 {
     if (!needSave()) return true;
 
+    saveManagers();
     syncToUserBase();
     m_dirty = false;
-    LOG_DEBUG("SceneUser::save userID=%llu (charbase sent via RecordServer)", GetID());
+    LOG_DEBUG("SceneUser::save userID=%llu (charbase via RecordServer)", GetID());
     return true;
 }
 
 bool SceneUser::needSave() const
 {
-    return m_dirty;
+    return m_dirty || needSaveManagers();
 }
 
 bool SceneUser::load()
 {
     if (!m_initialized && !init()) return false;
 
-    syncFromUserBase();
+    loadManagers();
     m_dirty = false;
     LOG_DEBUG("SceneUser::load userID=%llu name=%s", GetID(), GetName());
     return true;
@@ -114,6 +165,7 @@ void SceneUser::loop(uint64_t nowMs)
     syncFromUserBase();
     SceneEntry::loop(nowMs);
     OnTick(nowMs);
+    loopManagers(nowMs);
 
     const int64_t dayStart = TimeUtil::StartOfDay(static_cast<int64_t>(nowMs));
     if (m_lastDayStartMs >= 0 && dayStart != m_lastDayStartMs)

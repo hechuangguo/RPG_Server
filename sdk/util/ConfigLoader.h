@@ -13,7 +13,7 @@
  *     <SessionServer port="9001"/>
  *     ...
  *     <LogPaths>
- *       <SuperServer>logs/super.log</SuperServer>   <!-- 实时文件；归档 super.log.YYYYMMDD-HH -->
+ *       <SuperServer>logs/super.log</SuperServer>
  *       ...
  *     </LogPaths>
  *   </ServerConfig>
@@ -21,8 +21,12 @@
  */
 
 #pragma once
+
+#include "XmlConfigUtil.h"
+
 #include <string>
 #include <unordered_map>
+
 #include <tinyxml2.h>
 
 /**
@@ -65,41 +69,41 @@ class ConfigLoader
 public:
     /**
      * @brief 从 XML 文件加载全局配置
-     * @param path config.xml 文件路径
-     * @param cfg  [out] 填充的配置结构
-     * @return 成功返回 true，文件不存在或格式错误返回 false
+     * @param path   config.xml 文件路径
+     * @param cfg    [out] 填充的配置结构
+     * @param errOut 可选；失败时写入可读错误信息
+     * @return 成功返回 true
      */
-    static bool Load(const char* path, ServerConfig& cfg)
+    static bool Load(const char* path, ServerConfig& cfg, std::string* errOut = nullptr)
     {
         tinyxml2::XMLDocument doc;
-        if (doc.LoadFile(path) != tinyxml2::XML_SUCCESS) return false;
-        auto* root = doc.RootElement();
-        if (!root) return false;
+        if (!XmlConfig::loadDocument(path, doc, errOut))
+            return false;
 
-        // ── 数据库配置 ──
+        tinyxml2::XMLElement* root = XmlConfig::requireRoot(doc, "ServerConfig", errOut);
+        if (!root)
+            return false;
+
+        cfg.logPaths.clear();
+
         if (auto* db = root->FirstChildElement("Database"))
         {
-            const char* v = nullptr;
-            if ((v = db->Attribute("host")))  cfg.dbHost = v;
-            if ((v = db->Attribute("port")))  cfg.dbPort = atoi(v);
-            if ((v = db->Attribute("user")))  cfg.dbUser = v;
-            if ((v = db->Attribute("pass")))  cfg.dbPass = v;
-            if ((v = db->Attribute("name")))  cfg.dbName = v;
+            XmlConfig::readStrAttr(db, "host", cfg.dbHost);
+            cfg.dbPort = XmlConfig::readIntAttr(db, "port", cfg.dbPort);
+            XmlConfig::readStrAttr(db, "user", cfg.dbUser);
+            XmlConfig::readStrAttr(db, "pass", cfg.dbPass);
+            XmlConfig::readStrAttr(db, "name", cfg.dbName);
         }
 
-        // ── SuperServer ──
         if (auto* ss = root->FirstChildElement("SuperServer"))
         {
-            const char* v = nullptr;
-            if ((v = ss->Attribute("ip")))   cfg.superIP   = v;
-            if ((v = ss->Attribute("port"))) cfg.superPort = atoi(v);
+            XmlConfig::readStrAttr(ss, "ip", cfg.superIP);
+            cfg.superPort = XmlConfig::readIntAttr(ss, "port", cfg.superPort);
         }
 
-        // ── 各服务器端口（lambda 复用解析） ──
-        auto loadPort = [&](const char* tag, int& port)
-        {
+        auto loadPort = [&](const char* tag, int& port) {
             if (auto* e = root->FirstChildElement(tag))
-                if (const char* v = e->Attribute("port")) port = atoi(v);
+                port = XmlConfig::readIntAttr(e, "port", port);
         };
         loadPort("SessionServer", cfg.sessionPort);
         loadPort("RecordServer",  cfg.recordPort);
@@ -110,11 +114,14 @@ public:
         loadPort("GlobalServer",  cfg.globalPort);
         loadPort("ZoneServer",    cfg.zonePort);
 
-        // ── 日志路径 ──
         if (auto* lp = root->FirstChildElement("LogPaths"))
         {
             for (auto* e = lp->FirstChildElement(); e; e = e->NextSiblingElement())
-                cfg.logPaths[e->Value()] = e->GetText() ? e->GetText() : "";
+            {
+                const std::string text = XmlConfig::readElementText(e);
+                if (!text.empty())
+                    cfg.logPaths[e->Name()] = text;
+            }
         }
 
         return true;

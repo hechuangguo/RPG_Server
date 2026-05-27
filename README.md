@@ -110,7 +110,8 @@ RPG/
 ├── SessionServer/ # SessionScene、SessionCopyScene、SessionSceneManager
 ├── config/        # config.xml、server_info.xml
 ├── DataDoc/       # 策划 Excel 表（源数据）
-├── database/      # init.sql + 生成的 *_config.lua 配表
+├── database/      # 生成的 *_config.lua 策划配表
+├── tables/        # MySQL DDL（入口 init.sql）
 ├── basefile/      # 配表加载工具（data_table.lua）
 ├── script/        # Lua 游戏脚本
 ├── tools/         # gen_datadoc.py（Excel→Lua）
@@ -160,11 +161,15 @@ sudo dnf install -y gcc-c++ cmake make curl tar openssl-devel zlib-devel
 ### 数据库
 
 ```bash
-mysql -u root -p < database/init.sql
+# 建库建表（必须）
+mysql -u root -p < tables/init.sql
 # 修改 config/config.xml 中的 Database 密码
+
+# 导入测试账号（可选，仅开发环境）
+mysql -u root -p < tables/seed_test_data.sql
 ```
 
-测试账号：`test001` / `123456`
+测试账号：`test001` / `123456`（执行 `seed_test_data.sql` 后可用）
 
 ### 启动
 

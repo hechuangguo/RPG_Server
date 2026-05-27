@@ -1,10 +1,11 @@
-# database — 数据目录
+# database — Lua 策划配表
 
-本目录包含两类数据：
+本目录存放由 DataDoc Excel 生成的 **Lua 静态配表**，供 SceneServer 等业务加载。
+
+MySQL 表结构脚本见同级目录 [`tables/`](../tables/)（入口 `tables/init.sql`）。
 
 | 类型 | 文件 | 用途 |
 |------|------|------|
-| **MySQL 结构** | `init.sql` | 玩家存档、账号等持久化（RecordServer） |
 | **Lua 配表** | `*_config.lua` | 静态策划数据（SceneServer Lua 加载） |
 
 ## Lua 配表
