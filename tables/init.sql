@@ -1,7 +1,12 @@
 -- ============================================================
 --  RPG 游戏服务器数据库初始化脚本
 --  数据库：rpg_game
---  执行顺序：先执行本脚本建库建表，再按需执行 seed_test_data.sql
+--  应用账号：rpg_table / rpg_table（见 create_user_and_db.sql、database.credentials）
+--  执行顺序：
+--    1) mysql -u root -p < tables/create_user_and_db.sql
+--    2) mysql -u root -p < tables/init.sql
+--    或 ./tables/setup_database.sh
+--    3) 可选：mysql -u rpg_table -prpg_table rpg_game < tables/seed_test_data.sql
 --  说明：
 --    1) 角色基础数据统一存储于 CharBase（账号与角色基础属性已合并）
 --    2) 包裹/技能/状态/任务等功能数据序列化后存入 CharBase.binary
@@ -33,7 +38,7 @@ CREATE TABLE IF NOT EXISTS CharBase (
     mp           INT UNSIGNED DEFAULT 100 COMMENT '当前魔法值/能量值',
     max_mp       INT UNSIGNED DEFAULT 100 COMMENT '最大魔法值/能量值上限',
     gold         BIGINT UNSIGNED DEFAULT 0 COMMENT '拥有金币数量',
-    binary       MEDIUMBLOB COMMENT '包裹/技能/Buff/任务等功能数据的二进制序列化集合',
+    `binary`     MEDIUMBLOB COMMENT '包裹/技能/Buff/任务等功能数据的二进制序列化集合',
     create_time  DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '角色创建时间',
     update_time  DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后更新时间',
     INDEX idx_name (name)

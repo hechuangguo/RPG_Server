@@ -6,6 +6,7 @@
  * - 五级日志：DEBUG / INFO / WARN / ERROR / FATAL
  * - 同时输出到 stdout 和文件
  * - 双文件落盘：logs/aoi.log（实时）+ logs/aoi.log.YYYYMMDD-HH（按小时归档）
+ * - 每条日志写入后立即 fflush(stdout) 与刷盘，便于 tail -F 实时查看
  * - 线程安全（std::mutex）
  * - 每行自动附加时间戳和服务器名称前缀
  * - 便捷宏：LOG_DEBUG / LOG_INFO / LOG_WARN / LOG_ERR / LOG_FATAL
@@ -34,7 +35,7 @@ enum class LogLevel : int
     INFO   = 1,  /**< 常规运行信息 */
     WARN   = 2,  /**< 警告（不影响运行但需关注） */
     ERR    = 3,  /**< 错误（功能可能受损） */
-    FATAL  = 4,  /**< 致命错误（将触发 fflush，建议随后 exit） */
+    FATAL  = 4,  /**< 致命错误（建议随后 exit） */
 };
 
 /**
@@ -102,10 +103,11 @@ public:
 
         std::lock_guard<std::mutex> lk(m_mu);
         fwrite(line, 1, n, stdout);
-        if (m_writer.HasPath())
+        fflush(stdout);
+        if (m_writer.HasPath()) {
             m_writer.Write(line, static_cast<size_t>(n));
-        if (lv == LogLevel::FATAL)
             m_writer.Flush();
+        }
     }
 
 private:

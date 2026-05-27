@@ -1,0 +1,24 @@
+[
+  {
+    "type": "datasource",
+    "host": "127.0.0.1",
+    "port": 3306,
+    "username": "rpg_table",
+    "password": "rpg_table",
+    "dbType": "mysql",
+    "name": "rpg_table",
+    "group": "默认",
+    "database": "",
+    "saveLocation": "workspace",
+    "markColor": "none",
+    "endpoint": "",
+    "accessKeyId": "",
+    "accessSecretKey": "",
+    "bucket": "",
+    "region": "",
+    "sqlitePath": "",
+    "charset": "",
+    "timezone": "",
+    "connectTimeout": 0
+  }
+]

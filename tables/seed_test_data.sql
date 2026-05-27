@@ -15,7 +15,7 @@ USE rpg_game;
 -- binary 当前置空，后续由服务端序列化写入包裹/技能/Buff/任务集合
 -- -----------------------------------------------------------
 INSERT IGNORE INTO CharBase
-    (user_id, name, level, vocation, sex, map_id, pos_x, pos_y, pos_z, hp, max_hp, mp, max_mp, gold, binary)
+    (user_id, name, level, vocation, sex, map_id, pos_x, pos_y, pos_z, hp, max_hp, mp, max_mp, gold, `binary`)
 VALUES
     (1, 'test001', 1, 1, 1, 1001, 0, 0, 0, 100, 100, 100, 100, 1000, x''),
     (2, 'test002', 5, 2, 1, 1002, 10, 0, 8, 180, 200, 120, 150, 5000, x''),

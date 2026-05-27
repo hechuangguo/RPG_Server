@@ -34,7 +34,7 @@
     <!--  pass：MySQL 登录密码（生产环境部署时必须修改）                    -->
     <!--  name：数据库名称，需与 tables/init.sql 中库名一致                -->
     <!-- ================================================================ -->
-    <Database host="127.0.0.1" port="3306" user="root" pass="your_password" name="rpg_game"/>
+    <Database host="127.0.0.1" port="3306" user="rpg_table" pass="rpg_table" name="rpg_game"/>
 
     <!-- ================================================================ -->
     <!--  SuperServer 配置                                                -->

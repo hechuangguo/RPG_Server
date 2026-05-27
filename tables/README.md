@@ -6,12 +6,40 @@
 
 | 文件 | 说明 |
 |------|------|
+| `database.credentials` | 工作区内连接信息（库名/用户/密码，与 `config.xml` 一致） |
+| `create_user_and_db.sql` | 建库 `rpg_game`、创建应用用户 `rpg_table` 并授权（须 root 执行） |
+| `setup_database.sh` | 一键：建库建用户 + `init.sql` 建表 + 连接验证 |
 | `init.sql` | 建库建表：`CREATE DATABASE`、`USE rpg_game`、全部 `CREATE TABLE` |
 | `seed_test_data.sql` | 开发/测试用种子数据：test001~test003 初始角色 CharBase 与 Relation |
+| `examples_query_characters.sql` | 示例：只查角色（CharBase 多类 SELECT） |
+| `examples_batch_update_test_accounts.sql` | 示例：批量改 test001~test003（UPDATE + 恢复 seed 值） |
+
+### 默认账号（开发环境）
+
+| 项 | 值 |
+|----|-----|
+| 数据库 | `rpg_game` |
+| 用户名 | `rpg_table` |
+| 密码 | `rpg_table` |
 
 ## 执行方式
 
-**第一步（必须）：建库建表**
+**推荐：一键初始化**
+
+```bash
+chmod +x tables/setup_database.sh
+./tables/setup_database.sh
+# 或指定 root 密码：MYSQL_ROOT_PASSWORD=你的root密码 ./tables/setup_database.sh
+```
+
+**手动分步**
+
+```bash
+mysql -u root -p < tables/create_user_and_db.sql
+mysql -u root -p < tables/init.sql
+```
+
+**第一步（必须）：建库建表**（若未用上面一键脚本）
 
 ```bash
 mysql -u root -p < tables/init.sql
@@ -27,6 +55,13 @@ mysql -u root -p < tables/seed_test_data.sql
 
 库名须与 [`config/config.xml`](../config/config.xml) 中 `<Database name="..."/>` 一致（默认 `rpg_game`）。  
 `seed_test_data.sql` 可重复执行（`INSERT IGNORE` + 条件 `UPDATE`）。
+
+**手动查改示例（需先导入 seed）：**
+
+```bash
+mysql -h 127.0.0.1 -u rpg_table -prpg_table rpg_game < tables/examples_query_characters.sql
+mysql -h 127.0.0.1 -u rpg_table -prpg_table rpg_game < tables/examples_batch_update_test_accounts.sql
+```
 
 ## 注释约定
 

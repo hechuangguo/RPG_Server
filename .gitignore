@@ -10,5 +10,8 @@ logs/
 # Runtime PID files
 run/
 
+# 用户目录下本地 MySQL 数据（setup 时若无法 sudo systemctl 则使用）
+.mysql/
+
 # Excel 临时锁文件
 DataDoc/~$*
