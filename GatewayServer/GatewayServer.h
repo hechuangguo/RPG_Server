@@ -200,26 +200,20 @@ private:
      * SuperServer 可通过此心跳判断网关是否存活。
      */
     void SendHeartbeat();
-
     // ======================== 成员变量 ========================
-
     // --- 网络服务 ---
     TcpServer m_clientServer;   /**< 面向客户端的 TCP Server，监听外网端口 9005，接受玩家连接 */
     TcpServer m_innerServer;    /**< 面向内部服务器的 TCP Server，监听内网端口 19005，接收 SceneServer 等内部连接 */
-
     // --- 上游连接 ---
     TcpClient m_superClient;    /**< 到 SuperServer 的连接，用于注册和登录调度 */
     TcpClient m_recordClient;   /**< 到 RecordServer 的连接，用于账号密码验证 */
     TcpClient m_sceneClient;    /**< 到 SceneServer 的连接 */
     TcpClient m_sessionClient;  /**< 到 SessionServer 的连接（社交/任务） */
-
     // --- 状态 ---
     uint32_t  m_hbSeq = 0;      /**< 心跳序列号，每次发送心跳递增 */
-
     // --- 双端口配置 ---
     uint16_t  m_clientPort = 9005;   /**< 外网端口：客户端通过公网连接此端口进行登录和游戏数据交互 */
     uint16_t  m_innerPort  = 19005;  /**< 内网端口：内部服务器（SceneServer 等）通过内网连接此端口发送下行消息 */
-
     // --- 客户端管理 ---
     GatewayUserManager m_userManager;  /**< 客户端会话表（connID -> GatewayUser） */
 };

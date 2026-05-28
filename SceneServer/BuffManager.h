@@ -23,12 +23,16 @@ class BuffManager
 public:
     /** @brief 初始化 Buff 容器 */
     bool init();
+
     /** @brief 每帧剔除到期 Buff */
     void loop(uint64_t nowMs);
+
     /** @brief 是否有待保存 Buff 变更 */
     bool needSave() const;
+
     /** @brief 保存 Buff 状态并清脏 */
     bool save();
+
     /** @brief 加载 Buff 状态 */
     bool load();
 

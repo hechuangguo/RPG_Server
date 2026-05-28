@@ -42,11 +42,9 @@ struct ServerConfig
     std::string dbUser     = "root";       /**< MySQL 用户名 */
     std::string dbPass     = "";           /**< MySQL 密码 */
     std::string dbName     = "rpg_game";   /**< MySQL 数据库名 */
-
     // ── SuperServer ──
     std::string superIP    = "127.0.0.1";  /**< SuperServer 监听 IP */
     int         superPort  = 9000;         /**< SuperServer 监听端口 */
-
     // ── 各服务器内部通信端口 ──
     int sessionPort  = 9001;  /**< SessionServer 端口 */
     int recordPort   = 9002;  /**< RecordServer 端口 */
@@ -56,7 +54,6 @@ struct ServerConfig
     int loggerPort   = 9006;  /**< LoggerServer 端口 */
     int globalPort   = 9007;  /**< GlobalServer 端口 */
     int zonePort     = 9008;  /**< ZoneServer 端口 */
-
     /** @brief 日志输出路径映射：服务器名称 → 日志文件路径 */
     std::unordered_map<std::string, std::string> logPaths;
 };
@@ -79,13 +76,10 @@ public:
         tinyxml2::XMLDocument doc;
         if (!XmlConfig::loadDocument(path, doc, errOut))
             return false;
-
         tinyxml2::XMLElement* root = XmlConfig::requireRoot(doc, "ServerConfig", errOut);
         if (!root)
             return false;
-
         cfg.logPaths.clear();
-
         if (auto* db = root->FirstChildElement("Database"))
         {
             XmlConfig::readStrAttr(db, "host", cfg.dbHost);
@@ -94,13 +88,11 @@ public:
             XmlConfig::readStrAttr(db, "pass", cfg.dbPass);
             XmlConfig::readStrAttr(db, "name", cfg.dbName);
         }
-
         if (auto* ss = root->FirstChildElement("SuperServer"))
         {
             XmlConfig::readStrAttr(ss, "ip", cfg.superIP);
             cfg.superPort = XmlConfig::readIntAttr(ss, "port", cfg.superPort);
         }
-
         auto loadPort = [&](const char* tag, int& port) {
             if (auto* e = root->FirstChildElement(tag))
                 port = XmlConfig::readIntAttr(e, "port", port);
@@ -113,7 +105,6 @@ public:
         loadPort("LoggerServer",  cfg.loggerPort);
         loadPort("GlobalServer",  cfg.globalPort);
         loadPort("ZoneServer",    cfg.zonePort);
-
         if (auto* lp = root->FirstChildElement("LogPaths"))
         {
             for (auto* e = lp->FirstChildElement(); e; e = e->NextSiblingElement())
@@ -123,7 +114,6 @@ public:
                     cfg.logPaths[e->Name()] = text;
             }
         }
-
         return true;
     }
 };

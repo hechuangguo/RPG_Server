@@ -7,7 +7,7 @@
  *
  * 数据流：
  * @code
- *   DB (MySQL t_user) → RecordServer → SceneServer → AOIServer → 客户端
+ *   DB (MySQL CharBase) → RecordServer → SceneServer → AOIServer → 客户端
  * @endcode
  */
 
@@ -79,26 +79,34 @@ class IUser
 public:
     /** @brief 以基础数据构造用户对象，初始状态为 OFFLINE */
     explicit IUser(const UserBase& base) : m_base(base), m_state(UserState::OFFLINE) {}
+
     /** @brief 虚析构，支持经基类指针安全释放派生类 */
     virtual ~IUser() = default;
 
     /** @brief 获取用户唯一 ID */
     UserID GetID() const { return m_base.userID; }
+
     /** @brief 获取用户名的 C 字符串视图 */
     const char* GetName() const { return m_base.name.c_str(); }
+
     /** @brief 获取当前在线状态 */
     UserState GetState() const { return m_state; }
+
     /** @brief 设置当前在线状态 */
     void SetState(UserState s) { m_state = s; }
+
     /** @brief 获取可写基础属性引用 */
     UserBase& Base() { return m_base; }
+
     /** @brief 获取只读基础属性引用 */
     const UserBase& Base() const { return m_base; }
 
     /** @brief 每帧回调（子类可选覆写） */
     virtual void OnTick(uint64_t /*nowMs*/) {}
+
     /** @brief 用户登录时回调 */
     virtual void OnLogin()             {}
+
     /** @brief 用户登出时回调 */
     virtual void OnLogout()            {}
 

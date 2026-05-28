@@ -46,7 +46,8 @@ CREATE TABLE IF NOT EXISTS CharBase (
 
 -- -----------------------------------------------------------
 -- 表：Relation（社会关系 —— SessionServer 直连读写）
--- 设计意图：好友/黑名单/公会/队伍等社交数据，JSON 存储好友与黑名单列表。
+-- 设计意图：好友/黑名单/公会/队伍；friends_json/blacklist_json 存 ID 列表；
+--           binary 存社交扩展二进制（申请列表、缓存等，由 SessionServer 序列化）。
 -- -----------------------------------------------------------
 CREATE TABLE IF NOT EXISTS Relation (
     user_id         INT UNSIGNED PRIMARY KEY COMMENT '用户ID',
@@ -54,6 +55,7 @@ CREATE TABLE IF NOT EXISTS Relation (
     blacklist_json  TEXT COMMENT '黑名单ID列表，逗号分隔',
     guild_id        BIGINT UNSIGNED DEFAULT 0 COMMENT '公会ID',
     team_id         INT UNSIGNED DEFAULT 0 COMMENT '队伍ID',
+    `binary`        MEDIUMBLOB COMMENT '社交扩展数据二进制序列化（申请/缓存等）',
     update_time     DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

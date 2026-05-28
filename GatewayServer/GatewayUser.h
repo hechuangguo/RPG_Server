@@ -25,20 +25,29 @@ enum class ClientState : uint8_t
 class GatewayUser : public IUser
 {
 public:
+    /** @brief 构造会话并记录 connId、初始化心跳时间 */
     explicit GatewayUser(ConnID connId)
         : IUser(makeBase(connId))
     {
         lastHeartbeat = TimerMgr::NowMs();
     }
 
+    /** @brief 当前客户端登录状态 */
     ClientState getClientState() const { return clientState; }
+
+    /** @brief 更新登录状态机 */
     void setClientState(ClientState state) { clientState = state; }
 
+    /** @brief 最近一次心跳时间戳（ms） */
     uint64_t getLastHeartbeat() const { return lastHeartbeat; }
+
+    /** @brief 刷新心跳时间为当前时刻 */
     void touchHeartbeat() { lastHeartbeat = TimerMgr::NowMs(); }
 
+    /** @brief Gateway 侧 TCP 连接 ID */
     ConnID getConnId() const { return Base().connID; }
 
+    /** @brief 登录成功后绑定 userId */
     void setUserId(UserID userId)
     {
         Base().userID = userId;
@@ -52,7 +61,6 @@ private:
         base.connID = connId;
         return base;
     }
-
     ClientState clientState = ClientState::CONNECTED; /**< 会话状态机状态 */
     uint64_t    lastHeartbeat = 0;                    /**< 最近心跳时间戳（ms） */
 };

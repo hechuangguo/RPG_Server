@@ -15,19 +15,27 @@
 #include "../common/ClientMsg.h"
 #include "../sdk/net/MsgId.h"
 #include "SessionUser.h"
-#include "SessionUserManager.h"
-#include "SessionSceneManager.h"
 #include <mysql/mysql.h>
 #include <string>
 
+/**
+ * @brief 会话服务器 —— 社会关系 + 全区场景/副本管理
+ */
 class SessionServer : public INetCallback
 {
 public:
     /** @brief 构造 SessionServer，准备网络与状态容器 */
     SessionServer();
+
     /** @brief 析构 SessionServer，释放 DB 连接等资源 */
     ~SessionServer();
 
+    /**
+     * @brief 初始化网络、MySQL、Relation 预载与消息处理器
+     * @param ip   监听 IP
+     * @param port 监听端口
+     * @param cfg  服务器与数据库配置
+     */
     bool Init(const std::string& ip, uint16_t port,
               const ServerConfig& cfg);
 
@@ -38,10 +46,13 @@ public:
      */
     void Run();
 
+    /** @brief 内部连接建立（SceneServer 等） */
     void OnConnect(ConnID id) override;
 
+    /** @brief 内部连接断开，清理场景绑定 */
     void OnDisconnect(ConnID id) override;
 
+    /** @brief 收到服间消息后派发给 MsgDispatcher */
     void OnMessage(ConnID id, uint8_t module, uint8_t sub,
                    const char* data, uint16_t len) override;
 
@@ -91,11 +102,8 @@ private:
 
     /** @brief 自动保存在线用户的 Session 数据 */
     void AutoSaveAll();
-
     TcpServer             m_server;       /**< Session 对内监听 */
     TcpClient             m_superClient;  /**< 到 SuperServer 的控制连接 */
     MYSQL*                m_db;           /**< Session 服 DB 句柄 */
     uint32_t              m_hbSeq = 0;    /**< 心跳序列号 */
-    SessionUserManager    m_userManager;  /**< 在线用户与离线消息管理 */
-    SessionSceneManager   m_sceneManager; /**< 全区场景/副本注册表 */
 };

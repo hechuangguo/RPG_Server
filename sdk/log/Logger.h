@@ -91,14 +91,11 @@ public:
         va_start(ap, fmt);
         vsnprintf(buf, sizeof(buf), fmt, ap);
         va_end(ap);
-
         std::string ts = TimeUtil::Format(TimeUtil::UnixMs(), TIME_DEFAULT_FMT);
-
         const char* lvStr[] = {"DEBUG","INFO","WARN","ERROR","FATAL"};
         char line[2200];
         int n = snprintf(line, sizeof(line), "[%s][%s][%s] %s\n",
                          ts.c_str(), m_name.c_str(), lvStr[(int)lv], buf);
-
         std::lock_guard<std::mutex> lk(m_mu);
         fwrite(line, 1, n, stdout);
         fflush(stdout);
@@ -109,13 +106,13 @@ public:
     }
 
 private:
+    /** @brief 私有构造（单例） */
     Logger() : m_level(LogLevel::DEBUG), m_name("Server") {}
-
-    LogLevel       m_level;
-    std::string    m_name;
-    std::string    m_path;
-    LogFileWriter  m_writer;
-    std::mutex     m_mu;
+    LogLevel       m_level;   /**< 最低输出级别 */
+    std::string    m_name;    /**< 日志前缀中的服务器名 */
+    std::string    m_path;    /**< 实时日志文件路径（空则仅 stdout） */
+    LogFileWriter  m_writer;  /**< 双文件落盘写入器 */
+    std::mutex     m_mu;      /**< 并发写日志互斥锁 */
 };
 
 // ============================================================

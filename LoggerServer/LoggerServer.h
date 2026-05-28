@@ -139,8 +139,13 @@ public:
     /** @brief 主循环 */
     void Run();
 
+    /** @brief 远程日志写入端连接建立 */
     void OnConnect(ConnID id) override;
+
+    /** @brief 远程日志写入端断开 */
     void OnDisconnect(ConnID id) override;
+
+    /** @brief 处理 LOG_WRITE_REQ 等日志协议 */
     void OnMessage(ConnID id, uint8_t module, uint8_t sub,
                    const char* data, uint16_t len) override;
 
@@ -182,13 +187,11 @@ private:
 
     /** @brief 定时上报 Logger 存活心跳 */
     void SendHeartbeat();
-
     TcpServer  m_server;         /**< 内部连接监听 */
     TcpClient  m_superClient;    /**< 到 SuperServer 的连接 */
     TcpClient  m_sessionClient;  /**< 到 SessionServer 的连接 */
     uint32_t   m_hbSeq = 0;      /**< 心跳序列号 */
     std::string m_logDir;        /**< 日志输出根目录 */
-
     /**
      * @brief 各服务器类型 → 双文件写入器
      *

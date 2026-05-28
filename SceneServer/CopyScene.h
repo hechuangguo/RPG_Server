@@ -28,7 +28,10 @@ class CopyScene : public Scene
 public:
     SceneKind getSceneKind() const override { return SceneKind::COPY; }
 
+    /** @brief 副本类型 */
     CopyType getCopyType() const { return copyType; }
+
+    /** @brief 副本归属者 ID */
     uint64_t getOwnerId() const { return ownerId; }
 
 protected:
@@ -37,7 +40,6 @@ protected:
 
     /** @brief 副本资源加载钩子 */
     bool onLoadResources() override;
-
     CopyType copyType = CopyType::TEAM; /**< 副本类型 */
     uint64_t ownerId  = 0;              /**< 副本归属者 */
 };
@@ -75,6 +77,7 @@ public:
 class CopySceneFactory
 {
 public:
+    /** @brief 按 copyType 创建对应副本子类实例 */
     static std::shared_ptr<CopyScene> create(uint32_t sceneServerId,
                                              const CopySceneDef& def);
 };

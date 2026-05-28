@@ -5,10 +5,13 @@
 
 #pragma once
 #include "SessionUser.h"
+#include "../sdk/util/Singleton.h"
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <unordered_map>
 #include <vector>
+#include <mysql/mysql.h>
 
 /**
  * @brief 离线消息（目标用户不在线时暂存）
@@ -21,59 +24,43 @@ struct OfflineMsg
 };
 
 /**
- * @brief SessionServer 用户集合管理
+ * @brief SessionServer 用户集合管理（单例）
  */
-class SessionUserManager
+class SessionUserManager : public LazySingleton<SessionUserManager>
 {
 public:
-    std::shared_ptr<SessionUser> findUser(UserID userId) const
-    {
-        auto it = m_users.find(userId);
-        return it != m_users.end() ? it->second : nullptr;
-    }
+    friend class LazySingleton<SessionUserManager>;
 
-    std::shared_ptr<SessionUser> getOrCreateUser(UserID userId)
-    {
-        auto user = findUser(userId);
-        if (user) return user;
+    /** @brief 获取全局唯一实例 */
+    static SessionUserManager& Instance() { return LazySingleton<SessionUserManager>::Instance(); }
 
-        UserBase base;
-        base.userID = userId;  /**< 新建最小用户基线，仅补 userId */
-        user = SessionUser::create(base);
-        user->init();
-        m_users.emplace(userId, user);
-        return user;
-    }
+    /** @brief 启动时从 Relation 表全量预载到内存 */
+    bool init(MYSQL* db);
 
-    bool removeUser(UserID userId)
-    {
-        return m_users.erase(userId) > 0;
-    }
+    /** @brief 按 userId 查找缓存用户 */
+    std::shared_ptr<SessionUser> findUser(UserID userId) const;
 
-    size_t getUserCount() const { return m_users.size(); }
+    /** @brief 查找或创建用户并 init() */
+    std::shared_ptr<SessionUser> getOrCreateUser(UserID userId);
 
-    void forEach(const std::function<void(UserID, const std::shared_ptr<SessionUser>&)>& fn) const
-    {
-        for (const auto& [userId, user] : m_users)
-            fn(userId, user);
-    }
+    /** @brief 从缓存移除用户 */
+    bool removeUser(UserID userId);
 
-    void pushOfflineMsg(UserID toId, uint16_t msgId, const char* data, uint16_t len)
-    {
-        OfflineMsg msg;
-        msg.toId  = toId;
-        msg.msgId = msgId;
-        if (data && len > 0)
-            msg.data.assign(data, data + len);
-        m_offlineMsgs[toId].push_back(std::move(msg));
-    }
+    /** @brief 缓存中的用户数量 */
+    size_t getUserCount() const;
 
-    std::vector<OfflineMsg>& offlineMsgs(UserID toId)
-    {
-        return m_offlineMsgs[toId];
-    }
+    /** @brief 只读遍历全部用户 */
+    void forEach(const std::function<void(UserID, const std::shared_ptr<SessionUser>&)>& fn) const;
+
+    /** @brief 向离线队列追加消息 */
+    void pushOfflineMsg(UserID toId, uint16_t msgId, const char* data, uint16_t len);
+
+    /** @brief 获取指定用户的离线消息列表（无则返回空 vector） */
+    std::vector<OfflineMsg>& offlineMsgs(UserID toId);
 
 private:
+    SessionUserManager() = default;
+
     std::unordered_map<UserID, std::shared_ptr<SessionUser>> m_users;        /**< 在线用户缓存 */
     std::unordered_map<UserID, std::vector<OfflineMsg>>     m_offlineMsgs;   /**< 离线消息队列 */
 };

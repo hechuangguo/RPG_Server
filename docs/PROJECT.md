@@ -110,7 +110,8 @@ RPG/
 UserBase → IUser → SessionUser / RecordUser / SceneUser
 ```
 
-- RecordServer：账号、角色持久化（`tables/init.sql`）
+- RecordServer：角色持久化读写 `CharBase`（`tables/init.sql`）；SQL 表名与 DDL 一致，勿用 `t_charbase` 等旧名
+- SessionServer：社会关系表 `Relation`（`friends_json` / `blacklist_json` / `guild_id` / `team_id` / `` `binary` `` 社交扩展二进制）
 - SceneServer：在线实体 `SceneUser`、`SceneNpc`（`SceneEntry`）
 
 #### 场景与副本

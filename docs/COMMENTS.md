@@ -28,7 +28,44 @@
 4. **成员**  
    - `dirty`、`snapshot`、容量常量、映射表等：`/**< */`
 
+5. **排版**（见下节「头文件排版」）
+
 参考：`SessionServer.h`、`protocal/InternalMsg.h`、`SceneServer/BagManager.h`。
+
+## 头文件排版
+
+范本：[`SceneServer/SceneUserManager.h`](../SceneServer/SceneUserManager.h)
+
+| 项 | 约定 |
+|----|------|
+| 方法单元 | `/** @brief ... */`（若有）+ 方法声明（含 header 内联函数体） |
+| 方法之间 | **每个方法单元结束后空一行**，再写下个方法的注释/声明 |
+| 注释与声明 | 注释块与方法声明之间**不**额外空行 |
+| 访问段 | `public` / `protected` / `private` 切换前保留空行 |
+| 适用范围 | **仅函数/方法**；**不含** struct 字段、枚举值、typedef/using |
+
+**正确示例：**
+
+```cpp
+    /** @brief 按 userId 查找在线用户 */
+    std::shared_ptr<SceneUser> findUser(UserID userId) const;
+
+    /** @brief 注册在线用户 */
+    bool addUser(UserID userId, std::shared_ptr<SceneUser> user);
+```
+
+**错误示例**（方法贴在一起、缺少空行）：
+
+```cpp
+    bool contains(UserID userId) const;
+    /** @brief 按 userId 查找 RecordUser */
+    std::shared_ptr<RecordUser> findUser(UserID userId) const;
+```
+
+协议 struct 的字段成员、枚举值列表保持原样；仅 class/struct **内的函数/方法** 适用本规则。
+
+批量整理存量头文件可运行：[`tools/format_header_methods.py`](../tools/format_header_methods.py)
+
 
 ## XML 配置要求
 
@@ -61,6 +98,7 @@
 - [ ] 新 public API、协议 ID、配置项、表字段有说明  
 - [ ] 注释解释约束与用途，非逐行翻译代码  
 - [ ] C++ 块注释内无 `*/` 子串  
+- [ ] class/struct 内相邻方法声明之间有空行（范本 `SceneServer/SceneUserManager.h`）
 
 ## 示例：SceneServer 管理器
 

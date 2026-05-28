@@ -38,6 +38,7 @@ public:
      * @param maxSlot 槽位上限（不含），由子类传入 EQUIP_BAG_MAX_SLOT 等
      */
     explicit Bag(uint16_t maxSlot);
+
     virtual ~Bag() = default;
 
     /** @brief 子类包裹类型标识 */

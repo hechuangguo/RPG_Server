@@ -162,7 +162,9 @@ public:
     void Run();
 
     void OnConnect(ConnID id) override;
+
     void OnDisconnect(ConnID id) override;
+
     void OnMessage(ConnID id, uint8_t module, uint8_t sub,
                    const char* data, uint16_t len) override;
 
@@ -253,12 +255,10 @@ private:
 
     /** @brief 定时发送 AOI 存活心跳 */
     void SendHeartbeat();
-
     TcpServer  m_server;         /**< 内部连接监听 */
     TcpClient  m_superClient;    /**< 到 SuperServer 的连接 */
     TcpClient  m_sessionClient;  /**< 到 SessionServer 的连接 */
     uint32_t   m_hbSeq = 0;      /**< 心跳序列号 */
-
     /** @brief 实体索引：entityID → AOIEntity */
     std::unordered_map<uint64_t, AOIEntity>                    m_entities;
     /** @brief 已注册场景：sceneInstanceId → Msg_AOI_SceneRegister */

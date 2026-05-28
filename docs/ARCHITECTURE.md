@@ -127,7 +127,8 @@ RPG/
 ### SessionServer — 社会关系与离线数据
 
 - 好友、离线消息、用户社会关系内存管理
-- `SessionUser` 继承 `IUser`，扩展 `SocialData`
+- 直连 MySQL 表 `Relation`：`friends_json` / `blacklist_json` / `guild_id` / `team_id` / `` `binary` ``（社交扩展 blob）
+- `SessionUser` 继承 `IUser`，扩展 `SocialData`（含 `binary` 字段落库）
 - 接收 Gateway 转发的 `GW_CLIENT_MSG`（社交 module=0x06、任务 module=0x07）
 - 全区场景/副本：`SessionSceneManager` 登记与负载均衡
 

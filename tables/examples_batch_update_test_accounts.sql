@@ -53,16 +53,17 @@ UPDATE CharBase SET
     hp = 260, max_hp = 300, mp = 180, max_mp = 220, gold = 12000
 WHERE name = 'test003';
 
-INSERT INTO Relation (user_id, friends_json, blacklist_json, guild_id, team_id)
+INSERT INTO Relation (user_id, friends_json, blacklist_json, guild_id, team_id, `binary`)
 VALUES
-    (1, '2,3', '', 0, 0),
-    (2, '1',   '', 0, 0),
-    (3, '1',   '', 0, 0)
+    (1, '2,3', '', 0, 0, x''),
+    (2, '1',   '', 0, 0, x''),
+    (3, '1',   '', 0, 0, x'')
 ON DUPLICATE KEY UPDATE
     friends_json   = VALUES(friends_json),
     blacklist_json = VALUES(blacklist_json),
     guild_id       = VALUES(guild_id),
-    team_id        = VALUES(team_id);
+    team_id        = VALUES(team_id),
+    `binary`       = VALUES(`binary`);
 
 -- -----------------------------------------------------------
 -- 【方案 C】按 user_id 批量改（不依赖角色名）

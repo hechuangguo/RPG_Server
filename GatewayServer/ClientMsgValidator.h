@@ -26,26 +26,29 @@ enum class ValidateResult : uint8_t
 class ClientMsgValidator
 {
 public:
+    /**
+     * @brief 校验客户端消息（白名单、长度、状态、payload）
+     * @param user   当前连接会话（可为 nullptr 则 BAD_PAYLOAD）
+     * @param module 协议模块号
+     * @param sub    协议子号
+     * @param data   包体指针
+     * @param len    包体长度（字节）
+     */
     static ValidateResult check(const GatewayUser* user,
                                 uint8_t module, uint8_t sub,
                                 const char* data, uint16_t len)
     {
         if (!user)
             return ValidateResult::BAD_PAYLOAD;
-
         const MsgRule* rule = findRule(module, sub);
         if (!rule)
             return ValidateResult::UNKNOWN_MSG;
-
         if (!isStateAllowed(user->getClientState(), rule->allowedStates))
             return ValidateResult::BAD_STATE;
-
         if (len < rule->minLen || len > rule->maxLen)
             return ValidateResult::BAD_LENGTH;
-
         if (rule->needsLoggedIn && user->getClientState() != ClientState::LOGGED_IN)
             return ValidateResult::BAD_STATE;
-
         if (rule->checkUserId && len >= static_cast<uint16_t>(sizeof(uint64_t)))
         {
             uint64_t packetUserId = 0;
@@ -53,19 +56,16 @@ public:
             if (user->GetID() != 0 && packetUserId != user->GetID())
                 return ValidateResult::BAD_PAYLOAD;
         }
-
         if (module == static_cast<uint8_t>(ClientModule::SCENE) && sub == 0x01)
             return validateMove(data, len);
-
         if (module == static_cast<uint8_t>(ClientModule::CHAT) && sub == 0x01)
             return validateChat(data, len);
-
         if (module == static_cast<uint8_t>(ClientModule::LOGIN) && sub == 0x01)
             return validateLogin(data, len);
-
         return ValidateResult::OK;
     }
 
+    /** @brief 将校验结果映射为 GatewayValidateCode 错误码 */
     static int32_t toErrorCode(ValidateResult result)
     {
         switch (result)
@@ -82,9 +82,10 @@ public:
 
 private:
     static constexpr uint8_t STATE_CONNECTED = 1u << 0; /**< 已连接未登录 */
-    static constexpr uint8_t STATE_LOGGING   = 1u << 1; /**< 登录校验中 */
-    static constexpr uint8_t STATE_LOGGED_IN = 1u << 2; /**< 已登录可进游戏 */
 
+    static constexpr uint8_t STATE_LOGGING   = 1u << 1; /**< 登录校验中 */
+
+    static constexpr uint8_t STATE_LOGGED_IN = 1u << 2; /**< 已登录可进游戏 */
     struct MsgRule
     {
         uint8_t  module;        /**< ClientModule 编号 */
@@ -95,7 +96,7 @@ private:
         bool     needsLoggedIn; /**< 是否要求 LOGGED_IN 状态 */
         bool     checkUserId;   /**< 是否校验包内 userId 与会话一致 */
     };
-
+    /** @brief 判断当前 ClientState 是否在 allowedStates 位掩码内 */
     static bool isStateAllowed(ClientState state, uint8_t mask)
     {
         uint8_t bit = 0; /**< 当前状态映射到掩码位 */
@@ -108,6 +109,7 @@ private:
         return (mask & bit) != 0;
     }
 
+    /** @brief 在白名单规则表中查找 module/sub */
     static const MsgRule* findRule(uint8_t module, uint8_t sub)
     {
         static const MsgRule kRules[] = {
@@ -139,6 +141,7 @@ private:
         return nullptr;
     }
 
+    /** @brief 登录包语义校验（账号非空等） */
     static ValidateResult validateLogin(const char* data, uint16_t len)
     {
         if (len < sizeof(Msg_C2S_LoginReq))
@@ -149,6 +152,7 @@ private:
         return ValidateResult::OK;
     }
 
+    /** @brief 移动包坐标范围校验 */
     static ValidateResult validateMove(const char* data, uint16_t len)
     {
         if (len < sizeof(Msg_C2S_MoveReq))
@@ -162,6 +166,7 @@ private:
         return ValidateResult::OK;
     }
 
+    /** @brief 聊天包频道与内容校验 */
     static ValidateResult validateChat(const char* data, uint16_t len)
     {
         if (len < sizeof(Msg_C2S_Chat))

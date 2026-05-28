@@ -41,27 +41,67 @@ public:
     /** @brief 物件类型（USER / NPC） */
     virtual SceneEntryType getEntryType() const = 0;
 
+    /** @brief 实体唯一 ID */
     EntryID getEntryId() const { return entryId; }
+
+    /** @brief 显示名称 */
     const std::string& getName() const { return name; }
+
+    /** @brief 等级 */
     uint32_t getLevel() const { return level; }
+
+    /** @brief 当前生命值 */
     uint32_t getHp() const { return hp; }
+
+    /** @brief 生命上限 */
     uint32_t getMaxHp() const { return maxHp; }
+
+    /** @brief 当前元气 */
     uint32_t getVitality() const { return vitality; }
+
+    /** @brief 元气上限 */
     uint32_t getMaxVitality() const { return maxVitality; }
+
+    /** @brief 所在地图 ID */
     uint32_t getMapId() const { return mapId; }
+
+    /** @brief 世界坐标 X */
     float getPosX() const { return posX; }
+
+    /** @brief 世界坐标 Y */
     float getPosY() const { return posY; }
+
+    /** @brief 世界坐标 Z */
     float getPosZ() const { return posZ; }
+
+    /** @brief 生存状态 */
     SceneEntryState getState() const { return state; }
 
+    /** @brief 设置显示名称 */
     void setName(const std::string& n) { name = n; }
+
+    /** @brief 设置等级 */
     void setLevel(uint32_t lv) { level = lv; }
+
+    /** @brief 设置当前 HP（不超过 maxHp） */
     void setHp(uint32_t v) { hp = v > maxHp ? maxHp : v; }
+
+    /** @brief 设置 HP 上限并钳制当前 HP */
     void setMaxHp(uint32_t v) { maxHp = v; if (hp > maxHp) hp = maxHp; }
+
+    /** @brief 设置当前元气（不超过 maxVitality） */
     void setVitality(uint32_t v) { vitality = v > maxVitality ? maxVitality : v; }
+
+    /** @brief 设置元气上限并钳制当前元气 */
     void setMaxVitality(uint32_t v) { maxVitality = v; if (vitality > maxVitality) vitality = maxVitality; }
+
+    /** @brief 设置所在地图 */
     void setMapId(uint32_t id) { mapId = id; }
+
+    /** @brief 设置世界坐标 */
     void setPos(float x, float y, float z) { posX = x; posY = y; posZ = z; }
+
+    /** @brief 设置生存状态 */
     void setState(SceneEntryState s) { state = s; }
 
     /** @brief 是否存活 */
@@ -73,7 +113,6 @@ public:
 protected:
     /** @brief 构造基础场景实体（子类传入唯一 entryId） */
     explicit SceneEntry(EntryID id);
-
     EntryID          entryId     = INVALID_ENTRY_ID;     /**< 实体唯一 ID */
     std::string      name;                               /**< 名称（玩家名/NPC 名） */
     uint32_t         level       = 1;                    /**< 等级 */

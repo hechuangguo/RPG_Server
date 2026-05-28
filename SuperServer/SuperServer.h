@@ -109,7 +109,7 @@ public:
     // ============================================================
     //  INetCallback 实现
     // ============================================================
-
+    /** @brief 子服务器 TCP 连接建立 */
     void OnConnect(ConnID id) override;
 
     /**
@@ -221,9 +221,7 @@ private:
 
     /** @brief 从路由表中删除指定连接 */
     void RemoveSubServer(ConnID connID);
-
     TcpServer m_server;  /**< 监听所有子服务器的 TCP Server */
-
     /** @brief 子服务器路由表：connID → 服务器信息 */
     std::unordered_map<ConnID, SubServerInfo> m_servers;
     /** @brief 在线用户路由表：userID → 代理信息 */

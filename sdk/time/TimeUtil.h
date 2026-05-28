@@ -64,7 +64,6 @@ public:
     // ============================================================
     //  当前墙钟时间戳
     // ============================================================
-
     /** @brief 获取当前 Unix 时间戳（微秒） */
     static int64_t UnixUs()
     {
@@ -91,23 +90,28 @@ public:
 
     /** @brief 当前本地秒分量（0-59） */
     static int NowSecond()  { return Second(UnixMs()); }
+
     /** @brief 当前本地分钟分量（0-59） */
     static int NowMinute()  { return Minute(UnixMs()); }
+
     /** @brief 当前本地小时分量（0-23） */
     static int NowHour()    { return Hour(UnixMs()); }
+
     /** @brief 当前本地星期（0=周日 .. 6=周六） */
     static int NowWeekday() { return Weekday(UnixMs()); }
+
     /** @brief 当前本地日期中的日（1-31） */
     static int NowDay()     { return Day(UnixMs()); }
+
     /** @brief 当前本地月份（1-12） */
     static int NowMonth()   { return Month(UnixMs()); }
+
     /** @brief 当前本地年份（如 2026） */
     static int NowYear()    { return Year(UnixMs()); }
 
     // ============================================================
     //  时间戳 → 字符串 / 格式化
     // ============================================================
-
     /** @brief 默认格式 "YYYY-MM-DD HH:MM:SS"（本地时区） */
     static std::string ToString(int64_t unixMs, bool useUtc = false)
     {
@@ -121,18 +125,14 @@ public:
                               bool useUtc = false)
     {
         if (!fmt) return {};
-
         time_t sec = static_cast<time_t>(unixMs / 1000);
         int msPart = static_cast<int>(unixMs % 1000);
         if (msPart < 0) msPart += 1000;
-
         struct tm tmBuf{};
         FillTm(sec, useUtc, tmBuf);
-
         std::string pattern(fmt);
         ReplaceToken(pattern, "%ms", MsToken(msPart));
         ReplaceToken(pattern, "%us", UsToken(msPart));
-
         char buf[256] = {};
         strftime(buf, sizeof(buf), pattern.c_str(), &tmBuf);
         return buf;
@@ -141,7 +141,6 @@ public:
     // ============================================================
     //  字符串 → 时间戳
     // ============================================================
-
     /**
      * @brief 按默认格式解析时间字符串
      * @param str 输入字符串，默认格式为 TIME_DEFAULT_FMT
@@ -167,16 +166,13 @@ public:
                       int64_t& outUnixMs, bool asUtc = false)
     {
         if (!fmt || str.empty()) return false;
-
         std::tm tm{};
         tm.tm_isdst = -1;
         std::istringstream iss(str);
         iss >> std::get_time(&tm, fmt);
         if (iss.fail()) return false;
-
         time_t sec = asUtc ? TimeGm(&tm) : std::mktime(&tm);
         if (sec == static_cast<time_t>(-1)) return false;
-
         outUnixMs = static_cast<int64_t>(sec) * 1000;
         return true;
     }
@@ -204,7 +200,6 @@ public:
     // ============================================================
     //  时间戳 → 日历分量
     // ============================================================
-
     /** @brief 时间戳转本地时区分量 */
     static DateTimeParts ToLocalParts(int64_t unixMs)
     {
@@ -255,7 +250,6 @@ public:
     // ============================================================
     //  边界时间戳（该时刻起始的 Unix 毫秒）
     // ============================================================
-
     /** @brief 取当前分钟起始时刻（秒和毫秒归零） */
     static int64_t StartOfMinute(int64_t unixMs, bool useUtc = false)
     {
@@ -294,7 +288,6 @@ public:
     // ============================================================
     //  两个时间戳之间的间隔
     // ============================================================
-
     /** @brief 日历天数差（按日边界，可正可负） */
     static int DaysBetween(int64_t unixMs1, int64_t unixMs2, bool useUtc = false)
     {
@@ -307,7 +300,6 @@ public:
     static int MonthsBetween(int64_t unixMs1, int64_t unixMs2, bool useUtc = false)
     {
         if (unixMs1 > unixMs2) return -MonthsBetween(unixMs2, unixMs1, useUtc);
-
         auto a = ToParts(unixMs1, useUtc);
         auto b = ToParts(unixMs2, useUtc);
         int months = (b.year - a.year) * 12 + (b.month - a.month);
@@ -344,7 +336,6 @@ public:
         tm.tm_min   = minute;
         tm.tm_sec   = second;
         tm.tm_isdst = -1;
-
         time_t sec = asUtc ? TimeGm(&tm) : std::mktime(&tm);
         if (sec == static_cast<time_t>(-1)) return 0;
         return static_cast<int64_t>(sec) * 1000;
@@ -360,7 +351,6 @@ public:
     {
         int64_t now = UnixMs();
         auto p = ToParts(now, false);
-
         int64_t candidate = FromParts(p.year, p.month, p.day,
                                       hour, minute, second, false);
         if (weekday >= 0)
@@ -369,7 +359,6 @@ public:
                 candidate += 86400000LL;
             return candidate;
         }
-
         if (candidate <= now)
             candidate += 86400000LL;
         return candidate;
@@ -414,7 +403,6 @@ private:
         time_t sec = static_cast<time_t>(unixMs / 1000);
         struct tm tmBuf{};
         FillTm(sec, useUtc, tmBuf);
-
         p.year    = tmBuf.tm_year + 1900;
         p.month   = tmBuf.tm_mon + 1;
         p.day     = tmBuf.tm_mday;

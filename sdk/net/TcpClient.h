@@ -92,24 +92,19 @@ public:
         if (fd < 0) return false;
         int opt = 1;
         ::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(opt));
-
         sockaddr_in addr{};
         addr.sin_family = AF_INET;
         addr.sin_port   = htons(port);
         ::inet_pton(AF_INET, ip.c_str(), &addr.sin_addr);
-
         int ret = ::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
         if (ret < 0 && errno != EINPROGRESS) { ::close(fd); return false; }
-
         m_epollFd = ::epoll_create1(EPOLL_CLOEXEC);
         m_connID  = 1;
         m_conn    = std::make_shared<TcpConnection>(fd, m_connID, m_cb);
-
         epoll_event ev{};
         ev.events   = EPOLLIN | EPOLLOUT | EPOLLET | EPOLLRDHUP;
         ev.data.fd  = fd;
         ::epoll_ctl(m_epollFd, EPOLL_CTL_ADD, fd, &ev);
-
         if (ret == 0 && m_cb) m_cb->OnConnect(m_connID); /**< 本地立即连接成功 */
         return true;
     }

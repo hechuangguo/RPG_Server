@@ -242,7 +242,6 @@ private:
             }
         }
     }
-
     int          m_fd;        /**< 非阻塞 socket 文件描述符（关闭后为 -1） */
     ConnID       m_id;        /**< 连接全局 ID */
     INetCallback* m_cb;       /**< 上层回调接口（不负责释放） */

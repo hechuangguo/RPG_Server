@@ -102,10 +102,8 @@ public:
     {
         m_listenFd = CreateListenSocket(ip, port);
         if (m_listenFd < 0) return false;
-
         m_epollFd = ::epoll_create1(EPOLL_CLOEXEC);
         if (m_epollFd < 0) { ::close(m_listenFd); return false; }
-
         AddEpoll(m_listenFd, EPOLLIN | EPOLLET);
         m_running = true;
         return true;
@@ -239,7 +237,6 @@ private:
         ::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
         ::setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt));
         ::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY,  &opt, sizeof(opt));
-
         sockaddr_in addr{};
         addr.sin_family = AF_INET;
         addr.sin_port   = htons(port);
@@ -323,13 +320,11 @@ private:
             m_fdToConn.erase(it);
         }
     }
-
     INetCallback*  m_cb;  /**< 上层回调接口（不负责释放） */
     int            m_epollFd;     /**< epoll 实例 fd */
     int            m_listenFd;    /**< 监听 socket fd */
     uint32_t       m_nextConnID;  /**< 自增连接 ID 分配器（从 1 开始） */
     bool           m_running;     /**< 运行状态标记 */
-
     /** @brief fd → TcpConnection 索引（用于 epoll 事件分发，O(1) 查找） */
     std::unordered_map<int,     std::shared_ptr<TcpConnection>> m_fdToConn;
     /** @brief ConnID → TcpConnection 索引（用于 SendMsg / Kick，O(1) 查找） */

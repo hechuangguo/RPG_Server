@@ -46,6 +46,7 @@ class RecordServer : public INetCallback
 public:
     /** @brief 构造 RecordServer（初始化网络/缓存状态） */
     RecordServer();
+
     /** @brief 析构 RecordServer（关闭 DB 连接等） */
     ~RecordServer();
 
@@ -62,8 +63,13 @@ public:
     /** @brief 主循环 */
     void Run();
 
+    /** @brief 内部连接建立 */
     void OnConnect(ConnID id) override;
+
+    /** @brief 内部连接断开 */
     void OnDisconnect(ConnID id) override;
+
+    /** @brief 收到消息后派发给 MsgDispatcher */
     void OnMessage(ConnID id, uint8_t module, uint8_t sub,
                    const char* data, uint16_t len) override;
 
@@ -94,6 +100,7 @@ private:
      * @brief 账号密码验证
      *
      * 使用 SELECT ... WHERE account='?' AND password=MD5('?') 查询 t_account 表。
+     * @note init.sql 当前无账号表；登录逻辑待与 CharBase 或 Account 表对齐。
      *
      * @warning 【安全风险】当前实现使用 snprintf 拼接 SQL 字符串，存在 SQL 注入风险。
      *          如果 req->account 或 req->password 中包含单引号等特殊字符，
@@ -116,7 +123,7 @@ private:
     /**
      * @brief 从 MySQL 加载用户数据到内存
      *
-     * 查询 t_charbase 表，构建 UserBase 并创建 RecordUser 对象。
+     * 查询 CharBase 表，构建 UserBase 并创建 RecordUser 对象。
      *
      * @note SELECT 字段与 row 索引映射表：
      *       | 索引 | 字段      | 类型      | 说明               |
@@ -139,7 +146,7 @@ private:
     /**
      * @brief 将用户数据写回 MySQL
      *
-     * UPDATE t_charbase SET ... WHERE user_id=...
+     * INSERT/UPDATE CharBase（user_id 主键）...
      */
     void SaveUserToDB(UserID rid);
 
@@ -154,12 +161,10 @@ private:
      *       保存成功后将 dirty 重置为 false。
      */
     void AutoSaveAll();
-
     TcpServer  m_server;          /**< 内部连接监听（接收来自 Gateway/Super/Scene Server 的请求） */
     TcpClient  m_superClient;     /**< 到 SuperServer 的连接（用于注册服务器、发送心跳） */
     TcpClient  m_sessionClient;   /**< 到 SessionServer 的连接（用于查询社会关系/好友数据） */
     MYSQL*     m_db;              /**< MySQL 连接句柄（全局共享，非线程安全） */
     uint32_t   m_hbSeq = 0;       /**< 心跳序列号（每次自增，SuperServer 用于检测丢包） */
-
     RecordUserManager m_userManager;  /**< Record 用户缓存（userID -> RecordUser） */
 };

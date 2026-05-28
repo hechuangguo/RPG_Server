@@ -5,6 +5,7 @@
 
 #pragma once
 #include "RecordUser.h"
+#include <cstddef>
 #include <functional>
 #include <memory>
 #include <unordered_map>
@@ -15,36 +16,23 @@
 class RecordUserManager
 {
 public:
-    bool contains(UserID userId) const
-    {
-        return m_users.find(userId) != m_users.end();
-    }
+    /** @brief 缓存中是否已有该 userId */
+    bool contains(UserID userId) const;
 
-    std::shared_ptr<RecordUser> findUser(UserID userId) const
-    {
-        auto it = m_users.find(userId);
-        return it != m_users.end() ? it->second : nullptr;
-    }
+    /** @brief 按 userId 查找 RecordUser */
+    std::shared_ptr<RecordUser> findUser(UserID userId) const;
 
-    bool addUser(UserID userId, std::shared_ptr<RecordUser> user)
-    {
-        if (!user) return false;
-        m_users[userId] = std::move(user);
-        return true;
-    }
+    /** @brief 写入或覆盖缓存条目 */
+    bool addUser(UserID userId, std::shared_ptr<RecordUser> user);
 
-    bool removeUser(UserID userId)
-    {
-        return m_users.erase(userId) > 0;
-    }
+    /** @brief 从缓存移除用户 */
+    bool removeUser(UserID userId);
 
-    size_t getUserCount() const { return m_users.size(); }
+    /** @brief 缓存用户数量 */
+    size_t getUserCount() const;
 
-    void forEach(const std::function<void(UserID, RecordUser&)>& fn)
-    {
-        for (auto& [userId, user] : m_users)
-            fn(userId, *user);
-    }
+    /** @brief 遍历并提供可写 RecordUser 引用 */
+    void forEach(const std::function<void(UserID, RecordUser&)>& fn);
 
 private:
     std::unordered_map<UserID, std::shared_ptr<RecordUser>> m_users; /**< Record 用户缓存表 */

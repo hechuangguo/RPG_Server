@@ -41,11 +41,8 @@
 #include "../sdk/util/WireStringUtil.h"
 #include "../sdk/util/Singleton.h"
 #include "SceneUser.h"
-#include "SceneUserManager.h"
-#include "SceneNpcManager.h"
-#include "SceneManager.h"
+#include "SceneNpc.h"
 #include "Scene.h"
-#include "LuaManager.h"
 #include <unordered_map>
 #include <vector>
 #include <string>
@@ -60,6 +57,7 @@ class SceneServer : public INetCallback, public LazySingleton<SceneServer>
 {
 public:
     friend class LazySingleton<SceneServer>;
+    /** @brief 获取 SceneServer 单例指针 */
     static SceneServer* Instance() { return &LazySingleton<SceneServer>::Instance(); }
 
 private:
@@ -69,23 +67,12 @@ private:
 public:
     ~SceneServer() = default;
 
-    /** @brief 供 ScriptFun 等 Lua 绑定查询在线用户 */
-    std::shared_ptr<SceneUser> findUser(UserID userId) const
-    {
-        return m_userManager.findUser(userId);
-    }
-
     /** @brief 供 ScriptFun 向客户端发消息 */
     void sendToClient(uint32_t clientConnId, uint16_t msgId,
                       const char* data, uint16_t len)
     {
         SendToClient(clientConnId, msgId, data, len);
     }
-
-    /** @brief 获取 Lua 管理器（脚本调用与注册） */
-    LuaManager& getLuaManager() { return m_luaMgr; }
-    /** @brief 获取只读 Lua 管理器 */
-    const LuaManager& getLuaManager() const { return m_luaMgr; }
 
     /**
      * @brief 初始化 SceneServer
@@ -112,8 +99,13 @@ public:
                            const std::string& mapName, const std::string& mapFile,
                            uint32_t maxPlayer = 5);
 
+    /** @brief 内部连接建立 */
     void OnConnect(ConnID id) override;
+
+    /** @brief 内部连接断开 */
     void OnDisconnect(ConnID id) override;
+
+    /** @brief 收到消息后派发给 MsgDispatcher */
     void OnMessage(ConnID id, uint8_t module, uint8_t sub,
                    const char* data, uint16_t len) override;
 
@@ -137,7 +129,7 @@ private:
     /** @brief 用户离开场景（通知 AOI → 保存到 RecordServer → 调用 Lua → 清理内存） */
     void OnUserLeave(ConnID fromConn, const char* data, uint16_t len);
 
-    /** @brief 将 Scene 在线数据转发 RecordServer 写入 t_charbase */
+    /** @brief 将 Scene 在线数据转发 RecordServer 写入 CharBase */
     void sendCharBaseToRecord(const SceneUser& user);
 
     /** @brief 处理 GatewayServer 转发来的客户端消息 */
@@ -277,7 +269,6 @@ private:
 
     /** @brief 定时发送 Scene 心跳 */
     void SendHeartbeat();
-
     TcpServer  m_server;          /**< 内部连接监听 */
     TcpClient  m_superClient;     /**< 到 SuperServer */
     TcpClient  m_sessionClient;   /**< 到 SessionServer */
@@ -286,13 +277,7 @@ private:
     TcpClient  m_gatewayClient;   /**< 到 GatewayServer */
     TcpClient  m_globalClient;    /**< 到 GlobalServer（可选） */
     TcpClient  m_zoneClient;      /**< 到 ZoneServer（可选） */
-    LuaManager m_luaMgr;          /**< Lua 虚拟机与 C++↔脚本桥接 */
     uint32_t   m_sceneID;         /**< 场景服务器编号 */
     uint32_t   m_hbSeq = 0;       /**< 心跳序列号 */
     uint16_t   m_listenPort = 9004;  /**< Scene 对内监听端口 */
-
-    /** @brief 地图实例管理 */
-    SceneManager                                          m_sceneManager;
-    SceneUserManager                                      m_userManager;  /**< 在线玩家集合 */
-    SceneNpcManager                                       m_npcManager;   /**< 场景 NPC 集合 */
 };

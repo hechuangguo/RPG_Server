@@ -57,8 +57,8 @@ private:
         LuaCFunction fn;      /**< C 函数指针 */
         FuncNode*    next;    /**< 单链表下一个节点 */
     };
-
     static FuncNode* globalHead; /**< 全局函数注册链表头 */
+
     static FuncNode* entryHead;  /**< SceneEntry 方法注册链表头 */
 };
 

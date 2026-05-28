@@ -19,5 +19,7 @@ class EquipBag : public Bag
 public:
     /** @brief 构造装备包并按固定槽位初始化 */
     EquipBag();
+
+    /** @brief 包裹类型标识（装备栏） */
     BagType bagType() const override { return BagType::EQUIP; }
 };

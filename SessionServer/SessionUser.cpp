@@ -1,6 +1,6 @@
 /**
  * @file    SessionUser.cpp
- * @brief  SessionUser 生命周期与 t_relation 表读写
+ * @brief  SessionUser 生命周期与 Relation 表读写
  */
 
 #include "SessionUser.h"
@@ -38,6 +38,31 @@ void parseUserIds(const char* text, std::vector<UserID>& out)
         if (comma == std::string::npos) break;
         pos = comma + 1;
     }
+}
+
+/** @brief 将 blob 转为 MySQL 字面量 x'HEX'，空数据为 x'' */
+std::string blobToSqlHex(const std::vector<uint8_t>& data)
+{
+    if (data.empty()) return "x''";
+    static const char* kHex = "0123456789ABCDEF";
+    std::string out;
+    out.reserve(3 + data.size() * 2);
+    out += "x'";
+    for (uint8_t b : data)
+    {
+        out += kHex[b >> 4];
+        out += kHex[b & 0x0F];
+    }
+    out += '\'';
+    return out;
+}
+
+void loadBlobFromRow(const char* ptr, unsigned long len, std::vector<uint8_t>& out)
+{
+    out.clear();
+    if (!ptr || len == 0) return;
+    out.assign(reinterpret_cast<const uint8_t*>(ptr),
+               reinterpret_cast<const uint8_t*>(ptr) + len);
 }
 
 } // namespace
@@ -85,6 +110,19 @@ bool SessionUser::onOffline()
     return true;
 }
 
+void SessionUser::applyRelationFromDbRow(const char* friendsJson, const char* blacklistJson,
+                                         const char* guildIdStr, const char* teamIdStr,
+                                         const char* binaryPtr, unsigned long binaryLen)
+{
+    parseUserIds(friendsJson, m_social.friends);
+    parseUserIds(blacklistJson, m_social.blackList);
+    m_social.guildId = guildIdStr ? strtoull(guildIdStr, nullptr, 10) : 0;
+    m_social.teamId  = teamIdStr ? static_cast<uint32_t>(strtoul(teamIdStr, nullptr, 10)) : 0;
+    loadBlobFromRow(binaryPtr, binaryLen, m_social.binary);
+    m_social.userID = GetID();
+    m_dirty = false;
+}
+
 bool SessionUser::load(MYSQL* db)
 {
     if (!db) return false;
@@ -92,8 +130,8 @@ bool SessionUser::load(MYSQL* db)
 
     char sql[256];
     snprintf(sql, sizeof(sql),
-             "SELECT friends_json,blacklist_json,guild_id,team_id"
-             " FROM t_relation WHERE user_id=%" PRIu64 " LIMIT 1", GetID());
+             "SELECT friends_json,blacklist_json,guild_id,team_id,`binary`"
+             " FROM Relation WHERE user_id=%" PRIu64 " LIMIT 1", GetID());
 
     if (mysql_query(db, sql) != 0)
     {
@@ -103,27 +141,28 @@ bool SessionUser::load(MYSQL* db)
 
     MYSQL_RES* res = mysql_store_result(db);
     MYSQL_ROW  row = res ? mysql_fetch_row(res) : nullptr;
+    unsigned long* lengths = res && row ? mysql_fetch_lengths(res) : nullptr;
     if (row)
     {
-        parseUserIds(row[0], m_social.friends);
-        parseUserIds(row[1], m_social.blackList);
-        m_social.guildId = row[2] ? strtoull(row[2], nullptr, 10) : 0;
-        m_social.teamId  = row[3] ? (uint32_t)strtoul(row[3], nullptr, 10) : 0;
+        const unsigned long binaryLen = lengths ? lengths[4] : 0;
+        applyRelationFromDbRow(row[0], row[1], row[2], row[3], row[4], binaryLen);
     }
     else
     {
-        char ins[256];
+        char ins[320];
         snprintf(ins, sizeof(ins),
-                 "INSERT INTO t_relation (user_id,friends_json,blacklist_json,guild_id,team_id)"
-                 " VALUES (%" PRIu64 ",'','',0,0)", GetID());
+                 "INSERT INTO Relation (user_id,friends_json,blacklist_json,guild_id,team_id,`binary`)"
+                 " VALUES (%" PRIu64 ",'','',0,0,x'')", GetID());
         if (mysql_query(db, ins) != 0)
             LOG_WARN("SessionUser::load insert relation err: %s", mysql_error(db));
+        m_social.binary.clear();
     }
 
     if (res) mysql_free_result(res);
     m_social.userID = GetID();
     m_dirty = false;
-    LOG_DEBUG("SessionUser::load userID=%llu friends=%zu", GetID(), m_social.friends.size());
+    LOG_DEBUG("SessionUser::load userID=%llu friends=%zu binary=%zu",
+              GetID(), m_social.friends.size(), m_social.binary.size());
     return true;
 }
 
@@ -134,25 +173,27 @@ bool SessionUser::save(MYSQL* db)
 
     const std::string friends   = joinUserIds(m_social.friends);
     const std::string blacklist = joinUserIds(m_social.blackList);
+    const std::string binaryLit = blobToSqlHex(m_social.binary);
 
-    char sql[1024];
-    snprintf(sql, sizeof(sql),
-             "INSERT INTO t_relation (user_id,friends_json,blacklist_json,guild_id,team_id)"
-             " VALUES (%" PRIu64 ",'%s','%s',%" PRIu64 ",%u)"
-             " ON DUPLICATE KEY UPDATE friends_json=VALUES(friends_json),"
-             " blacklist_json=VALUES(blacklist_json),"
-             " guild_id=VALUES(guild_id), team_id=VALUES(team_id)",
-             GetID(), friends.c_str(), blacklist.c_str(),
-             m_social.guildId, m_social.teamId);
+    std::ostringstream sql;
+    sql << "INSERT INTO Relation (user_id,friends_json,blacklist_json,guild_id,team_id,`binary`)"
+        << " VALUES (" << GetID() << ",'" << friends << "','" << blacklist << "',"
+        << m_social.guildId << "," << m_social.teamId << "," << binaryLit << ")"
+        << " ON DUPLICATE KEY UPDATE friends_json=VALUES(friends_json),"
+        << " blacklist_json=VALUES(blacklist_json),"
+        << " guild_id=VALUES(guild_id), team_id=VALUES(team_id),"
+        << " `binary`=VALUES(`binary`)";
 
-    if (mysql_query(db, sql) != 0)
+    const std::string q = sql.str();
+    if (mysql_query(db, q.c_str()) != 0)
     {
         LOG_ERR("SessionUser::save SQL err: %s", mysql_error(db));
         return false;
     }
 
     m_dirty = false;
-    LOG_DEBUG("SessionUser::save userID=%llu → t_relation", GetID());
+    LOG_DEBUG("SessionUser::save userID=%llu → Relation binary=%zu",
+              GetID(), m_social.binary.size());
     return true;
 }
 

@@ -50,12 +50,12 @@ public:
     /** @brief 是否已死亡 */
     bool isDead() const { return getState() == SceneEntryState::DEAD; }
 
+    /** @brief 配置模板 ID */
     uint32_t getTemplateId() const { return templateId; }
 
 private:
     /** @brief 仅允许工厂构造，保证初始化流程一致 */
     explicit SceneNpc(const SceneNpcDef& def);
-
     uint32_t templateId   = 0;  /**< 模板 ID */
     uint32_t respawnSec   = 30; /**< 复活间隔（秒） */
     uint64_t respawnAtMs  = 0;  /**< 下次复活时间戳（ms） */

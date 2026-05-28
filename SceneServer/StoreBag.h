@@ -19,5 +19,7 @@ class StoreBag : public Bag
 public:
     /** @brief 构造仓库包并按固定槽位初始化 */
     StoreBag();
+
+    /** @brief 包裹类型标识（仓库） */
     BagType bagType() const override { return BagType::STORE; }
 };

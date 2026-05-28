@@ -5,60 +5,46 @@
 
 #pragma once
 #include "SceneUser.h"
+#include "../sdk/util/Singleton.h"
+#include <cstddef>
 #include <functional>
 #include <memory>
 #include <unordered_map>
 
 /**
- * @brief SceneServer 在线用户集合（userId → SceneUser）
+ * @brief SceneServer 在线用户集合（userId → SceneUser，单例）
  */
-class SceneUserManager
+class SceneUserManager : public LazySingleton<SceneUserManager>
 {
 public:
-    std::shared_ptr<SceneUser> findUser(UserID userId) const
-    {
-        auto it = m_users.find(userId);
-        return it != m_users.end() ? it->second : nullptr;
-    }
+    friend class LazySingleton<SceneUserManager>;
 
-    std::shared_ptr<SceneUser> findUserByClientConn(uint32_t clientConnId) const
-    {
-        for (const auto& [userId, user] : m_users)
-        {
-            (void)userId;
-            if (user->getGatewayClientConn() == clientConnId)
-                return user;
-        }
-        return nullptr;
-    }
+    /** @brief 获取全局唯一实例 */
+    static SceneUserManager& Instance() { return LazySingleton<SceneUserManager>::Instance(); }
 
-    bool addUser(UserID userId, std::shared_ptr<SceneUser> user)
-    {
-        if (!user) return false;
-        m_users[userId] = std::move(user);
-        return true;
-    }
+    /** @brief 按 userId 查找在线用户 */
+    std::shared_ptr<SceneUser> findUser(UserID userId) const;
 
-    bool removeUser(UserID userId)
-    {
-        return m_users.erase(userId) > 0;
-    }
+    /** @brief 按 Gateway 客户端 connId 反查用户 */
+    std::shared_ptr<SceneUser> findUserByClientConn(uint32_t clientConnId) const;
 
-    size_t getUserCount() const { return m_users.size(); }
+    /** @brief 注册在线用户 */
+    bool addUser(UserID userId, std::shared_ptr<SceneUser> user);
 
-    void forEach(const std::function<void(UserID, const std::shared_ptr<SceneUser>&)>& fn) const
-    {
-        for (const auto& [userId, user] : m_users)
-            fn(userId, user);
-    }
+    /** @brief 移除在线用户 */
+    bool removeUser(UserID userId);
 
-    /** @brief 遍历用户并提供可写引用 */
-    void forEachMutable(const std::function<void(UserID, SceneUser&)>& fn)
-    {
-        for (auto& [userId, user] : m_users)
-            fn(userId, *user);
-    }
+    /** @brief 当前在线人数 */
+    size_t getUserCount() const;
+
+    /** @brief 只读遍历全部用户 */
+    void forEach(const std::function<void(UserID, const std::shared_ptr<SceneUser>&)>& fn) const;
+
+    /** @brief 遍历并提供可写 SceneUser 引用 */
+    void forEachMutable(const std::function<void(UserID, SceneUser&)>& fn);
 
 private:
+    SceneUserManager() = default;
+
     std::unordered_map<UserID, std::shared_ptr<SceneUser>> m_users; /**< 在线用户表 */
 };

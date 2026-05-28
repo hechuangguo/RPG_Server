@@ -60,11 +60,9 @@ public:
         tinyxml2::XMLDocument doc;
         if (!XmlConfig::loadDocument(path, doc, errOut))
             return false;
-
         tinyxml2::XMLElement* root = XmlConfig::requireRoot(doc, "SceneServerInfo", errOut);
         if (!root)
             return false;
-
         info.maps.clear();
         info.sceneID = XmlConfig::readUIntAttr(root, "sceneID", 0);
         if (info.sceneID == 0)
@@ -72,7 +70,6 @@ public:
             XmlConfig::setError(errOut, "SceneServerInfo: sceneID must be > 0");
             return false;
         }
-
         for (auto* e = root->FirstChildElement("Map"); e; e = e->NextSiblingElement("Map"))
         {
             MapConfig mc;
@@ -93,7 +90,6 @@ public:
             }
             info.maps.push_back(std::move(mc));
         }
-
         return true;
     }
 };

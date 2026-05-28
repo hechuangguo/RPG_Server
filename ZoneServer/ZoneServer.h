@@ -107,6 +107,7 @@ public:
     /** @brief 主循环 */
     void Run();
 
+    /** @brief 游戏区服连接建立并注册路由 */
     void OnConnect(ConnID id) override;
 
     /**
@@ -117,6 +118,7 @@ public:
      */
     void OnDisconnect(ConnID id) override;
 
+    /** @brief 处理跨区注册与 ZONE_CROSS_REQ 转发 */
     void OnMessage(ConnID id, uint8_t module, uint8_t sub,
                    const char* data, uint16_t len) override;
 
@@ -149,9 +151,7 @@ private:
      * 此处为 ZoneServer 自身收到 FORWARD 的占位逻辑（正常情况下 ZoneServer 不应收到 FORWARD）。
      */
     void OnForward(ConnID fromConn, const char* data, uint16_t len);
-
     TcpServer m_server;  /**< 监听内部连接 */
-
     /**
      * @brief 跨区路由表：zoneID → ZoneRoute
      *

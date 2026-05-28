@@ -263,7 +263,7 @@ void RecordServer::LoadUserFromDB(UserID rid)
     snprintf(sql, sizeof(sql),
              "SELECT user_id,name,level,vocation,sex,map_id,pos_x,pos_y,pos_z,"
              "hp,max_hp,mp,max_mp,gold"
-             " FROM t_charbase WHERE user_id=%" PRIu64 " LIMIT 1",
+             " FROM CharBase WHERE user_id=%" PRIu64 " LIMIT 1",
              rid);
     if (mysql_query(m_db, sql) != 0)
     {
@@ -312,7 +312,7 @@ void RecordServer::SaveUserToDB(UserID rid)
     const auto& base = user->Base();
     char sql[768];
     snprintf(sql, sizeof(sql),
-             "INSERT INTO t_charbase (user_id,name,level,vocation,sex,map_id,"
+             "INSERT INTO CharBase (user_id,name,level,vocation,sex,map_id,"
              "pos_x,pos_y,pos_z,hp,max_hp,mp,max_mp,gold)"
              " VALUES (%" PRIu64 ",'%s',%u,%u,%u,%u,%.2f,%.2f,%.2f,%u,%u,%u,%u,%" PRIu64 ")"
              " ON DUPLICATE KEY UPDATE name=VALUES(name),level=VALUES(level),"

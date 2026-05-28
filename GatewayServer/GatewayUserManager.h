@@ -5,6 +5,8 @@
 
 #pragma once
 #include "GatewayUser.h"
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <unordered_map>
@@ -16,49 +18,26 @@
 class GatewayUserManager
 {
 public:
-    std::shared_ptr<GatewayUser> findUser(ConnID connId) const
-    {
-        auto it = m_users.find(connId);
-        return it != m_users.end() ? it->second : nullptr;
-    }
+    /** @brief 按连接 ID 查找会话（不存在返回 nullptr） */
+    std::shared_ptr<GatewayUser> findUser(ConnID connId) const;
 
-    std::shared_ptr<GatewayUser> addUser(ConnID connId)
-    {
-        auto user = std::make_shared<GatewayUser>(connId);
-        m_users[connId] = user; /**< 新连接写入会话表 */
-        return user;
-    }
+    /** @brief 为新连接创建并注册会话 */
+    std::shared_ptr<GatewayUser> addUser(ConnID connId);
 
-    GatewayUser& getUser(ConnID connId)
-    {
-        return *m_users.at(connId);
-    }
+    /** @brief 获取会话引用（不存在时抛 std::out_of_range） */
+    GatewayUser& getUser(ConnID connId);
 
-    bool removeUser(ConnID connId)
-    {
-        return m_users.erase(connId) > 0;
-    }
+    /** @brief 移除会话，返回是否曾存在 */
+    bool removeUser(ConnID connId);
 
-    size_t getUserCount() const { return m_users.size(); }
+    /** @brief 当前在线会话数 */
+    size_t getUserCount() const;
 
     /** @brief 收集心跳超时的 connId 列表 */
-    std::vector<ConnID> collectExpiredConnIds(uint64_t nowMs, uint64_t timeoutMs) const
-    {
-        std::vector<ConnID> expired; /**< 超时连接输出列表 */
-        for (const auto& [connId, user] : m_users)
-        {
-            if (nowMs - user->getLastHeartbeat() > timeoutMs)
-                expired.push_back(connId);
-        }
-        return expired;
-    }
+    std::vector<ConnID> collectExpiredConnIds(uint64_t nowMs, uint64_t timeoutMs) const;
 
     /** @brief 遍历全部会话并提供可写引用 */
-    void forEach(const std::function<void(ConnID, GatewayUser&)>& fn)
-    {
-        for (auto& [connId, user] : m_users)
-            fn(connId, *user);
-    }
+    void forEach(const std::function<void(ConnID, GatewayUser&)>& fn);
 
 private:
     std::unordered_map<ConnID, std::shared_ptr<GatewayUser>> m_users; /**< connId -> 会话对象 */

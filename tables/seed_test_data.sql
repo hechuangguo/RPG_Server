@@ -24,8 +24,8 @@ VALUES
 -- -------------------------------------------------------
 -- 测试社交占位（SessionServer 读 Relation）
 -- -------------------------------------------------------
-INSERT IGNORE INTO Relation (user_id, friends_json, blacklist_json, guild_id, team_id)
+INSERT IGNORE INTO Relation (user_id, friends_json, blacklist_json, guild_id, team_id, `binary`)
 VALUES
-    (1, '2,3', '', 0, 0),
-    (2, '1',   '', 0, 0),
-    (3, '1',   '', 0, 0);
+    (1, '2,3', '', 0, 0, x''),
+    (2, '1',   '', 0, 0, x''),
+    (3, '1',   '', 0, 0, x'');

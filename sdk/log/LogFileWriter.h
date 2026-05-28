@@ -133,19 +133,15 @@ private:
         const std::string slot =
             TimeUtil::Format(TimeUtil::UnixMs(), "%Y%m%d-%H");
         if (slot == m_hourSlot && m_fpLive && m_fpHourly) return;
-
         const bool hourChanged =
             !m_hourSlot.empty() && slot != m_hourSlot;
-
         if (m_fpHourly) { fclose(m_fpHourly); m_fpHourly = nullptr; }
         if (m_fpLive)   { fclose(m_fpLive);   m_fpLive   = nullptr; }
-
         const std::string hourlyPath = m_basePath + "." + slot;
         m_fpLive   = fopen(m_basePath.c_str(), hourChanged ? "w" : "a");
         m_fpHourly = fopen(hourlyPath.c_str(), "a");
         m_hourSlot = slot;
     }
-
     std::string m_basePath;     /**< 日志基础路径，如 "logs/aoi.log" */
     std::string m_hourSlot;     /**< 当前小时槽标识 "YYYYMMDD-HH"，用于检测跨小时 */
     FILE*       m_fpLive   = nullptr; /**< 实时日志文件句柄（tail -F 监控用） */

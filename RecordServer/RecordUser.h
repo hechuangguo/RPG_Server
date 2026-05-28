@@ -14,7 +14,7 @@
  */
 struct UserRecord
 {
-    UserBase    base;               /**< 基础角色数据（与 t_charbase 对齐） */
+    UserBase    base;               /**< 基础角色数据（与 CharBase 对齐） */
     std::string bagJson;            /**< 背包扩展 JSON */
     std::string skillJson;          /**< 技能扩展 JSON */
     std::string questJson;          /**< 任务扩展 JSON */
@@ -40,16 +40,21 @@ public:
     /** @brief 从 Record 恢复到 IUser 基础属性 */
     bool load();
 
+    /** @brief 可写存档引用 */
     UserRecord& record() { return m_record; }
+
+    /** @brief 只读存档引用 */
     const UserRecord& record() const { return m_record; }
 
+    /** @brief 标记存档脏 */
     void markDirty() { m_record.dirty = true; }
+
+    /** @brief 是否存在待落库改动 */
     bool needSave() const { return m_record.dirty; }
 
 private:
     /** @brief 仅允许工厂创建，确保初始化流程统一 */
     explicit RecordUser(const UserBase& base);
-
     UserRecord m_record;              /**< 内存态完整存档 */
     bool       m_initialized = false; /**< 初始化完成标记 */
 };

@@ -11,6 +11,7 @@
 #include <functional>
 #include <utility>
 
+/** @brief 消息处理回调（connID + 包体） */
 using MsgHandler = std::function<void(uint32_t connID, const char* data, uint16_t len)>;
 
 /**

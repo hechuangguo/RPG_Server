@@ -10,6 +10,7 @@
 | `create_user_and_db.sql` | 建库 `rpg_game`、创建应用用户 `rpg_table` 并授权（须 root 执行） |
 | `setup_database.sh` | 一键：建库建用户 + `init.sql` 建表 + 连接验证 |
 | `init.sql` | 建库建表：`CREATE DATABASE`、`USE rpg_game`、全部 `CREATE TABLE` |
+| `alter_relation_add_binary.sql` | 迁移：已为旧库 `Relation` 表增加 `` `binary` `` 列（执行一次） |
 | `seed_test_data.sql` | 开发/测试用种子数据：test001~test003 初始角色 CharBase 与 Relation |
 | `examples_query_characters.sql` | 示例：只查角色（CharBase 多类 SELECT） |
 | `examples_batch_update_test_accounts.sql` | 示例：批量改 test001~test003（UPDATE + 恢复 seed 值） |
@@ -56,6 +57,12 @@ mysql -u root -p < tables/seed_test_data.sql
 库名须与 [`config/config.xml`](../config/config.xml) 中 `<Database name="..."/>` 一致（默认 `rpg_game`）。  
 `seed_test_data.sql` 可重复执行（`INSERT IGNORE` + 条件 `UPDATE`）。
 
+**已建库、需补 `Relation.binary` 列：**
+
+```bash
+mysql -h 127.0.0.1 -u rpg_table -prpg_table rpg_game < tables/alter_relation_add_binary.sql
+```
+
 **手动查改示例（需先导入 seed）：**
 
 ```bash
@@ -78,6 +85,10 @@ mysql -h 127.0.0.1 -u rpg_table -prpg_table rpg_game < tables/examples_batch_upd
 
 ## 当前表一览（init.sql 内）
 
-角色基础：`CharBase`  
-社交：`Relation`、`Friend`  
+角色基础：`CharBase`（含 `` `binary` `` 玩法序列化）  
+社交：`Relation`（`friends_json` / `blacklist_json` / `guild_id` / `team_id` / `` `binary` ``）、`Friend`  
 其它：`Mail`、`MapInfo`
+
+`Relation.binary`：SessionServer 直连读写，存社交扩展二进制（申请列表、缓存等）；好友列表仍用 JSON 文本字段。
+
+**代码与表名约定：** SQL 中的表名须与 `init.sql` 一致（PascalCase：`CharBase`、`Relation`、`Friend`、`Mail`、`MapInfo`），勿使用已废弃的 `t_` 前缀旧名（如 `t_charbase`）。

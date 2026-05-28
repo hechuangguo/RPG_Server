@@ -4,6 +4,8 @@
  */
 
 #include "SessionServer.h"
+#include "SessionUserManager.h"
+#include "SessionSceneManager.h"
 
 SessionServer::SessionServer()
     : m_server(this)
@@ -29,15 +31,21 @@ bool SessionServer::Init(const std::string& ip, uint16_t port, const ServerConfi
         LOG_FATAL("Start failed");
         return false;
     }
+    if (!m_superClient.Connect(cfg.superIP, (uint16_t)cfg.superPort))
+    {
+        LOG_WARN("Cannot connect to SuperServer");
+    }
+
     if (!InitDB(cfg))
     {
         LOG_FATAL("DB init failed");
         return false;
     }
 
-    if (!m_superClient.Connect(cfg.superIP, (uint16_t)cfg.superPort))
+    if (!SessionUserManager::Instance().init(m_db))
     {
-        LOG_WARN("Cannot connect to SuperServer");
+        LOG_FATAL("SessionUserManager init failed");
+        return false;
     }
 
     RegisterHandlers();
@@ -66,7 +74,7 @@ void SessionServer::OnConnect(ConnID id)
 
 void SessionServer::OnDisconnect(ConnID id)
 {
-    m_sceneManager.unbindConn(id);
+    SessionSceneManager::Instance().unbindConn(id);
     LOG_INFO("InnerConn disconnected=%u", id);
 }
 
@@ -179,7 +187,7 @@ void SessionServer::OnLoadUserReq(ConnID fromConn, const char* data, uint16_t le
     }
     UserID uid = *reinterpret_cast<const UserID*>(data);
 
-    auto user = m_userManager.getOrCreateUser(uid);
+    auto user = SessionUserManager::Instance().getOrCreateUser(uid);
     user->load(m_db);
     user->onOnline();
 
@@ -193,10 +201,10 @@ void SessionServer::OnSaveUserReq(ConnID /*fromConn*/, const char* data, uint16_
         return;
     }
     UserID uid = *reinterpret_cast<const UserID*>(data);
-    auto user = m_userManager.findUser(uid);
+    auto user = SessionUserManager::Instance().findUser(uid);
     if (!user)
     {
-        user = m_userManager.getOrCreateUser(uid);
+        user = SessionUserManager::Instance().getOrCreateUser(uid);
     }
     user->save(m_db);
 }
@@ -214,7 +222,7 @@ void SessionServer::OnSceneRegisterReq(ConnID fromConn, const char* data, uint16
     }
     const auto* req = reinterpret_cast<const Msg_SES_SceneRegisterReq*>(data);
 
-    m_sceneManager.registerScene(fromConn, *req);
+    SessionSceneManager::Instance().registerScene(fromConn, *req);
 
     Msg_SES_SceneRegisterRsp rsp{};
     rsp.code = 0;
@@ -230,7 +238,7 @@ void SessionServer::OnSceneUnregister(ConnID /*fromConn*/, const char* data, uin
         return;
     }
     const auto* req = reinterpret_cast<const Msg_SES_SceneUnregister*>(data);
-    m_sceneManager.unregisterScene(req->sceneInstanceId, req->sceneServerId);
+    SessionSceneManager::Instance().unregisterScene(req->sceneInstanceId, req->sceneServerId);
 }
 
 void SessionServer::OnCopyCreateReq(ConnID fromConn, const char* data, uint16_t len)
@@ -241,13 +249,13 @@ void SessionServer::OnCopyCreateReq(ConnID fromConn, const char* data, uint16_t 
     }
     const auto* req = reinterpret_cast<const Msg_SES_CopyCreateReq*>(data);
 
-    m_sceneManager.bindSceneServer(fromConn, req->reqSceneServerId);
+    SessionSceneManager::Instance().bindSceneServer(fromConn, req->reqSceneServerId);
 
     Msg_SES_CopyCreateRsp rsp{};
     rsp.code = 0;
 
     const CopyType copyType = static_cast<CopyType>(req->copyType);
-    SessionCopyScene* existing = m_sceneManager.findReusableCopy(copyType, req->mapId, req->ownerId);
+    SessionCopyScene* existing = SessionSceneManager::Instance().findReusableCopy(copyType, req->mapId, req->ownerId);
 
     if (existing)
     {
@@ -263,14 +271,14 @@ void SessionServer::OnCopyCreateReq(ConnID fromConn, const char* data, uint16_t 
     }
     else
     {
-        uint32_t targetId = m_sceneManager.pickSceneServerId();
+        uint32_t targetId = SessionSceneManager::Instance().pickSceneServerId();
         if (targetId == 0)
         {
             targetId = req->reqSceneServerId;
         }
 
-        const uint64_t copyId = m_sceneManager.generateCopyInstanceId();
-        m_sceneManager.createCopyRecord(targetId, copyId, *req);
+        const uint64_t copyId = SessionSceneManager::Instance().generateCopyInstanceId();
+        SessionSceneManager::Instance().createCopyRecord(targetId, copyId, *req);
 
         rsp.targetSceneServerId = targetId;
         rsp.copyInstanceId = copyId;
@@ -291,7 +299,7 @@ void SessionServer::OnCopyCreateReq(ConnID fromConn, const char* data, uint16_t 
         copyWireField(cmd.mapName, req->mapName);
         copyWireField(cmd.mapFile, req->mapFile);
 
-        ConnID targetConn = m_sceneManager.findConnBySceneServerId(targetId);
+        ConnID targetConn = SessionSceneManager::Instance().findConnBySceneServerId(targetId);
         if (targetConn != INVALID_CONN_ID)
         {
             m_server.SendMsg(targetConn, (uint16_t)InternalMsgID::SES_COPY_CREATE_CMD,
@@ -310,7 +318,7 @@ void SessionServer::OnCopyCreateReq(ConnID fromConn, const char* data, uint16_t 
 
 void SessionServer::AutoSaveAll()
 {
-    m_userManager.forEach([this](UserID uid, const std::shared_ptr<SessionUser>& user) {
+    SessionUserManager::Instance().forEach([this](UserID uid, const std::shared_ptr<SessionUser>& user) {
         (void)uid;
         if (user->needSave())
         {

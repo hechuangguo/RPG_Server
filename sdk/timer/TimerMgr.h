@@ -34,6 +34,11 @@ using TimerCallback = std::function<void()>;
 /** @brief 无效定时器 ID */
 constexpr TimerID INVALID_TIMER_ID = 0;
 
+/**
+ * @brief 单线程定时器管理器（单例）
+ *
+ * 基于 multimap 按触发时间排序；须在主循环线程调用 Update()。
+ */
 class TimerMgr : public LazySingleton<TimerMgr>
 {
 public:
@@ -122,9 +127,8 @@ private:
         uint64_t      repeatMs;  /**< 重复间隔（0=一次性） */
         TimerCallback cb;        /**< 回调 */
     };
-
+    /** @brief 私有构造（单例，禁止外部创建） */
     TimerMgr() : m_nextID(0) {}
-
     TimerID                        m_nextID;  /**< 自增 ID 分配器 */
     std::multimap<uint64_t, TimerEntry> m_timers; /**< 按 nextTick 排序的定时器队列 */
 };

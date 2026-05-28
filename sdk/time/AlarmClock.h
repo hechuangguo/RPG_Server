@@ -244,7 +244,6 @@ private:
         TimerID       timerID = INVALID_TIMER_ID; /**< 关联的 TimerMgr 定时器 ID */
         bool          pendingReschedule = false; /**< 是否等待 Update() 重调度 */
     };
-
     /** @brief 私有构造（单例模式） */
     AlarmClock() : m_nextID(0) {}
 
@@ -260,15 +259,12 @@ private:
     {
         auto it = m_alarms.find(alarmID);
         if (it == m_alarms.end()) return;
-
         AlarmEntry& e = it->second;
         if (e.timerID != INVALID_TIMER_ID)
             TimerMgr::Instance().Cancel(e.timerID);
-
         int64_t now = TimeUtil::UnixMs();
         int64_t delay = e.trigger - now;
         if (delay < 0) delay = 0;  /**< 已过时刻，立即触发 */
-
         e.timerID = TimerMgr::Instance().Register(
             static_cast<uint64_t>(delay), 0,
             [this, alarmID]() { OnAlarmFire(alarmID); });
@@ -291,11 +287,9 @@ private:
     {
         auto it = m_alarms.find(alarmID);
         if (it == m_alarms.end()) return;
-
         AlarmEntry& e = it->second;
         e.timerID = INVALID_TIMER_ID;
         if (e.cb) e.cb();
-
         switch (e.repeat)
         {
         case AlarmRepeat::ONCE:
@@ -312,7 +306,6 @@ private:
             break;
         }
     }
-
     AlarmID m_nextID;  /**< 闹钟 ID 自增计数器 */
     std::unordered_map<AlarmID, AlarmEntry> m_alarms;  /**< 所有活跃闹钟的存储 */
 };

@@ -62,8 +62,13 @@ public:
     /** @brief 主循环 */
     void Run();
 
+    /** @brief SceneServer 等连接建立 */
     void OnConnect(ConnID id) override;
+
+    /** @brief 连接断开时清理路由 */
     void OnDisconnect(ConnID id) override;
+
+    /** @brief 处理排行榜更新、全服公告等协议 */
     void OnMessage(ConnID id, uint8_t module, uint8_t sub,
                    const char* data, uint16_t len) override;
 
@@ -118,7 +123,6 @@ private:
      *       建议协议格式：[count:2][userID:8][name:32][value:4] × count
      */
     void SyncGlobalData();
-
     TcpServer m_server;                        /**< 监听内部连接 */
     std::vector<RankEntry>              m_rank;             /**< 排行榜（已排序，最多 100 条） */
     std::unordered_map<ConnID, bool>    m_innerConns;       /**< 内部连接记录：connID → alive */

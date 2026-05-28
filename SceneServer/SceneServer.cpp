@@ -4,6 +4,10 @@
  */
 
 #include "SceneServer.h"
+#include "SceneUserManager.h"
+#include "SceneNpcManager.h"
+#include "SceneManager.h"
+#include "LuaManager.h"
 
 SceneServer::SceneServer()
     : m_server(this)
@@ -32,15 +36,15 @@ bool SceneServer::Init(const std::string& ip, uint16_t port,
     m_gatewayClient.Connect("127.0.0.1", (uint16_t)(cfg.gatewayPort + 10000));
     m_listenPort = port;
 
-    m_sceneManager.setStartedCallback([this](Scene& scene) { onSceneStarted(scene); });
-    m_sceneManager.setStoppedCallback([this](Scene& scene) { onSceneStopped(scene); });
+    SceneManager::Instance().setStartedCallback([this](Scene& scene) { onSceneStarted(scene); });
+    SceneManager::Instance().setStoppedCallback([this](Scene& scene) { onSceneStopped(scene); });
 
-    if (!m_sceneManager.createNormalScenesFromConfig(m_sceneID, sceneInfo))
+    if (!SceneManager::Instance().createNormalScenesFromConfig(m_sceneID, sceneInfo))
         LOG_WARN("Some normal scenes failed to start on SceneServer %u", m_sceneID);
 
     initMapNpcs();
 
-    if (!m_luaMgr.init())
+    if (!LuaManager::Instance().init())
         LOG_WARN("SceneServer Lua init failed");
     RegisterHandlers();
 
@@ -120,7 +124,7 @@ void SceneServer::OnUserEnter(ConnID /*fromConn*/, const char* data, uint16_t le
              req->userID, req->mapID, req->gatewayClientConnID);
 
     uint32_t mapID = req->mapID ? req->mapID : 1001;
-    auto scene = m_sceneManager.findNormalSceneByMapId(mapID);
+    auto scene = SceneManager::Instance().findNormalSceneByMapId(mapID);
     if (!scene)
     {
         LOG_WARN("Map %u not found on SceneServer %u", mapID, m_sceneID);
@@ -149,7 +153,7 @@ void SceneServer::OnUserEnter(ConnID /*fromConn*/, const char* data, uint16_t le
     user->load();
     user->setGatewayClientConn(req->gatewayClientConnID);
     user->onOnline();
-    m_userManager.addUser(req->userID, user);
+    SceneUserManager::Instance().addUser(req->userID, user);
     scene->addPlayer(req->userID);
 
     Msg_AOI_Move aoi{};
@@ -184,7 +188,7 @@ void SceneServer::NotifyExistingPlayersOnEnter(const SceneUser& entering)
     Msg_S2C_SpawnEntity spawn{};
     fillSpawnFromEntry(entering, 0, spawn);
 
-    m_userManager.forEach([&](UserID rid, const std::shared_ptr<SceneUser>& user)
+    SceneUserManager::Instance().forEach([&](UserID rid, const std::shared_ptr<SceneUser>& user)
     {
         if (rid == base.userID) return;
         if (user->Base().mapID != base.mapID) return;
@@ -201,7 +205,7 @@ void SceneServer::NotifyExistingPlayersOnEnter(const SceneUser& entering)
                      reinterpret_cast<char*>(&other), sizeof(other));
     });
 
-    m_npcManager.forEach([&](EntryID /*npcId*/, const std::shared_ptr<SceneNpc>& npc)
+    SceneNpcManager::Instance().forEach([&](EntryID /*npcId*/, const std::shared_ptr<SceneNpc>& npc)
     {
         if (!npc || npc->getMapId() != base.mapID) return;
         if (!npc->isAlive()) return;
@@ -218,10 +222,10 @@ void SceneServer::OnUserLeave(ConnID /*fromConn*/, const char* data, uint16_t le
 {
     if (len < sizeof(UserID)) return;
     UserID uid = *reinterpret_cast<const UserID*>(data);
-    auto user = m_userManager.findUser(uid);
+    auto user = SceneUserManager::Instance().findUser(uid);
     if (!user) return;
 
-    if (auto scene = m_sceneManager.findNormalSceneByMapId(user->Base().mapID))
+    if (auto scene = SceneManager::Instance().findNormalSceneByMapId(user->Base().mapID))
         scene->removePlayer(uid);
 
     user->onOffline();
@@ -234,7 +238,7 @@ void SceneServer::OnUserLeave(ConnID /*fromConn*/, const char* data, uint16_t le
     m_aoiClient.SendMsg((uint16_t)InternalMsgID::AOI_LEAVE_REQ,
                         reinterpret_cast<const char*>(&uid), sizeof(uid));
     CallLuaOnLeave(uid);
-    m_userManager.removeUser(uid);
+    SceneUserManager::Instance().removeUser(uid);
     LOG_INFO("UserLeave: userID=%llu", uid);
 }
 
@@ -263,7 +267,7 @@ void SceneServer::OnViewNotify(ConnID /*fromConn*/, const char* data, uint16_t l
     if (len == sizeof(Msg_AOI_Move))
     {
         const auto* move = reinterpret_cast<const Msg_AOI_Move*>(data);
-        auto user = m_userManager.findUser(move->entityID);
+        auto user = SceneUserManager::Instance().findUser(move->entityID);
         if (user)
         {
             user->Base().posX = move->x;
@@ -273,7 +277,7 @@ void SceneServer::OnViewNotify(ConnID /*fromConn*/, const char* data, uint16_t l
         }
         else
         {
-            auto npc = m_npcManager.findNpc(move->entityID);
+            auto npc = SceneNpcManager::Instance().findNpc(move->entityID);
             if (npc)
                 npc->setPos(move->x, move->y, move->z);
         }
@@ -296,8 +300,8 @@ void SceneServer::OnViewNotify(ConnID /*fromConn*/, const char* data, uint16_t l
     memcpy(&entityID, data, sizeof(uint64_t));
     bool enter = data[sizeof(uint64_t)] != 0;
 
-    auto user = m_userManager.findUser(entityID);
-    auto npc = m_npcManager.findNpc(entityID);
+    auto user = SceneUserManager::Instance().findUser(entityID);
+    auto npc = SceneNpcManager::Instance().findNpc(entityID);
 
     uint32_t mapId = 0;
     if (user)
@@ -350,7 +354,7 @@ void SceneServer::OnMoveReq(uint32_t /*clientConnID*/, const char* data, uint16_
 {
     if (len < sizeof(Msg_C2S_MoveReq)) return;
     const auto* req = reinterpret_cast<const Msg_C2S_MoveReq*>(data);
-    auto user = m_userManager.findUser(req->userID);
+    auto user = SceneUserManager::Instance().findUser(req->userID);
     if (!user) return;
     user->Base().posX = req->x;
     user->Base().posY = req->y;
@@ -370,7 +374,7 @@ void SceneServer::OnChatReq(uint32_t clientConnID, const char* data, uint16_t le
 {
     if (len < sizeof(Msg_C2S_Chat)) return;
     const auto* req = reinterpret_cast<const Msg_C2S_Chat*>(data);
-    auto user = m_userManager.findUserByClientConn(clientConnID);
+    auto user = SceneUserManager::Instance().findUserByClientConn(clientConnID);
     if (!user) return;
 
     Msg_S2C_Chat notify{};
@@ -395,11 +399,11 @@ void SceneServer::OnNpcTalkReq(uint32_t clientConnID, const char* data, uint16_t
         return;
 
     const auto* req = reinterpret_cast<const Msg_C2S_NpcTalkReq*>(data);
-    auto user = m_userManager.findUserByClientConn(clientConnID);
+    auto user = SceneUserManager::Instance().findUserByClientConn(clientConnID);
     if (!user || user->getGatewayClientConn() == 0)
         return;
 
-    auto npc = m_npcManager.findNpc(req->npcId);
+    auto npc = SceneNpcManager::Instance().findNpc(req->npcId);
     if (!npc || npc->isDead())
     {
         sendNpcTalkError(user->getGatewayClientConn(), req->npcId, 1);
@@ -412,7 +416,7 @@ void SceneServer::OnNpcTalkReq(uint32_t clientConnID, const char* data, uint16_t
         return;
     }
 
-    const bool ok = m_luaMgr.callScriptBool(npc.get(), "OnNpcTalk", {
+    const bool ok = LuaManager::Instance().callScriptBool(npc.get(), "OnNpcTalk", {
         LuaArg::integer(static_cast<int64_t>(user->GetID())),
         LuaArg::integer(req->dialogStep),
         LuaArg::integer(npc->getTemplateId()),
@@ -470,7 +474,7 @@ void SceneServer::SendToClient(uint32_t clientConnID, uint16_t flatMsgId,
 void SceneServer::BroadcastToMap(uint32_t mapID, UserID excludeUserID,
                                  uint16_t msgID, const char* data, uint16_t len)
 {
-    m_userManager.forEach([&](UserID uid, const std::shared_ptr<SceneUser>& user)
+    SceneUserManager::Instance().forEach([&](UserID uid, const std::shared_ptr<SceneUser>& user)
     {
         if (mapID != 0 && user->Base().mapID != mapID) return;
         if (uid == excludeUserID) return;
@@ -481,7 +485,7 @@ void SceneServer::BroadcastToMap(uint32_t mapID, UserID excludeUserID,
 
 void SceneServer::CallLuaOnEnter(UserID userID, uint32_t mapID)
 {
-    m_luaMgr.callGlobalVoid("OnUserEnter", {
+    LuaManager::Instance().callGlobalVoid("OnUserEnter", {
         LuaArg::integer(static_cast<int64_t>(userID)),
         LuaArg::integer(mapID),
     });
@@ -489,7 +493,7 @@ void SceneServer::CallLuaOnEnter(UserID userID, uint32_t mapID)
 
 void SceneServer::CallLuaOnLeave(UserID userID)
 {
-    m_luaMgr.callGlobalVoid("OnUserLeave", {
+    LuaManager::Instance().callGlobalVoid("OnUserLeave", {
         LuaArg::integer(static_cast<int64_t>(userID)),
     });
 }
@@ -499,7 +503,7 @@ void SceneServer::CallLuaMsgHandler(uint32_t connID, uint8_t module, uint8_t sub
 {
     char funcName[32];
     snprintf(funcName, sizeof(funcName), "OnMsg_%02X%02X", module, sub);
-    m_luaMgr.callGlobalVoid(funcName, {
+    LuaManager::Instance().callGlobalVoid(funcName, {
         LuaArg::integer(connID),
         LuaArg::binary(data, len),
     });
@@ -507,7 +511,7 @@ void SceneServer::CallLuaMsgHandler(uint32_t connID, uint8_t module, uint8_t sub
 
 void SceneServer::CallLuaSkillHandler(uint32_t connID, const char* data, uint16_t len)
 {
-    m_luaMgr.callGlobalVoid("OnSkillReq", {
+    LuaManager::Instance().callGlobalVoid("OnSkillReq", {
         LuaArg::integer(connID),
         LuaArg::binary(data, len),
     });
@@ -516,17 +520,17 @@ void SceneServer::CallLuaSkillHandler(uint32_t connID, const char* data, uint16_
 void SceneServer::OnTick()
 {
     uint64_t now = TimerMgr::NowMs();
-    m_userManager.forEachMutable([&](UserID /*uid*/, SceneUser& user)
+    SceneUserManager::Instance().forEachMutable([&](UserID /*uid*/, SceneUser& user)
     {
         user.loop(now);
     });
-    m_npcManager.loopAll(now);
-    m_luaMgr.callGlobalVoid("OnTick", { LuaArg::integer(static_cast<int64_t>(now)) });
+    SceneNpcManager::Instance().loopAll(now);
+    LuaManager::Instance().callGlobalVoid("OnTick", { LuaArg::integer(static_cast<int64_t>(now)) });
 }
 
 void SceneServer::initMapNpcs()
 {
-    m_sceneManager.forEach([this](const std::shared_ptr<Scene>& scene)
+    SceneManager::Instance().forEach([this](const std::shared_ptr<Scene>& scene)
     {
         if (!scene || scene->getSceneKind() != SceneKind::NORMAL)
             return;
@@ -547,10 +551,10 @@ void SceneServer::initMapNpcs()
         def.posZ = 10.f;
         def.respawnSec = 30;
 
-        if (m_npcManager.createNpc(def))
+        if (SceneNpcManager::Instance().createNpc(def))
         {
             LOG_INFO("NPC spawned: id=%llu map=%u", def.npcId, mapId);
-            auto npc = m_npcManager.findNpc(def.npcId);
+            auto npc = SceneNpcManager::Instance().findNpc(def.npcId);
             if (npc)
                 notifyNpcEnterAoi(*npc);
         }
@@ -620,7 +624,7 @@ void SceneServer::OnCopyCreateCmd(ConnID /*fromConn*/, const char* data, uint16_
     def.mapName = cmd->mapName;
     def.mapFile = cmd->mapFile;
 
-    if (m_sceneManager.createCopyScene(m_sceneID, def))
+    if (SceneManager::Instance().createCopyScene(m_sceneID, def))
         LOG_INFO("CopyScene created locally: instance=%llu", cmd->copyInstanceId);
     else
         LOG_ERR("CopyScene create failed: instance=%llu", cmd->copyInstanceId);

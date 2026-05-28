@@ -15,6 +15,7 @@
 #include "ScriptFun.h"
 #include "LuaBinder.h"
 #include "SceneServer.h"
+#include "SceneUserManager.h"
 #include "SceneEntry.h"
 #include "../common/ClientMsg.h"
 #include "../sdk/log/Logger.h"
@@ -47,7 +48,7 @@ LUA_GLOBAL_FUNC("send_to_user", sendToUser)
     if (!server)
         return 0;
 
-    auto user = server->findUser(userId);
+    auto user = SceneUserManager::Instance().findUser(userId);
     if (!user || user->getGatewayClientConn() == 0)
         return 0;
 
@@ -101,7 +102,7 @@ LUA_GLOBAL_FUNC("send_npc_talk_rsp", sendNpcTalkRsp)
     if (!server)
         return 0;
 
-    auto user = server->findUser(userId);
+    auto user = SceneUserManager::Instance().findUser(userId);
     if (!user || user->getGatewayClientConn() == 0)
         return 0;
 

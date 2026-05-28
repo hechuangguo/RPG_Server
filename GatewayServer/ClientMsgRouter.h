@@ -10,10 +10,10 @@
 /** @brief 转发目标 */
 enum class ClientForwardTarget : uint8_t
 {
-    LOCAL  = 0,
-    SCENE  = 1,
-    SESSION = 2,
-    DROP   = 3,
+    LOCAL   = 0, /**< Gateway 本地处理（登录/系统） */
+    SCENE   = 1, /**< 转发至 SceneServer */
+    SESSION = 2, /**< 转发至 SessionServer */
+    DROP    = 3, /**< 丢弃（未知 module） */
 };
 
 /**
@@ -22,6 +22,7 @@ enum class ClientForwardTarget : uint8_t
 class ClientMsgRouter
 {
 public:
+    /** @brief 按 module/sub 解析客户端消息应转发至的目标服 */
     static ClientForwardTarget resolve(uint8_t module, uint8_t sub)
     {
         (void)sub;

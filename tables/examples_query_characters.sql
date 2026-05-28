@@ -85,7 +85,8 @@ SELECT
     c.gold,
     r.friends_json,
     r.guild_id,
-    r.team_id
+    r.team_id,
+    OCTET_LENGTH(r.`binary`) AS relation_binary_bytes
 FROM CharBase c
 LEFT JOIN Relation r ON r.user_id = c.user_id
 ORDER BY c.user_id;

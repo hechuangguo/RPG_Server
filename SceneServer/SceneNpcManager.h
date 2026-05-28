@@ -5,94 +5,52 @@
 
 #pragma once
 #include "SceneNpc.h"
+#include "../sdk/util/Singleton.h"
 #include <functional>
 #include <memory>
 #include <unordered_map>
 #include <vector>
 
 /**
- * @brief 管理当前 SceneServer 进程内所有 NPC
+ * @brief 管理当前 SceneServer 进程内所有 NPC（单例）
  */
-class SceneNpcManager
+class SceneNpcManager : public LazySingleton<SceneNpcManager>
 {
 public:
-    std::shared_ptr<SceneNpc> findNpc(EntryID npcId) const
-    {
-        auto it = m_npcs.find(npcId);
-        return it != m_npcs.end() ? it->second : nullptr;
-    }
+    friend class LazySingleton<SceneNpcManager>;
+
+    /** @brief 获取全局唯一实例 */
+    static SceneNpcManager& Instance() { return LazySingleton<SceneNpcManager>::Instance(); }
+
+    /** @brief 按 npcId 查找 NPC */
+    std::shared_ptr<SceneNpc> findNpc(EntryID npcId) const;
 
     /** @brief 获取指定地图上的 NPC 列表 */
-    std::vector<std::shared_ptr<SceneNpc>> findNpcsByMap(uint32_t mapId) const
-    {
-        std::vector<std::shared_ptr<SceneNpc>> out;  /**< 返回结果缓存 */
-        for (const auto& [id, npc] : m_npcs)
-        {
-            (void)id;
-            if (npc && npc->getMapId() == mapId)
-                out.push_back(npc);
-        }
-        return out;
-    }
+    std::vector<std::shared_ptr<SceneNpc>> findNpcsByMap(uint32_t mapId) const;
 
     /** @brief 创建并注册 NPC */
-    std::shared_ptr<SceneNpc> createNpc(const SceneNpcDef& def)
-    {
-        if (def.npcId == INVALID_ENTRY_ID)
-            return nullptr;
-        if (m_npcs.count(def.npcId))
-            return m_npcs[def.npcId];
+    std::shared_ptr<SceneNpc> createNpc(const SceneNpcDef& def);
 
-        auto npc = SceneNpc::create(def);
-        if (!npc || !npc->init())
-            return nullptr;
+    /** @brief 注册已有 NPC 实例 */
+    bool addNpc(EntryID npcId, std::shared_ptr<SceneNpc> npc);
 
-        m_npcs[def.npcId] = npc;  /**< 首次创建写入主索引 */
-        return npc;
-    }
+    /** @brief 移除 NPC */
+    bool removeNpc(EntryID npcId);
 
-    bool addNpc(EntryID npcId, std::shared_ptr<SceneNpc> npc)
-    {
-        if (!npc || npcId == INVALID_ENTRY_ID) return false;
-        m_npcs[npcId] = std::move(npc);
-        return true;
-    }
+    /** @brief 进程内 NPC 总数 */
+    size_t getNpcCount() const;
 
-    bool removeNpc(EntryID npcId)
-    {
-        return m_npcs.erase(npcId) > 0;
-    }
-
-    size_t getNpcCount() const { return m_npcs.size(); }
-
-    size_t getNpcCountByMap(uint32_t mapId) const
-    {
-        size_t n = 0;  /**< mapId 下 NPC 计数器 */
-        for (const auto& [id, npc] : m_npcs)
-        {
-            (void)id;
-            if (npc && npc->getMapId() == mapId) ++n;
-        }
-        return n;
-    }
+    /** @brief 指定地图上的 NPC 数量 */
+    size_t getNpcCountByMap(uint32_t mapId) const;
 
     /** @brief 驱动所有 NPC 的 loop */
-    void loopAll(uint64_t nowMs)
-    {
-        for (auto& [id, npc] : m_npcs)
-        {
-            (void)id;
-            if (npc) npc->loop(nowMs);
-        }
-    }
+    void loopAll(uint64_t nowMs);
 
     /** @brief 遍历全部 NPC（只读访问） */
-    void forEach(const std::function<void(EntryID, const std::shared_ptr<SceneNpc>&)>& fn) const
-    {
-        for (const auto& [npcId, npc] : m_npcs)
-            fn(npcId, npc);
-    }
+    void forEach(const std::function<void(EntryID, const std::shared_ptr<SceneNpc>&)>& fn) const;
 
 private:
+    SceneNpcManager() = default;
+
     std::unordered_map<EntryID, std::shared_ptr<SceneNpc>> m_npcs; /**< npcId -> NPC 对象 */
 };

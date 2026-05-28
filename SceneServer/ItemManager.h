@@ -18,12 +18,16 @@ class ItemManager
 public:
     /** @brief 初始化道具计数容器 */
     bool init();
+
     /** @brief 每帧驱动（预留时效道具） */
     void loop(uint64_t nowMs);
+
     /** @brief 是否存在待保存改动 */
     bool needSave() const;
+
     /** @brief 保存并清理脏标记 */
     bool save();
+
     /** @brief 加载道具计数快照 */
     bool load();
 

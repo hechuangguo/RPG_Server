@@ -12,6 +12,7 @@
 #pragma once
 
 #include "SceneEntry.h"
+#include "../sdk/util/Singleton.h"
 #include <cstdint>
 #include <initializer_list>
 #include <string>
@@ -36,41 +37,46 @@ struct LuaArg
         STRING,  /**< UTF-8 字符串 */
         BINARY,  /**< 二进制块（按长度传递） */
     };
-
     Type type = Type::NIL;   /**< 参数类型 */
     bool boolVal = false;    /**< 布尔值缓存 */
     int64_t intVal = 0;      /**< 整型值缓存 */
     double numberVal = 0.0;  /**< 浮点值缓存 */
     std::string strVal;      /**< 字符串/二进制缓存 */
-
     /** @brief 构造 nil 参数 */
     static LuaArg nil();
+
     /** @brief 构造布尔参数 */
     static LuaArg boolean(bool v);
+
     /** @brief 构造整型参数 */
     static LuaArg integer(int64_t v);
+
     /** @brief 构造浮点参数 */
     static LuaArg number(double v);
+
     /** @brief 构造字符串参数 */
     static LuaArg string(const std::string& v);
+
     /** @brief 构造 C 字符串参数 */
     static LuaArg string(const char* v);
+
     /** @brief 构造二进制参数（拷贝到 strVal） */
     static LuaArg binary(const char* data, size_t len);
 };
 
 /**
- * @brief SceneServer 侧 Lua 管理器
+ * @brief SceneServer 侧 Lua 管理器（单例）
  */
-class LuaManager
+class LuaManager : public LazySingleton<LuaManager>
 {
 public:
-    LuaManager() = default;
+    friend class LazySingleton<LuaManager>;
+
+    /** @brief 获取全局唯一实例 */
+    static LuaManager& Instance() { return LazySingleton<LuaManager>::Instance(); }
+
     /** @brief 析构时自动关闭 Lua 虚拟机 */
     ~LuaManager();
-
-    LuaManager(const LuaManager&) = delete;
-    LuaManager& operator=(const LuaManager&) = delete;
 
     /**
      * @brief 初始化虚拟机并加载入口脚本
@@ -81,7 +87,10 @@ public:
     /** @brief 关闭虚拟机 */
     void shutdown();
 
+    /** @brief Lua 虚拟机是否已就绪 */
     bool isReady() const { return m_lua != nullptr; }
+
+    /** @brief 底层 lua_State 指针（仅供 ScriptFun 等绑定使用） */
     lua_State* getState() const { return m_lua; }
 
     /**
@@ -123,8 +132,11 @@ public:
                           int64_t defaultVal = 0);
 
 private:
+    LuaManager() = default;
+
     /** @brief 将单个 LuaArg 压入 Lua 栈 */
     void pushArg(const LuaArg& arg);
+
     /** @brief 顺序压入多个 LuaArg */
     void pushArgs(std::initializer_list<LuaArg> args);
 
@@ -140,7 +152,6 @@ private:
 
     /** @brief 确保 SceneEntry 元表已注册到 lua_State */
     static void ensureSceneEntryMetatable(lua_State* L);
-
     lua_State* m_lua = nullptr; /**< Lua 虚拟机句柄 */
 };
 

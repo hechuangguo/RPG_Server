@@ -167,6 +167,9 @@ sudo dnf install -y gcc-c++ cmake make curl tar openssl-devel zlib-devel
 mysql -u root -p < tables/init.sql
 # 修改 config/config.xml 中的 Database 密码
 
+# 已有库且 Relation 表无 binary 列时（执行一次）
+mysql -h 127.0.0.1 -u rpg_table -prpg_table rpg_game < tables/alter_relation_add_binary.sql
+
 # 导入测试账号（可选，仅开发环境）
 mysql -u root -p < tables/seed_test_data.sql
 ```

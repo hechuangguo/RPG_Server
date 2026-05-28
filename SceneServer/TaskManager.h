@@ -2,7 +2,7 @@
  * @file    TaskManager.h
  * @brief  任务管理器（questId → 状态与进度）
  *
- * status 语义与 tables/init.sql 中 t_quest.status 一致：0 进行中 / 1 完成 / 2 已领奖。
+ * 任务状态为内存模型（0 进行中 / 1 完成 / 2 已领奖）；持久化可序列化至 CharBase.binary。
  */
 
 #pragma once
@@ -24,12 +24,16 @@ class TaskManager
 public:
     /** @brief 初始化任务容器 */
     bool init();
+
     /** @brief 每帧驱动任务系统 */
     void loop(uint64_t nowMs);
+
     /** @brief 是否有待保存变更 */
     bool needSave() const;
+
     /** @brief 保存任务状态并清脏 */
     bool save();
+
     /** @brief 加载任务状态 */
     bool load();
 
