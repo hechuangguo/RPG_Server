@@ -38,7 +38,7 @@ public:
         if (user) return user;
 
         UserBase base;
-        base.userID = userId;
+        base.userID = userId;  /**< 新建最小用户基线，仅补 userId */
         user = SessionUser::create(base);
         user->init();
         m_users.emplace(userId, user);
@@ -74,6 +74,6 @@ public:
     }
 
 private:
-    std::unordered_map<UserID, std::shared_ptr<SessionUser>> m_users;
-    std::unordered_map<UserID, std::vector<OfflineMsg>>     m_offlineMsgs;
+    std::unordered_map<UserID, std::shared_ptr<SessionUser>> m_users;        /**< 在线用户缓存 */
+    std::unordered_map<UserID, std::vector<OfflineMsg>>     m_offlineMsgs;   /**< 离线消息队列 */
 };

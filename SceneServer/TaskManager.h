@@ -22,10 +22,15 @@ struct TaskState
 class TaskManager
 {
 public:
+    /** @brief 初始化任务容器 */
     bool init();
+    /** @brief 每帧驱动任务系统 */
     void loop(uint64_t nowMs);
+    /** @brief 是否有待保存变更 */
     bool needSave() const;
+    /** @brief 保存任务状态并清脏 */
     bool save();
+    /** @brief 加载任务状态 */
     bool load();
 
     /**
@@ -39,6 +44,6 @@ public:
     bool remove(uint32_t taskId, uint32_t unused = 0);
 
 private:
-    std::unordered_map<uint32_t, TaskState> taskMap;
-    bool dirty = false;
+    std::unordered_map<uint32_t, TaskState> taskMap; /**< taskId -> 任务状态 */
+    bool dirty = false;                               /**< 脏标记 */
 };

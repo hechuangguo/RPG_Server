@@ -25,7 +25,7 @@ public:
     /** @brief 获取指定地图上的 NPC 列表 */
     std::vector<std::shared_ptr<SceneNpc>> findNpcsByMap(uint32_t mapId) const
     {
-        std::vector<std::shared_ptr<SceneNpc>> out;
+        std::vector<std::shared_ptr<SceneNpc>> out;  /**< 返回结果缓存 */
         for (const auto& [id, npc] : m_npcs)
         {
             (void)id;
@@ -47,7 +47,7 @@ public:
         if (!npc || !npc->init())
             return nullptr;
 
-        m_npcs[def.npcId] = npc;
+        m_npcs[def.npcId] = npc;  /**< 首次创建写入主索引 */
         return npc;
     }
 
@@ -67,7 +67,7 @@ public:
 
     size_t getNpcCountByMap(uint32_t mapId) const
     {
-        size_t n = 0;
+        size_t n = 0;  /**< mapId 下 NPC 计数器 */
         for (const auto& [id, npc] : m_npcs)
         {
             (void)id;
@@ -86,6 +86,7 @@ public:
         }
     }
 
+    /** @brief 遍历全部 NPC（只读访问） */
     void forEach(const std::function<void(EntryID, const std::shared_ptr<SceneNpc>&)>& fn) const
     {
         for (const auto& [npcId, npc] : m_npcs)
@@ -93,5 +94,5 @@ public:
     }
 
 private:
-    std::unordered_map<EntryID, std::shared_ptr<SceneNpc>> m_npcs;
+    std::unordered_map<EntryID, std::shared_ptr<SceneNpc>> m_npcs; /**< npcId -> NPC 对象 */
 };

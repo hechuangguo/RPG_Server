@@ -52,6 +52,7 @@ public:
             fn(userId, user);
     }
 
+    /** @brief 遍历用户并提供可写引用 */
     void forEachMutable(const std::function<void(UserID, SceneUser&)>& fn)
     {
         for (auto& [userId, user] : m_users)
@@ -59,5 +60,5 @@ public:
     }
 
 private:
-    std::unordered_map<UserID, std::shared_ptr<SceneUser>> m_users;
+    std::unordered_map<UserID, std::shared_ptr<SceneUser>> m_users; /**< 在线用户表 */
 };

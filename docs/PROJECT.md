@@ -25,7 +25,7 @@
 | 配置 | XML（tinyxml2） |
 | 持久化 | MySQL（MariaDB Connector/C，仅 RecordServer 直连） |
 | 策划数据 | Excel（`DataDoc/`）→ Lua 配表（`database/`） |
-| 构建 | CMake 3.16+，产物目录 `.build/bin/` |
+| 构建 | CMake 3.16+，产物默认输出到各服务器目录（如 `SuperServer/SuperServer`） |
 | 第三方库 | Lua、tinyxml2、MariaDB 客户端（`3Party/` 自包含） |
 
 ### 1.3 系统架构（9 进程）
@@ -83,7 +83,7 @@ RPG/
 ├── 3Party/           # 第三方静态库
 ├── tools/            # Excel→Lua 生成（gen_datadoc.py）
 ├── docs/             # 架构与项目文档
-├── build.sh          # 编译脚本
+├── Build.sh          # 编译脚本
 ├── autoinit.sh       # 环境初始化
 ├── gen_data.sh       # 配表生成
 ├── RunServer.sh      # 启动集群
@@ -148,7 +148,7 @@ Client → Gateway（验证）→ Super → Record（加载）→ Scene → AOI
 ```bash
 ./autoinit.sh          # 3Party + CMake 配置
 ./gen_data.sh          # Excel → Lua 配表（首次可加 --init）
-./build.sh             # 编译全部服务器
+./Build.sh             # 编译全部服务器
 mysql -u root -p < tables/init.sql          # 建库建表
 mysql -u root -p < tables/seed_test_data.sql  # 可选：开发测试账号
 ./RunServer.sh         # 按依赖顺序启动

@@ -117,7 +117,8 @@ struct Msg_Log_WriteReq
 class LoggerServer : public INetCallback
 {
 public:
-    LoggerServer() : m_server(this), m_superClient(this), m_sessionClient(this) {}
+    /** @brief 构造 LoggerServer（初始化写入器索引） */
+    LoggerServer();
 
     /**
      * @brief 初始化 LoggerServer
@@ -133,47 +134,19 @@ public:
     bool Init(const std::string& ip, uint16_t port,
               const std::string& superIP, uint16_t superPort,
               const std::string& sessionIP, uint16_t sessionPort,
-              const std::string& logDir)
-    {
-        Logger::Instance().SetServerName("LoggerServer");
-        m_logDir = logDir;
-        if (!m_server.Start(ip, port)) { LOG_FATAL("LoggerServer start failed"); return false; }
-        m_superClient.Connect(superIP, superPort);
-        m_sessionClient.Connect(sessionIP, sessionPort);
-        RegisterHandlers();
-        TimerMgr::Instance().Register(500,   0,     [this]{ RegisterToSuper(); });
-        TimerMgr::Instance().Register(10000, 10000, [this]{ SendHeartbeat(); });
-        LOG_INFO("LoggerServer started on %s:%d", ip.c_str(), port);
-        return true;
-    }
+              const std::string& logDir);
 
     /** @brief 主循环 */
-    void Run()
-    {
-        while (true)
-        {
-            m_superClient.Poll(0);
-            m_sessionClient.Poll(0);
-            m_server.Poll(10);
-            TimerMgr::Instance().Update();
-        }
-    }
+    void Run();
 
-    void OnConnect(ConnID /*id*/)    override {}
-    void OnDisconnect(ConnID /*id*/) override {}
+    void OnConnect(ConnID id) override;
+    void OnDisconnect(ConnID id) override;
     void OnMessage(ConnID id, uint8_t module, uint8_t sub,
-                   const char* data, uint16_t len) override
-    {
-        MsgDispatcher::Instance().Dispatch(id, module, sub, data, len);
-    }
+                   const char* data, uint16_t len) override;
 
 private:
-    void RegisterHandlers()
-    {
-        auto& d = MsgDispatcher::Instance();
-        d.Register((uint16_t)InternalMsgID::LOG_WRITE_REQ,
-            [this](uint32_t c, const char* d, uint16_t l){ OnWriteLog(c, d, l); });
-    }
+    /** @brief 注册日志写入相关消息处理器 */
+    void RegisterHandlers();
 
     /**
      * @brief 处理远程日志写入请求
@@ -183,19 +156,7 @@ private:
      *
      * 写入后追加换行符并立即 Flush，确保日志在异常情况下不会丢失。
      */
-    void OnWriteLog(ConnID /*fromConn*/, const char* data, uint16_t len)
-    {
-        if (len < sizeof(Msg_Log_WriteReq)) return;
-        const auto* req = reinterpret_cast<const Msg_Log_WriteReq*>(data);
-        uint32_t logLen = req->logLen;
-        if ((uint32_t)len < sizeof(Msg_Log_WriteReq) + logLen) return;
-        const char* logText = data + sizeof(Msg_Log_WriteReq);
-
-        auto& writer = GetWriter((SubServerType)req->serverType);
-        writer.Write(logText, logLen);
-        writer.Write("\n", 1);
-        writer.Flush();
-    }
+    void OnWriteLog(ConnID fromConn, const char* data, uint16_t len);
 
     /**
      * @brief 根据服务器类型返回日志文件基础名
@@ -203,16 +164,7 @@ private:
      * 映射关系：SubServerType 枚举值 → 对应的日志文件名（不含目录和归档后缀）。
      * 例如：SubServerType::SCENE → "scene.log"
      */
-    static const char* ServerLogBaseName(SubServerType type)
-    {
-        static const char* names[] = {
-            "unknown.log", "session.log", "record.log", "aoi.log",
-            "scene.log", "gateway.log", "logger.log", "global.log", "zone.log"
-        };
-        int idx = static_cast<int>(type);
-        if (idx < 0 || idx >= 9) idx = 0;
-        return names[idx];
-    }
+    static const char* ServerLogBaseName(SubServerType type);
 
     /**
      * @brief 获取或创建指定服务器类型的 LogFileWriter
@@ -223,37 +175,13 @@ private:
      * @param type 服务器类型
      * @return 对应的 LogFileWriter 引用
      */
-    LogFileWriter& GetWriter(SubServerType type)
-    {
-        int idx = static_cast<int>(type);
-        if (idx < 0 || idx >= 9) idx = 0;
-        auto it = m_writers.find(idx);
-        if (it != m_writers.end()) return it->second;
+    LogFileWriter& GetWriter(SubServerType type);
 
-        std::string path = m_logDir + "/" + ServerLogBaseName(type);
-        LogFileWriter writer;
-        writer.SetBasePath(path);
-        auto [ins, _] = m_writers.emplace(idx, std::move(writer));
-        return ins->second;
-    }
+    /** @brief 向 SuperServer 注册 Logger 节点 */
+    void RegisterToSuper();
 
-    void RegisterToSuper()
-    {
-        Msg_S2S_Register reg{};
-        reg.serverType = (uint8_t)SubServerType::LOGGER;
-        reg.serverID   = 1;
-        copyToWire(reg.ip, sizeof(reg.ip), "127.0.0.1");
-        reg.port       = 9006;
-        m_superClient.SendMsg((uint16_t)InternalMsgID::S2S_REGISTER_REQ,
-                               reinterpret_cast<char*>(&reg), sizeof(reg));
-    }
-
-    void SendHeartbeat()
-    {
-        Msg_S2S_Heartbeat hb{}; hb.seq = ++m_hbSeq; hb.timestamp = TimerMgr::NowMs();
-        m_superClient.SendMsg((uint16_t)InternalMsgID::S2S_HEARTBEAT,
-                               reinterpret_cast<char*>(&hb), sizeof(hb));
-    }
+    /** @brief 定时上报 Logger 存活心跳 */
+    void SendHeartbeat();
 
     TcpServer  m_server;         /**< 内部连接监听 */
     TcpClient  m_superClient;    /**< 到 SuperServer 的连接 */

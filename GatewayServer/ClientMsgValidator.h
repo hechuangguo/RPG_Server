@@ -12,12 +12,12 @@
 /** @brief 校验结果 */
 enum class ValidateResult : uint8_t
 {
-    OK = 0,
-    UNKNOWN_MSG,
-    BAD_LENGTH,
-    BAD_STATE,
-    BAD_PAYLOAD,
-    RATE_LIMITED,
+    OK = 0,       /**< 校验通过 */
+    UNKNOWN_MSG,  /**< 未在白名单中的 module/sub */
+    BAD_LENGTH,   /**< 包长不在允许范围 */
+    BAD_STATE,    /**< 当前连接状态不允许该消息 */
+    BAD_PAYLOAD,  /**< 包体语义非法（如 userID/坐标异常） */
+    RATE_LIMITED, /**< 触发频率限制（预留） */
 };
 
 /**
@@ -81,24 +81,24 @@ public:
     }
 
 private:
-    static constexpr uint8_t STATE_CONNECTED = 1u << 0;
-    static constexpr uint8_t STATE_LOGGING   = 1u << 1;
-    static constexpr uint8_t STATE_LOGGED_IN = 1u << 2;
+    static constexpr uint8_t STATE_CONNECTED = 1u << 0; /**< 已连接未登录 */
+    static constexpr uint8_t STATE_LOGGING   = 1u << 1; /**< 登录校验中 */
+    static constexpr uint8_t STATE_LOGGED_IN = 1u << 2; /**< 已登录可进游戏 */
 
     struct MsgRule
     {
-        uint8_t  module;
-        uint8_t  sub;
-        uint16_t minLen;
-        uint16_t maxLen;
-        uint8_t  allowedStates;
-        bool     needsLoggedIn;
-        bool     checkUserId;
+        uint8_t  module;        /**< ClientModule 编号 */
+        uint8_t  sub;           /**< 子协议号 */
+        uint16_t minLen;        /**< 允许最小包体长度 */
+        uint16_t maxLen;        /**< 允许最大包体长度 */
+        uint8_t  allowedStates; /**< 位掩码形式的允许连接状态 */
+        bool     needsLoggedIn; /**< 是否要求 LOGGED_IN 状态 */
+        bool     checkUserId;   /**< 是否校验包内 userId 与会话一致 */
     };
 
     static bool isStateAllowed(ClientState state, uint8_t mask)
     {
-        uint8_t bit = 0;
+        uint8_t bit = 0; /**< 当前状态映射到掩码位 */
         switch (state)
         {
         case ClientState::CONNECTED: bit = STATE_CONNECTED; break;
@@ -154,7 +154,7 @@ private:
         if (len < sizeof(Msg_C2S_MoveReq))
             return ValidateResult::BAD_LENGTH;
         const auto* req = reinterpret_cast<const Msg_C2S_MoveReq*>(data);
-        constexpr float kMaxCoord = 100000.0f;
+        constexpr float kMaxCoord = 100000.0f; /**< 坐标合法范围绝对值上限 */
         if (req->x < -kMaxCoord || req->x > kMaxCoord ||
             req->y < -kMaxCoord || req->y > kMaxCoord ||
             req->z < -kMaxCoord || req->z > kMaxCoord)

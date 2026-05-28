@@ -36,6 +36,7 @@
 
 #pragma once
 #include "TimeUtil.h"
+#include "../util/Singleton.h"
 #include "../timer/TimerMgr.h"
 #include <cstdint>
 #include <functional>
@@ -79,15 +80,12 @@ enum class AlarmRepeat : uint8_t
  *   AlarmClock::Instance().SetWeekly(1, 9, 30, 0, []{ WeeklyReport(); });
  * @endcode
  */
-class AlarmClock
+class AlarmClock : public LazySingleton<AlarmClock>
 {
 public:
-    /** @brief 获取全局单例实例 */
-    static AlarmClock& Instance()
-    {
-        static AlarmClock s;
-        return s;
-    }
+    friend class LazySingleton<AlarmClock>;
+    /** @brief 获取全局唯一实例（与既有调用方式兼容） */
+    static AlarmClock& Instance() { return LazySingleton<AlarmClock>::Instance(); }
 
     /**
      * @brief 设置一次性闹钟（指定绝对 Unix 毫秒时间戳）

@@ -48,7 +48,8 @@ struct RankEntry
 class GlobalServer : public INetCallback
 {
 public:
-    GlobalServer() : m_server(this) {}
+    /** @brief 构造 GlobalServer（初始化榜单与连接表） */
+    GlobalServer();
 
     /**
      * @brief 初始化 GlobalServer
@@ -56,40 +57,19 @@ public:
      * @param port 监听端口
      * @return 成功返回 true
      */
-    bool Init(const std::string& ip, uint16_t port)
-    {
-        Logger::Instance().SetServerName("GlobalServer");
-        if (!m_server.Start(ip, port)) { LOG_FATAL("GlobalServer start failed"); return false; }
-        RegisterHandlers();
-        // 每 60 秒同步一次全区数据
-        TimerMgr::Instance().Register(60000, 60000, [this]{ SyncGlobalData(); });
-        LOG_INFO("GlobalServer started on %s:%d", ip.c_str(), port);
-        return true;
-    }
+    bool Init(const std::string& ip, uint16_t port);
 
     /** @brief 主循环 */
-    void Run()
-    {
-        while (true) { m_server.Poll(10); TimerMgr::Instance().Update(); }
-    }
+    void Run();
 
-    void OnConnect(ConnID id)    override { LOG_DEBUG("GlobalServer conn=%u", id); }
-    void OnDisconnect(ConnID id) override { LOG_WARN("GlobalServer conn=%u lost", id); }
+    void OnConnect(ConnID id) override;
+    void OnDisconnect(ConnID id) override;
     void OnMessage(ConnID id, uint8_t module, uint8_t sub,
-                   const char* data, uint16_t len) override
-    {
-        MsgDispatcher::Instance().Dispatch(id, module, sub, data, len);
-    }
+                   const char* data, uint16_t len) override;
 
 private:
-    void RegisterHandlers()
-    {
-        auto& d = MsgDispatcher::Instance();
-        d.Register((uint16_t)InternalMsgID::GLB_RANK_UPDATE,
-            [this](uint32_t c, const char* d, uint16_t l){ OnRankUpdate(c, d, l); });
-        d.Register((uint16_t)InternalMsgID::GLB_DATA_SYNC,
-            [this](uint32_t c, const char* d, uint16_t l){ OnDataSync(c, d, l); });
-    }
+    /** @brief 注册 GlobalServer 的内部协议处理器 */
+    void RegisterHandlers();
 
     /**
      * @brief 处理排行榜更新
@@ -119,27 +99,14 @@ private:
      *   将 m_rank 拆分为多个向量分别维护。
      * - 排行榜持久化：定时将 m_rank 序列化写入数据库或文件，重启后可恢复。
      */
-    void OnRankUpdate(ConnID /*fromConn*/, const char* data, uint16_t len)
-    {
-        if (len < sizeof(RankEntry)) return;
-        const auto* entry = reinterpret_cast<const RankEntry*>(data);
-        m_rank.push_back(*entry);
-        std::sort(m_rank.begin(), m_rank.end(),
-                  [](const RankEntry& a, const RankEntry& b){ return a.value > b.value; });
-        if (m_rank.size() > 100) m_rank.resize(100);
-    }
+    void OnRankUpdate(ConnID fromConn, const char* data, uint16_t len);
 
     /**
      * @brief 处理数据同步请求
      *
      * 广播给所有已连接的 SceneServer。
      */
-    void OnDataSync(ConnID /*fromConn*/, const char* data, uint16_t len)
-    {
-        LOG_DEBUG("GlobalDataSync len=%d", len);
-        for (auto& [cid, _] : m_innerConns)
-            m_server.SendMsg(cid, (uint16_t)InternalMsgID::GLB_DATA_SYNC, data, len);
-    }
+    void OnDataSync(ConnID fromConn, const char* data, uint16_t len);
 
     /**
      * @brief 定时同步全区数据（广播排行榜等）
@@ -150,11 +117,7 @@ private:
      * TODO: 序列化排行榜数据（将 m_rank 转为字节流），广播给各 SceneServer。
      *       建议协议格式：[count:2][userID:8][name:32][value:4] × count
      */
-    void SyncGlobalData()
-    {
-        LOG_INFO("GlobalServer: syncing rank to all scene servers. rank size=%zu", m_rank.size());
-        // TODO: 序列化排行榜数据广播给各 SceneServer
-    }
+    void SyncGlobalData();
 
     TcpServer m_server;                        /**< 监听内部连接 */
     std::vector<RankEntry>              m_rank;             /**< 排行榜（已排序，最多 100 条） */

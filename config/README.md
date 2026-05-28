@@ -9,4 +9,4 @@
 
 修改 `config.xml` 后需重启相关进程；`server_info.xml` 仅影响对应 SceneServer 实例。
 
-命令行可覆盖路径：`./.build/bin/SceneServer config/config.xml config/server_info.xml`
+命令行可覆盖路径：`./SceneServer/SceneServer config/config.xml config/server_info.xml`

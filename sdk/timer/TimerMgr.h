@@ -19,6 +19,7 @@
  */
 
 #pragma once
+#include "../util/Singleton.h"
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -33,15 +34,12 @@ using TimerCallback = std::function<void()>;
 /** @brief 无效定时器 ID */
 constexpr TimerID INVALID_TIMER_ID = 0;
 
-class TimerMgr
+class TimerMgr : public LazySingleton<TimerMgr>
 {
 public:
-    /** @brief 获取全局唯一实例 */
-    static TimerMgr& Instance()
-    {
-        static TimerMgr s;
-        return s;
-    }
+    friend class LazySingleton<TimerMgr>;
+    /** @brief 获取全局唯一实例（与既有调用方式兼容） */
+    static TimerMgr& Instance() { return LazySingleton<TimerMgr>::Instance(); }
 
     /**
      * @brief 注册定时器

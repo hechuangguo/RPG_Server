@@ -116,8 +116,8 @@ RPG/
 ├── script/        # Lua 游戏脚本
 ├── tools/         # gen_datadoc.py（Excel→Lua）
 ├── gen_data.sh    # 配表生成入口
-├── build          # 编译入口（等价 ./build.sh）
-├── build.sh       # 编译脚本
+├── build          # 编译入口（等价 ./Build.sh）
+├── Build.sh       # 编译脚本
 ├── autoinit.sh    # 环境初始化
 ├── RunServer.sh   # 启动所有服务器
 ├── StopServer.sh  # 停止所有服务器
@@ -143,7 +143,9 @@ sudo dnf install -y gcc-c++ cmake make curl tar openssl-devel zlib-devel
 ```bash
 ./autoinit.sh          # 下载编译 3Party + cmake configure
 ./gen_data.sh          # DataDoc Excel → database/*.lua（可选 --init 生成示例表）
-./build                # 或 ./build.sh
+./build                # 或 ./Build.sh
+
+# 编译后可执行文件位于各服务器目录（如 SuperServer/SuperServer）
 ```
 
 ### 策划配表（DataDoc）

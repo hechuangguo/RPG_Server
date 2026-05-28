@@ -11,13 +11,13 @@
 /** @brief 创建副本时的参数 */
 struct CopySceneDef
 {
-    uint64_t    copyInstanceId = INVALID_SCENE_INSTANCE_ID;
-    CopyType    copyType       = CopyType::TEAM;
-    uint32_t    mapId          = 0;
-    uint64_t    ownerId        = 0;
-    uint32_t    maxPlayer      = 5;
-    std::string mapName;
-    std::string mapFile;
+    uint64_t    copyInstanceId = INVALID_SCENE_INSTANCE_ID; /**< 副本实例 ID */
+    CopyType    copyType       = CopyType::TEAM;            /**< 副本类型 */
+    uint32_t    mapId          = 0;                         /**< 地图模板 ID */
+    uint64_t    ownerId        = 0;                         /**< 副本归属者 ID */
+    uint32_t    maxPlayer      = 5;                         /**< 最大人数 */
+    std::string mapName;                                    /**< 地图名 */
+    std::string mapFile;                                    /**< 地图资源路径 */
 };
 
 /**
@@ -32,18 +32,21 @@ public:
     uint64_t getOwnerId() const { return ownerId; }
 
 protected:
+    /** @brief 用副本定义构造基础场景信息 */
     CopyScene(uint32_t sceneServerId, const CopySceneDef& def);
 
+    /** @brief 副本资源加载钩子 */
     bool onLoadResources() override;
 
-    CopyType copyType = CopyType::TEAM;
-    uint64_t ownerId  = 0;
+    CopyType copyType = CopyType::TEAM; /**< 副本类型 */
+    uint64_t ownerId  = 0;              /**< 副本归属者 */
 };
 
 /** @brief 组队副本 */
 class TeamCopyScene : public CopyScene
 {
 public:
+    /** @brief 构造组队副本 */
     explicit TeamCopyScene(uint32_t sceneServerId, const CopySceneDef& def);
 
 protected:
@@ -54,6 +57,7 @@ protected:
 class SoloCopyScene : public CopyScene
 {
 public:
+    /** @brief 构造单人副本 */
     explicit SoloCopyScene(uint32_t sceneServerId, const CopySceneDef& def);
 };
 
@@ -61,6 +65,7 @@ public:
 class GuildCopyScene : public CopyScene
 {
 public:
+    /** @brief 构造公会副本 */
     explicit GuildCopyScene(uint32_t sceneServerId, const CopySceneDef& def);
 };
 

@@ -21,10 +21,15 @@ struct BuffState
 class BuffManager
 {
 public:
+    /** @brief 初始化 Buff 容器 */
     bool init();
+    /** @brief 每帧剔除到期 Buff */
     void loop(uint64_t nowMs);
+    /** @brief 是否有待保存 Buff 变更 */
     bool needSave() const;
+    /** @brief 保存 Buff 状态并清脏 */
     bool save();
+    /** @brief 加载 Buff 状态 */
     bool load();
 
     /**
@@ -34,9 +39,10 @@ public:
      */
     bool add(uint32_t buffId, uint32_t durationMs = 0);
 
+    /** @brief 移除指定 Buff（unused 预留协议兼容） */
     bool remove(uint32_t buffId, uint32_t unused = 0);
 
 private:
-    std::unordered_map<uint32_t, BuffState> buffMap;
-    bool dirty = false;
+    std::unordered_map<uint32_t, BuffState> buffMap; /**< buffId -> 状态 */
+    bool dirty = false;                               /**< 脏标记 */
 };

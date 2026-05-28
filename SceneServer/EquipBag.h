@@ -17,6 +17,7 @@ constexpr uint16_t EQUIP_BAG_MAX_SLOT = 16;
 class EquipBag : public Bag
 {
 public:
+    /** @brief 构造装备包并按固定槽位初始化 */
     EquipBag();
     BagType bagType() const override { return BagType::EQUIP; }
 };

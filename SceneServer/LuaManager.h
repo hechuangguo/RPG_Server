@@ -26,28 +26,36 @@ struct lua_State;
  */
 struct LuaArg
 {
+    /** @brief LuaArg 支持的参数类型标签 */
     enum class Type : uint8_t
     {
-        NIL = 0,
-        BOOL,
-        INT,
-        NUMBER,
-        STRING,
-        BINARY,
+        NIL = 0, /**< nil */
+        BOOL,    /**< bool */
+        INT,     /**< int64 */
+        NUMBER,  /**< double */
+        STRING,  /**< UTF-8 字符串 */
+        BINARY,  /**< 二进制块（按长度传递） */
     };
 
-    Type type = Type::NIL;
-    bool boolVal = false;
-    int64_t intVal = 0;
-    double numberVal = 0.0;
-    std::string strVal;
+    Type type = Type::NIL;   /**< 参数类型 */
+    bool boolVal = false;    /**< 布尔值缓存 */
+    int64_t intVal = 0;      /**< 整型值缓存 */
+    double numberVal = 0.0;  /**< 浮点值缓存 */
+    std::string strVal;      /**< 字符串/二进制缓存 */
 
+    /** @brief 构造 nil 参数 */
     static LuaArg nil();
+    /** @brief 构造布尔参数 */
     static LuaArg boolean(bool v);
+    /** @brief 构造整型参数 */
     static LuaArg integer(int64_t v);
+    /** @brief 构造浮点参数 */
     static LuaArg number(double v);
+    /** @brief 构造字符串参数 */
     static LuaArg string(const std::string& v);
+    /** @brief 构造 C 字符串参数 */
     static LuaArg string(const char* v);
+    /** @brief 构造二进制参数（拷贝到 strVal） */
     static LuaArg binary(const char* data, size_t len);
 };
 
@@ -58,6 +66,7 @@ class LuaManager
 {
 public:
     LuaManager() = default;
+    /** @brief 析构时自动关闭 Lua 虚拟机 */
     ~LuaManager();
 
     LuaManager(const LuaManager&) = delete;
@@ -103,16 +112,20 @@ public:
     bool callGlobalVoid(const char* funcName,
                         std::initializer_list<LuaArg> args = {});
 
+    /** @brief 调用全局函数并返回 bool */
     bool callGlobalBool(const char* funcName,
                         std::initializer_list<LuaArg> args = {},
                         bool defaultVal = false);
 
+    /** @brief 调用全局函数并返回 int64 */
     int64_t callGlobalInt(const char* funcName,
                           std::initializer_list<LuaArg> args = {},
                           int64_t defaultVal = 0);
 
 private:
+    /** @brief 将单个 LuaArg 压入 Lua 栈 */
     void pushArg(const LuaArg& arg);
+    /** @brief 顺序压入多个 LuaArg */
     void pushArgs(std::initializer_list<LuaArg> args);
 
     /**
@@ -125,9 +138,10 @@ private:
                       std::initializer_list<LuaArg> args,
                       bool withEntry, int nret);
 
+    /** @brief 确保 SceneEntry 元表已注册到 lua_State */
     static void ensureSceneEntryMetatable(lua_State* L);
 
-    lua_State* m_lua = nullptr;
+    lua_State* m_lua = nullptr; /**< Lua 虚拟机句柄 */
 };
 
 /** @brief SceneEntry userdata 在 Lua 中的元表名 */

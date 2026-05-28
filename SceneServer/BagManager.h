@@ -57,6 +57,7 @@ public:
 
     /** @brief 按类型在 bagList 中查找包裹，返回裸指针 */
     Bag* getBagByType(BagType bagType);
+    /** @brief 按类型查找包裹（只读） */
     const Bag* getBagByType(BagType bagType) const;
 
     /** @brief 遍历 bagList 中所有包裹 */
@@ -84,9 +85,11 @@ private:
     /** @brief 向 bagList 注册 EquipBag、StoreBag 等默认实例 */
     void registerDefaultBags();
 
+    /** @brief 内部查找包裹实现（可写） */
     Bag*       findBagByType(BagType bagType);
+    /** @brief 内部查找包裹实现（只读） */
     const Bag* findBagByType(BagType bagType) const;
 
     std::vector<std::unique_ptr<Bag>> bagList; /**< 包裹实例列表（唯一所有权） */
-    bool                              dirty = false;
+    bool                              dirty = false; /**< 管理器脏标记 */
 };

@@ -30,6 +30,7 @@ inline uint32_t makeMsgKey(uint8_t module, uint8_t sub)
     return (static_cast<uint32_t>(module) << 8) | sub;
 }
 
+/** @brief 扁平协议号直接转 MsgDispatcher 查表键 */
 inline uint32_t makeMsgKey(uint16_t flatMsgId)
 {
     return static_cast<uint32_t>(flatMsgId);

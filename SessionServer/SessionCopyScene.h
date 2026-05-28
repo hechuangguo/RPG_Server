@@ -54,14 +54,14 @@ public:
     void setState(SceneState s) { state = s; }
 
 private:
-    uint64_t   copyInstanceId = INVALID_SCENE_INSTANCE_ID;
-    uint32_t   sceneServerId  = 0;
-    CopyType   copyType       = CopyType::TEAM;
-    uint32_t   mapId          = 0;
-    uint64_t   ownerId        = 0;
-    std::string mapName;
-    std::string mapFile;
-    uint32_t   maxPlayer      = 5;
-    uint32_t   playerCount    = 0;
-    SceneState state          = SceneState::CREATING;
+    uint64_t   copyInstanceId = INVALID_SCENE_INSTANCE_ID; /**< 副本实例 ID */
+    uint32_t   sceneServerId  = 0;                         /**< 承载该副本的 SceneServer ID */
+    CopyType   copyType       = CopyType::TEAM;            /**< 副本类型（队伍/单人/公会） */
+    uint32_t   mapId          = 0;                         /**< 副本地图 ID */
+    uint64_t   ownerId        = 0;                         /**< 副本归属者（队长/玩家/公会） */
+    std::string mapName;                                   /**< 地图名称 */
+    std::string mapFile;                                   /**< 地图资源文件 */
+    uint32_t   maxPlayer      = 5;                         /**< 人数上限 */
+    uint32_t   playerCount    = 0;                         /**< 当前人数 */
+    SceneState state          = SceneState::CREATING;      /**< 副本状态机 */
 };

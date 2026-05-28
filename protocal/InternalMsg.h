@@ -42,15 +42,15 @@
  */
 enum class SubServerType : uint8_t
 {
-    UNKNOWN = 0,
-    SESSION = 1,
-    RECORD  = 2,
-    AOI     = 3,
-    SCENE   = 4,
-    GATEWAY = 5,
-    LOGGER  = 6,
-    GLOBAL  = 7,
-    ZONE    = 8,
+    UNKNOWN = 0, /**< 未识别类型（非法或未初始化） */
+    SESSION = 1, /**< SessionServer：全局会话与场景调度 */
+    RECORD  = 2, /**< RecordServer：唯一 DB 落库与读档入口 */
+    AOI     = 3, /**< AOIServer：视野管理与可见性计算 */
+    SCENE   = 4, /**< SceneServer：地图与战斗等玩法逻辑 */
+    GATEWAY = 5, /**< GatewayServer：客户端接入与协议校验 */
+    LOGGER  = 6, /**< LoggerServer：集中日志写入 */
+    GLOBAL  = 7, /**< GlobalServer：全区共享业务 */
+    ZONE    = 8, /**< ZoneServer：跨区转发与互通 */
 };
 
 /**
@@ -263,8 +263,8 @@ struct UserBaseWire
  */
 struct Msg_REC_SaveUserReq
 {
-    uint64_t     userID;
-    UserBaseWire wire;
+    uint64_t     userID; /**< 需要保存的用户 ID */
+    UserBaseWire wire;   /**< 完整基础属性快照 */
 };
 
 /**
@@ -277,14 +277,14 @@ struct Msg_SCE_UserEnterReq
     float    x, y, z;             /**< 出生点坐标 */
     uint32_t gatewayClientConnID; /**< Gateway 中客户端连接 ID */
     char     name[32];            /**< 用户名 */
-    uint32_t level    = 1;
-    uint32_t vocation = 0;
-    uint32_t sex      = 0;
-    uint32_t hp       = 100;
-    uint32_t maxHP    = 100;
-    uint32_t mp       = 100;
-    uint32_t maxMP    = 100;
-    uint64_t gold     = 0;
+    uint32_t level    = 1;        /**< 用户等级快照 */
+    uint32_t vocation = 0;        /**< 职业类型（与 UserBaseWire 一致） */
+    uint32_t sex      = 0;        /**< 性别（与 UserBaseWire 一致） */
+    uint32_t hp       = 100;      /**< 当前生命值 */
+    uint32_t maxHP    = 100;      /**< 最大生命值 */
+    uint32_t mp       = 100;      /**< 当前魔法值 */
+    uint32_t maxMP    = 100;      /**< 最大魔法值 */
+    uint64_t gold     = 0;        /**< 当前金币 */
 };
 
 /**
@@ -293,9 +293,9 @@ struct Msg_SCE_UserEnterReq
 struct Msg_SCE_UserEnterRsp
 {
     int32_t  code;                /**< 0=成功, -1=失败 */
-    uint64_t userID;
-    uint32_t gatewayClientConnID;
-    uint32_t mapID;
+    uint64_t userID;              /**< 用户 ID */
+    uint32_t gatewayClientConnID; /**< Gateway 连接 ID（用于定位回包目标） */
+    uint32_t mapID;               /**< 实际进入的地图 ID */
 };
 
 /**
@@ -304,16 +304,16 @@ struct Msg_SCE_UserEnterRsp
 struct Msg_GW_UserLoginRsp
 {
     int32_t  code;                /**< 0=成功 */
-    uint32_t gatewayClientConnID;
-    uint64_t userID;
-    uint32_t mapID;
-    float    x, y, z;
-    char     name[32];
-    uint32_t level = 1;
-    uint32_t hp    = 100;
-    uint32_t maxHP = 100;
-    uint32_t mp    = 100;
-    uint32_t maxMP = 100;
+    uint32_t gatewayClientConnID; /**< Gateway 中客户端连接 ID */
+    uint64_t userID;              /**< 用户 ID */
+    uint32_t mapID;               /**< 登录后目标地图 ID */
+    float    x, y, z;             /**< 登录出生点坐标 */
+    char     name[32];            /**< 用户名 */
+    uint32_t level = 1;           /**< 用户等级 */
+    uint32_t hp    = 100;         /**< 当前生命值 */
+    uint32_t maxHP = 100;         /**< 最大生命值 */
+    uint32_t mp    = 100;         /**< 当前魔法值 */
+    uint32_t maxMP = 100;         /**< 最大魔法值 */
 };
 
 /**
@@ -336,10 +336,10 @@ struct Msg_GW_ClientMsg
  */
 struct Msg_GW_SendToClient
 {
-    uint32_t clientConnID;
-    uint8_t  module;
-    uint8_t  sub;
-    uint16_t dataLen;
+    uint32_t clientConnID; /**< Gateway 侧客户端连接 ID */
+    uint8_t  module;       /**< 客户端协议 module */
+    uint8_t  sub;          /**< 客户端协议 sub */
+    uint16_t dataLen;      /**< 后续原始包体长度 */
 };
 
 /**
@@ -359,6 +359,12 @@ struct Msg_AOI_Move
 /** @brief 无效场景实例 ID */
 constexpr uint64_t INVALID_SCENE_INSTANCE_ID = 0;
 
+/**
+ * @brief 生成普通场景实例 ID（高 32 位=SceneServer，低 32 位=mapId）
+ * @param sceneServerId 场景进程编号
+ * @param mapId 地图模板 ID
+ * @return 可用于跨服路由的全局场景实例 ID
+ */
 inline uint64_t makeNormalSceneInstanceId(uint32_t sceneServerId, uint32_t mapId)
 {
     return (static_cast<uint64_t>(sceneServerId) << 32) | mapId;
@@ -367,17 +373,17 @@ inline uint64_t makeNormalSceneInstanceId(uint32_t sceneServerId, uint32_t mapId
 /** @brief 场景类型（普通 / 副本） */
 enum class SceneKind : uint8_t
 {
-    NORMAL = 0,
-    COPY   = 1,
+    NORMAL = 0, /**< 普通公共场景 */
+    COPY   = 1, /**< 私有副本场景 */
 };
 
 /** @brief 场景运行状态 */
 enum class SceneState : uint8_t
 {
-    CREATING = 0,
-    RUNNING  = 1,
-    CLOSING  = 2,
-    CLOSED   = 3,
+    CREATING = 0, /**< 创建中，尚未对外提供服务 */
+    RUNNING  = 1, /**< 运行中，可接纳玩家 */
+    CLOSING  = 2, /**< 关闭中，不再接收新玩家 */
+    CLOSED   = 3, /**< 已关闭，可回收资源 */
 };
 
 /** @brief 副本类型（可扩展，工厂按类型创建子类） */
@@ -391,81 +397,82 @@ enum class CopyType : uint32_t
 /** @brief SceneServer → SessionServer：场景注册 */
 struct Msg_SES_SceneRegisterReq
 {
-    uint32_t sceneServerId;
-    uint64_t sceneInstanceId;
-    uint32_t mapId;
-    uint8_t  sceneKind;   /**< SceneKind */
-    char     mapName[32];
-    char     mapFile[64];
-    uint32_t maxPlayer;
+    uint32_t sceneServerId;   /**< 注册方 SceneServer ID */
+    uint64_t sceneInstanceId; /**< 场景实例 ID（全局唯一） */
+    uint32_t mapId;           /**< 地图模板 ID */
+    uint8_t  sceneKind;       /**< 场景类型，取值见 SceneKind */
+    char     mapName[32];     /**< 地图显示名 */
+    char     mapFile[64];     /**< 地图资源文件名 */
+    uint32_t maxPlayer;       /**< 场景容量上限 */
 };
 
+/** @brief SessionServer → SceneServer：场景注册结果 */
 struct Msg_SES_SceneRegisterRsp
 {
-    int32_t  code;
-    uint64_t sceneInstanceId;
+    int32_t  code;            /**< 0=成功，非 0=失败 */
+    uint64_t sceneInstanceId; /**< 回显场景实例 ID */
 };
 
 /** @brief SceneServer → SessionServer：场景注销 */
 struct Msg_SES_SceneUnregister
 {
-    uint64_t sceneInstanceId;
-    uint32_t sceneServerId;
+    uint64_t sceneInstanceId; /**< 待注销场景实例 ID */
+    uint32_t sceneServerId;   /**< 发起注销的 SceneServer ID */
 };
 
 /** @brief SceneServer → SessionServer：请求创建副本 */
 struct Msg_SES_CopyCreateReq
 {
-    uint32_t reqSceneServerId;
-    uint32_t copyType;
-    uint32_t mapId;
-    uint64_t ownerId;
-    uint32_t maxPlayer;
-    char     mapName[32];
-    char     mapFile[64];
+    uint32_t reqSceneServerId; /**< 请求方 SceneServer ID */
+    uint32_t copyType;         /**< 副本类型，取值见 CopyType */
+    uint32_t mapId;            /**< 副本地图模板 ID */
+    uint64_t ownerId;          /**< 副本拥有者用户 ID */
+    uint32_t maxPlayer;        /**< 副本人数上限 */
+    char     mapName[32];      /**< 地图显示名 */
+    char     mapFile[64];      /**< 地图资源文件名 */
 };
 
 /** @brief SessionServer → SceneServer：副本创建/复用结果（回复请求方） */
 struct Msg_SES_CopyCreateRsp
 {
-    int32_t  code;
-    uint32_t targetSceneServerId;
-    uint64_t copyInstanceId;
-    uint32_t copyType;
-    uint32_t mapId;
-    uint64_t ownerId;
-    uint32_t maxPlayer;
-    char     mapName[32];
-    char     mapFile[64];
-    uint8_t  reused;
+    int32_t  code;                /**< 0=成功，非 0=失败 */
+    uint32_t targetSceneServerId; /**< 实际承载副本的 SceneServer ID */
+    uint64_t copyInstanceId;      /**< 副本实例 ID */
+    uint32_t copyType;            /**< 副本类型，取值见 CopyType */
+    uint32_t mapId;               /**< 副本地图模板 ID */
+    uint64_t ownerId;             /**< 副本拥有者用户 ID */
+    uint32_t maxPlayer;           /**< 副本人数上限 */
+    char     mapName[32];         /**< 地图显示名 */
+    char     mapFile[64];         /**< 地图资源文件名 */
+    uint8_t  reused;              /**< 1=复用已有副本，0=新建副本 */
 };
 
 /** @brief SessionServer → 目标 SceneServer：在本进程创建副本 */
 struct Msg_SES_CopyCreateCmd
 {
-    uint64_t copyInstanceId;
-    uint32_t copyType;
-    uint32_t mapId;
-    uint64_t ownerId;
-    uint32_t maxPlayer;
-    char     mapName[32];
-    char     mapFile[64];
+    uint64_t copyInstanceId; /**< 待创建副本实例 ID */
+    uint32_t copyType;       /**< 副本类型，取值见 CopyType */
+    uint32_t mapId;          /**< 副本地图模板 ID */
+    uint64_t ownerId;        /**< 副本拥有者用户 ID */
+    uint32_t maxPlayer;      /**< 副本人数上限 */
+    char     mapName[32];    /**< 地图显示名 */
+    char     mapFile[64];    /**< 地图资源文件名 */
 };
 
 /** @brief SceneServer → AOIServer：注册场景实例 */
 struct Msg_AOI_SceneRegister
 {
-    uint32_t sceneServerId;
-    uint64_t sceneInstanceId;
-    uint32_t mapId;
-    uint8_t  sceneKind;
-    uint32_t maxPlayer;
+    uint32_t sceneServerId;   /**< 发起注册的 SceneServer ID */
+    uint64_t sceneInstanceId; /**< 场景实例 ID */
+    uint32_t mapId;           /**< 地图模板 ID */
+    uint8_t  sceneKind;       /**< 场景类型，取值见 SceneKind */
+    uint32_t maxPlayer;       /**< 场景容量上限 */
 };
 
 /** @brief SceneServer → AOIServer：注销场景实例 */
 struct Msg_AOI_SceneUnregister
 {
-    uint64_t sceneInstanceId;
+    uint64_t sceneInstanceId; /**< 待注销场景实例 ID */
 };
 
 #pragma pack(pop)

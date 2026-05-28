@@ -93,7 +93,8 @@ struct ZoneRoute
 class ZoneServer : public INetCallback
 {
 public:
-    ZoneServer() : m_server(this) {}
+    /** @brief 构造 ZoneServer（初始化跨区路由表） */
+    ZoneServer();
 
     /**
      * @brief 初始化 ZoneServer
@@ -101,22 +102,12 @@ public:
      * @param port 监听端口
      * @return 成功返回 true
      */
-    bool Init(const std::string& ip, uint16_t port)
-    {
-        Logger::Instance().SetServerName("ZoneServer");
-        if (!m_server.Start(ip, port)) { LOG_FATAL("ZoneServer start failed"); return false; }
-        RegisterHandlers();
-        LOG_INFO("ZoneServer started on %s:%d", ip.c_str(), port);
-        return true;
-    }
+    bool Init(const std::string& ip, uint16_t port);
 
     /** @brief 主循环 */
-    void Run()
-    {
-        while (true) { m_server.Poll(10); TimerMgr::Instance().Update(); }
-    }
+    void Run();
 
-    void OnConnect(ConnID id)    override { LOG_INFO("Zone conn=%u", id); }
+    void OnConnect(ConnID id) override;
 
     /**
      * @brief 连接断开时标记路由为失效
@@ -124,27 +115,14 @@ public:
      * 遍历所有路由条目，将 connID 匹配的条目标记为 alive=false。
      * 这样后续的跨区请求不会向已断开的连接转发消息。
      */
-    void OnDisconnect(ConnID id) override
-    {
-        LOG_WARN("Zone conn=%u lost", id);
-        for (auto& [zid, r] : m_routes) if (r.connID == id) r.alive = false;
-    }
+    void OnDisconnect(ConnID id) override;
 
     void OnMessage(ConnID id, uint8_t module, uint8_t sub,
-                   const char* data, uint16_t len) override
-    {
-        MsgDispatcher::Instance().Dispatch(id, module, sub, data, len);
-    }
+                   const char* data, uint16_t len) override;
 
 private:
-    void RegisterHandlers()
-    {
-        auto& d = MsgDispatcher::Instance();
-        d.Register((uint16_t)InternalMsgID::ZONE_CROSS_REQ,
-            [this](uint32_t c, const char* d, uint16_t l){ OnCrossReq(c, d, l); });
-        d.Register((uint16_t)InternalMsgID::ZONE_FORWARD,
-            [this](uint32_t c, const char* d, uint16_t l){ OnForward(c, d, l); });
-    }
+    /** @brief 注册跨区请求/转发消息处理器 */
+    void RegisterHandlers();
 
     /**
      * @brief 处理跨区请求
@@ -161,24 +139,7 @@ private:
      *
      * 注意：ZoneServer 不修改 payload 内容，保持透传。
      */
-    void OnCrossReq(ConnID fromConn, const char* data, uint16_t len)
-    {
-        if (len < 12) return;
-        ZoneID dstZone = *reinterpret_cast<const ZoneID*>(data);
-        LOG_INFO("CrossReq: dstZone=%u from conn=%u", dstZone, fromConn);
-        auto it = m_routes.find(dstZone);
-        if (it != m_routes.end() && it->second.alive)
-        {
-            m_server.SendMsg(it->second.connID,
-                             (uint16_t)InternalMsgID::ZONE_FORWARD, data, len);
-            char rsp[8] = {0};  /**< code=0 表示转发成功 */
-            m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::ZONE_CROSS_RSP, rsp, sizeof(rsp));
-        }
-        else
-        {
-            LOG_WARN("CrossReq: dstZone=%u not found", dstZone);
-        }
-    }
+    void OnCrossReq(ConnID fromConn, const char* data, uint16_t len);
 
     /**
      * @brief 处理跨区转发消息（当前为占位实现）
@@ -187,10 +148,7 @@ private:
      * 会根据 payload 中的业务数据进行处理。
      * 此处为 ZoneServer 自身收到 FORWARD 的占位逻辑（正常情况下 ZoneServer 不应收到 FORWARD）。
      */
-    void OnForward(ConnID /*fromConn*/, const char* /*data*/, uint16_t len)
-    {
-        LOG_DEBUG("ZoneForward len=%d", len);
-    }
+    void OnForward(ConnID fromConn, const char* data, uint16_t len);
 
     TcpServer m_server;  /**< 监听内部连接 */
 

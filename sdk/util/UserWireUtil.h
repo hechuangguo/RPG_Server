@@ -9,6 +9,11 @@
 #include "WireStringUtil.h"
 #include <cstring>
 
+/**
+ * @brief UserBase 转为 UserBaseWire（用于服间二进制传输）
+ * @param base 业务层用户基础数据
+ * @return 可直接写入协议体的定长结构
+ */
 inline UserBaseWire toUserBaseWire(const UserBase& base)
 {
     UserBaseWire wire{};
@@ -29,6 +34,11 @@ inline UserBaseWire toUserBaseWire(const UserBase& base)
     return wire;
 }
 
+/**
+ * @brief 用 UserBaseWire 覆盖 UserBase 字段
+ * @param base [in,out] 目标业务对象
+ * @param wire 协议层解码后的定长结构
+ */
 inline void applyUserBaseWire(UserBase& base, const UserBaseWire& wire)
 {
     base.userID   = wire.userID;

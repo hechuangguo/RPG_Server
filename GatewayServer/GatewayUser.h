@@ -45,6 +45,7 @@ public:
     }
 
 private:
+    /** @brief 为 GatewayUser 构造最小 UserBase（仅 connID） */
     static UserBase makeBase(ConnID connId)
     {
         UserBase base;
@@ -52,6 +53,6 @@ private:
         return base;
     }
 
-    ClientState clientState = ClientState::CONNECTED;
-    uint64_t    lastHeartbeat = 0;
+    ClientState clientState = ClientState::CONNECTED; /**< 会话状态机状态 */
+    uint64_t    lastHeartbeat = 0;                    /**< 最近心跳时间戳（ms） */
 };

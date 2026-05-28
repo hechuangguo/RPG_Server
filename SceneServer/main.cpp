@@ -10,7 +10,7 @@
  *   2. 通过 ConfigLoader 加载服务配置（默认 config/config.xml）
  *   3. 通过 SceneInfoLoader 加载场景信息（默认 config/server_info.xml）
  *   4. 初始化日志（默认 logs/scene.log）
- *   5. 创建 SceneServer 实例，绑定 0.0.0.0:scenePort 开始监听
+ *   5. 通过单例获取 SceneServer 实例，绑定 0.0.0.0:scenePort 开始监听
  *   6. 进入 Run() 主循环
  *
  * 监听端口: scenePort（配置文件指定）
@@ -42,8 +42,8 @@ int main(int argc, char* argv[])
     Logger::Instance().SetPath(
         ServerBootstrap::logPathFor(cfg, "SceneServer", "logs/scene.log"));
 
-    SceneServer server;
-    if (!server.Init("0.0.0.0", (uint16_t)cfg.scenePort, cfg, sceneInfo)) return 1;
-    server.Run();
+    auto* server = SceneServer::Instance();
+    if (!server->Init("0.0.0.0", (uint16_t)cfg.scenePort, cfg, sceneInfo)) return 1;
+    server->Run();
     return 0;
 }

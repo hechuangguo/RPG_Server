@@ -140,7 +140,7 @@ step "Protocol files OK (using header-only structs)."
 chmod +x "$SCRIPT_DIR/RunServer.sh"
 chmod +x "$SCRIPT_DIR/StopServer.sh"
 chmod +x "$SCRIPT_DIR/log.sh"
-chmod +x build build.sh 2>/dev/null || true
+chmod +x build Build.sh 2>/dev/null || true
 
 # -------------------------------------------------------
 #  第7步：CMake 配置
@@ -153,7 +153,7 @@ chmod +x build build.sh 2>/dev/null || true
 #      - IDE（VSCode、CLion）和 clang-tidy/clangd 等工具依赖此文件
 #      - 提供跳转、补全、静态分析等智能编辑支持
 #
-#  构建产物位置：$BUILD_DIR/bin/ 下的各个服务器二进制文件
+#  构建产物位置：各服务器目录下的同名可执行文件（如 SuperServer/SuperServer）
 # -------------------------------------------------------
 step "Configuring CMake..."
 cd "$BUILD_DIR"
@@ -163,6 +163,6 @@ cd "$SCRIPT_DIR"
 
 step "===== AutoInit complete ====="
 step "Next steps:"
-step "  1. ./build.sh                    # 编译所有服务器"
+step "  1. ./Build.sh                    # 编译所有服务器"
 step "  2. ./RunServer.sh                # 启动所有服务器"
 step "  3. ./log.sh                      # 实时查看日志"

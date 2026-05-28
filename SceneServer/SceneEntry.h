@@ -71,18 +71,19 @@ public:
     virtual void loop(uint64_t nowMs);
 
 protected:
+    /** @brief 构造基础场景实体（子类传入唯一 entryId） */
     explicit SceneEntry(EntryID id);
 
-    EntryID          entryId     = INVALID_ENTRY_ID;
-    std::string      name;
-    uint32_t         level       = 1;
-    uint32_t         hp          = 100;
-    uint32_t         maxHp       = 100;
+    EntryID          entryId     = INVALID_ENTRY_ID;     /**< 实体唯一 ID */
+    std::string      name;                               /**< 名称（玩家名/NPC 名） */
+    uint32_t         level       = 1;                    /**< 等级 */
+    uint32_t         hp          = 100;                  /**< 当前生命值 */
+    uint32_t         maxHp       = 100;                  /**< 生命上限 */
     uint32_t         vitality    = 100;  /**< 元气（当前） */
     uint32_t         maxVitality = 100;  /**< 元气上限 */
-    uint32_t         mapId       = 0;
-    float            posX        = 0.f;
-    float            posY        = 0.f;
-    float            posZ        = 0.f;
-    SceneEntryState  state       = SceneEntryState::OFFLINE;
+    uint32_t         mapId       = 0;                    /**< 当前地图 ID */
+    float            posX        = 0.f;                  /**< 世界坐标 X */
+    float            posY        = 0.f;                  /**< 世界坐标 Y */
+    float            posZ        = 0.f;                  /**< 世界坐标 Z */
+    SceneEntryState  state       = SceneEntryState::OFFLINE; /**< 当前生存状态 */
 };

@@ -33,16 +33,16 @@
  */
 enum class ClientModule : uint8_t
 {
-    LOGIN  = 0x00,
-    SCENE  = 0x01,
-    BATTLE = 0x02,
-    BAG    = 0x03,
-    SKILL  = 0x04,
-    CHAT   = 0x05,
-    SOCIAL = 0x06,
-    QUEST  = 0x07,
-    NPC    = 0x08,
-    SYSTEM = 0x0F,
+    LOGIN  = 0x00, /**< 登录/注册/选角流程 */
+    SCENE  = 0x01, /**< 场景、移动与可见实体同步 */
+    BATTLE = 0x02, /**< 战斗行为与战斗结果同步 */
+    BAG    = 0x03, /**< 背包查询、使用与丢弃物品 */
+    SKILL  = 0x04, /**< 技能释放与技能结果广播 */
+    CHAT   = 0x05, /**< 世界/私聊等聊天消息 */
+    SOCIAL = 0x06, /**< 好友、队伍、公会等社交能力 */
+    QUEST  = 0x07, /**< 任务接取、进度与提交 */
+    NPC    = 0x08, /**< NPC 对话与交互 */
+    SYSTEM = 0x0F, /**< 心跳、踢线、公告等系统消息 */
 };
 
 /**
@@ -247,12 +247,12 @@ struct Msg_S2C_Error
 /** @brief 网关校验错误码（S2C_ERROR.code） */
 enum class GatewayValidateCode : int32_t
 {
-    OK           = 0,
-    UNKNOWN_MSG  = 1,
-    BAD_LENGTH   = 2,
-    BAD_STATE    = 3,
-    BAD_PAYLOAD  = 4,
-    RATE_LIMITED = 5,
+    OK           = 0, /**< 校验通过 */
+    UNKNOWN_MSG  = 1, /**< 未登记的 module/sub，协议号非法 */
+    BAD_LENGTH   = 2, /**< 包长与结构体/业务约束不匹配 */
+    BAD_STATE    = 3, /**< 当前连接状态不允许此请求 */
+    BAD_PAYLOAD  = 4, /**< 包体字段越界或语义非法 */
+    RATE_LIMITED = 5, /**< 触发频率限制 */
 };
 
 /**
@@ -273,15 +273,15 @@ enum class GatewayValidateCode : int32_t
  */
 struct Msg_S2C_EnterGame
 {
-    uint64_t userID;
-    char     name[32];
-    uint32_t mapID;
-    float    x, y, z;
-    uint32_t level;
-    uint32_t hp;
-    uint32_t maxHP;
-    uint32_t mp;
-    uint32_t maxMP;
+    uint64_t userID;   /**< 进入游戏的用户 ID */
+    char     name[32]; /**< 用户名（空终止字符串） */
+    uint32_t mapID;    /**< 当前所在地图 ID */
+    float    x, y, z;  /**< 出生或回档坐标 */
+    uint32_t level;    /**< 当前等级 */
+    uint32_t hp;       /**< 当前生命值 */
+    uint32_t maxHP;    /**< 最大生命值 */
+    uint32_t mp;       /**< 当前魔法值 */
+    uint32_t maxMP;    /**< 最大魔法值 */
 };
 
 /**
@@ -301,11 +301,11 @@ struct Msg_S2C_EnterGame
  */
 struct Msg_S2C_SpawnEntity
 {
-    uint64_t entityID;
-    char     name[32];
-    uint32_t level;
-    float    x, y, z;
-    float    dir;
+    uint64_t entityID;    /**< 实体唯一 ID */
+    char     name[32];    /**< 实体展示名（玩家/NPC/怪物名） */
+    uint32_t level;       /**< 实体等级（无等级实体可为 0） */
+    float    x, y, z;     /**< 当前坐标 */
+    float    dir;         /**< 面向朝向（弧度） */
     uint8_t  entityType;  /**< 实体类型，参见枚举说明 */
 };
 
@@ -325,7 +325,7 @@ struct Msg_S2C_SpawnEntity
  */
 struct Msg_S2C_DespawnEntity
 {
-    uint64_t entityID;
+    uint64_t entityID; /**< 需要从客户端场景中移除的实体 ID */
 };
 
 /** @brief 单条对话选项（与 guide.lua options 字段对应） */
@@ -354,11 +354,11 @@ struct Msg_C2S_NpcTalkReq
 struct Msg_S2C_NpcTalkRsp
 {
     int32_t  code;        /**< 0=成功，非 0=失败 */
-    uint64_t npcId;
+    uint64_t npcId;       /**< 对应 NPC entryId */
     int32_t  dialogStep;  /**< 当前展示的节点 ID */
     char     text[256];   /**< 对话正文 */
     uint8_t  optionCount; /**< 选项数量（最多 4） */
-    NpcTalkOptionWire options[4];
+    NpcTalkOptionWire options[4]; /**< 固定容量选项数组，仅前 optionCount 项有效 */
 };
 
 #pragma pack(pop)

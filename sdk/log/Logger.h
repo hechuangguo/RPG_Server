@@ -19,6 +19,7 @@
 
 #pragma once
 #include "LogFileWriter.h"
+#include "../util/Singleton.h"
 #include "../time/TimeUtil.h"
 #include <cstdint>
 #include <cstdio>
@@ -48,15 +49,12 @@ enum class LogLevel : int
  *   LOG_INFO("Server started on port %d", 9000);
  * @endcode
  */
-class Logger
+class Logger : public LazySingleton<Logger>
 {
 public:
-    /** @brief 获取全局唯一实例（线程安全的静态局部变量） */
-    static Logger& Instance()
-    {
-        static Logger s;
-        return s;
-    }
+    friend class LazySingleton<Logger>;
+    /** @brief 获取全局唯一实例（与既有调用方式兼容） */
+    static Logger& Instance() { return LazySingleton<Logger>::Instance(); }
 
     /** @brief 设置最低输出级别（低于此级别的日志将被忽略） */
     void SetLevel(LogLevel lv)  { m_level = lv;  }
@@ -123,8 +121,13 @@ private:
 // ============================================================
 //  便捷宏 —— 简化调用
 // ============================================================
+/** @brief DEBUG 级日志宏（开发调试信息） */
 #define LOG_DEBUG(fmt, ...) Logger::Instance().Log(LogLevel::DEBUG, fmt, ##__VA_ARGS__)
+/** @brief INFO 级日志宏（常规运行信息） */
 #define LOG_INFO(fmt, ...)  Logger::Instance().Log(LogLevel::INFO,  fmt, ##__VA_ARGS__)
+/** @brief WARN 级日志宏（可恢复异常） */
 #define LOG_WARN(fmt, ...)  Logger::Instance().Log(LogLevel::WARN,  fmt, ##__VA_ARGS__)
+/** @brief ERR 级日志宏（错误但进程可继续） */
 #define LOG_ERR(fmt, ...)   Logger::Instance().Log(LogLevel::ERR,   fmt, ##__VA_ARGS__)
+/** @brief FATAL 级日志宏（致命错误） */
 #define LOG_FATAL(fmt, ...) Logger::Instance().Log(LogLevel::FATAL, fmt, ##__VA_ARGS__)

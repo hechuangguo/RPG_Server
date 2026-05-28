@@ -40,12 +40,12 @@ public:
     void setState(SceneState s) { state = s; }
 
 private:
-    uint64_t    sceneInstanceId = INVALID_SCENE_INSTANCE_ID;
-    uint32_t    sceneServerId   = 0;
-    uint32_t    mapId           = 0;
-    std::string mapName;
-    std::string mapFile;
-    uint32_t    maxPlayer       = 200;
-    uint32_t    playerCount     = 0;
-    SceneState  state           = SceneState::CREATING;
+    uint64_t    sceneInstanceId = INVALID_SCENE_INSTANCE_ID; /**< 场景实例 ID */
+    uint32_t    sceneServerId   = 0;                         /**< 承载该场景的 SceneServer ID */
+    uint32_t    mapId           = 0;                         /**< 地图模板 ID */
+    std::string mapName;                                     /**< 地图显示名 */
+    std::string mapFile;                                     /**< 地图资源文件 */
+    uint32_t    maxPlayer       = 200;                       /**< 场景人数上限 */
+    uint32_t    playerCount     = 0;                         /**< 当前在线人数 */
+    SceneState  state           = SceneState::CREATING;      /**< 场景生命周期状态 */
 };

@@ -18,6 +18,11 @@
 #include <cstring>
 #include <cassert>
 
+/**
+ * @brief 环形字节缓冲区（单线程）
+ *
+ * 通过固定容量数组与读写游标实现无扩容、无锁的字节队列。
+ */
 class RingBuffer
 {
 public:
@@ -31,6 +36,7 @@ public:
         m_buf = new char[capacity];
     }
 
+    /** @brief 释放底层缓冲区内存 */
     ~RingBuffer() { delete[] m_buf; }
 
     /** @brief 剩余可写字节数 */

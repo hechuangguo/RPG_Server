@@ -14,18 +14,37 @@
 
 namespace ServerBootstrap {
 
+/**
+ * @brief 解析全局配置路径
+ * @param argc main 参数个数
+ * @param argv main 参数数组
+ * @return config.xml 最终路径（优先级：argv[1] > 环境变量 > 默认值）
+ */
 inline const char* globalConfigPath(int argc, char* argv[])
 {
     return XmlConfig::resolvePath(argc, argv, 1, XmlConfig::ENV_CONFIG_PATH,
                                   XmlConfig::CONFIG_PATH_DEFAULT);
 }
 
+/**
+ * @brief 解析 Scene 配置路径
+ * @param argc main 参数个数
+ * @param argv main 参数数组
+ * @return server_info.xml 最终路径（优先级：argv[2] > 环境变量 > 默认值）
+ */
 inline const char* sceneInfoPath(int argc, char* argv[])
 {
     return XmlConfig::resolvePath(argc, argv, 2, XmlConfig::ENV_SCENE_INFO_PATH,
                                   XmlConfig::SCENE_INFO_PATH_DEFAULT);
 }
 
+/**
+ * @brief 获取指定服务器的日志路径
+ * @param cfg 全局配置对象
+ * @param serverKey 日志映射键（如 "SceneServer"）
+ * @param fallback 映射缺失时使用的兜底路径
+ * @return 最终日志路径
+ */
 inline std::string logPathFor(const ServerConfig& cfg, const char* serverKey,
                               const char* fallback)
 {

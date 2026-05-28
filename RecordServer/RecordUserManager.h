@@ -47,5 +47,5 @@ public:
     }
 
 private:
-    std::unordered_map<UserID, std::shared_ptr<RecordUser>> m_users;
+    std::unordered_map<UserID, std::shared_ptr<RecordUser>> m_users; /**< Record 用户缓存表 */
 };

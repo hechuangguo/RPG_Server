@@ -65,6 +65,7 @@ public:
     //  当前墙钟时间戳
     // ============================================================
 
+    /** @brief 获取当前 Unix 时间戳（微秒） */
     static int64_t UnixUs()
     {
         using namespace std::chrono;
@@ -72,6 +73,7 @@ public:
             system_clock::now().time_since_epoch()).count();
     }
 
+    /** @brief 获取当前 Unix 时间戳（毫秒） */
     static int64_t UnixMs()
     {
         using namespace std::chrono;
@@ -79,6 +81,7 @@ public:
             system_clock::now().time_since_epoch()).count();
     }
 
+    /** @brief 获取当前 Unix 时间戳（秒） */
     static int64_t UnixSec()
     {
         using namespace std::chrono;
@@ -86,12 +89,19 @@ public:
             system_clock::now().time_since_epoch()).count();
     }
 
+    /** @brief 当前本地秒分量（0-59） */
     static int NowSecond()  { return Second(UnixMs()); }
+    /** @brief 当前本地分钟分量（0-59） */
     static int NowMinute()  { return Minute(UnixMs()); }
+    /** @brief 当前本地小时分量（0-23） */
     static int NowHour()    { return Hour(UnixMs()); }
+    /** @brief 当前本地星期（0=周日 .. 6=周六） */
     static int NowWeekday() { return Weekday(UnixMs()); }
+    /** @brief 当前本地日期中的日（1-31） */
     static int NowDay()     { return Day(UnixMs()); }
+    /** @brief 当前本地月份（1-12） */
     static int NowMonth()   { return Month(UnixMs()); }
+    /** @brief 当前本地年份（如 2026） */
     static int NowYear()    { return Year(UnixMs()); }
 
     // ============================================================
@@ -132,12 +142,27 @@ public:
     //  字符串 → 时间戳
     // ============================================================
 
+    /**
+     * @brief 按默认格式解析时间字符串
+     * @param str 输入字符串，默认格式为 TIME_DEFAULT_FMT
+     * @param outUnixMs [out] 解析结果，单位毫秒
+     * @param asUtc 是否按 UTC 解释输入字符串（false=本地时区）
+     * @return 解析成功返回 true
+     */
     static bool Parse(const std::string& str, int64_t& outUnixMs,
                       bool asUtc = false)
     {
         return Parse(str, TIME_DEFAULT_FMT, outUnixMs, asUtc);
     }
 
+    /**
+     * @brief 按指定格式解析时间字符串
+     * @param str 输入字符串
+     * @param fmt strptime/get_time 格式串
+     * @param outUnixMs [out] 解析结果，单位毫秒
+     * @param asUtc 是否按 UTC 解释输入字符串（false=本地时区）
+     * @return 解析成功返回 true
+     */
     static bool Parse(const std::string& str, const char* fmt,
                       int64_t& outUnixMs, bool asUtc = false)
     {
@@ -180,31 +205,39 @@ public:
     //  时间戳 → 日历分量
     // ============================================================
 
+    /** @brief 时间戳转本地时区分量 */
     static DateTimeParts ToLocalParts(int64_t unixMs)
     {
         return ToParts(unixMs, false);
     }
 
+    /** @brief 时间戳转 UTC 分量 */
     static DateTimeParts ToUtcParts(int64_t unixMs)
     {
         return ToParts(unixMs, true);
     }
 
+    /** @brief 获取年份分量 */
     static int Year(int64_t unixMs, bool useUtc = false)
     { return ToParts(unixMs, useUtc).year; }
 
+    /** @brief 获取月份分量（1-12） */
     static int Month(int64_t unixMs, bool useUtc = false)
     { return ToParts(unixMs, useUtc).month; }
 
+    /** @brief 获取日分量（1-31） */
     static int Day(int64_t unixMs, bool useUtc = false)
     { return ToParts(unixMs, useUtc).day; }
 
+    /** @brief 获取小时分量（0-23） */
     static int Hour(int64_t unixMs, bool useUtc = false)
     { return ToParts(unixMs, useUtc).hour; }
 
+    /** @brief 获取分钟分量（0-59） */
     static int Minute(int64_t unixMs, bool useUtc = false)
     { return ToParts(unixMs, useUtc).minute; }
 
+    /** @brief 获取秒分量（0-59） */
     static int Second(int64_t unixMs, bool useUtc = false)
     { return ToParts(unixMs, useUtc).second; }
 
@@ -223,30 +256,35 @@ public:
     //  边界时间戳（该时刻起始的 Unix 毫秒）
     // ============================================================
 
+    /** @brief 取当前分钟起始时刻（秒和毫秒归零） */
     static int64_t StartOfMinute(int64_t unixMs, bool useUtc = false)
     {
         auto p = ToParts(unixMs, useUtc);
         return FromParts(p.year, p.month, p.day, p.hour, p.minute, 0, useUtc);
     }
 
+    /** @brief 取当前小时起始时刻（分秒和毫秒归零） */
     static int64_t StartOfHour(int64_t unixMs, bool useUtc = false)
     {
         auto p = ToParts(unixMs, useUtc);
         return FromParts(p.year, p.month, p.day, p.hour, 0, 0, useUtc);
     }
 
+    /** @brief 取当前自然日起始时刻（00:00:00.000） */
     static int64_t StartOfDay(int64_t unixMs, bool useUtc = false)
     {
         auto p = ToParts(unixMs, useUtc);
         return FromParts(p.year, p.month, p.day, 0, 0, 0, useUtc);
     }
 
+    /** @brief 取当前自然月起始时刻（每月 1 日 00:00:00.000） */
     static int64_t StartOfMonth(int64_t unixMs, bool useUtc = false)
     {
         auto p = ToParts(unixMs, useUtc);
         return FromParts(p.year, p.month, 1, 0, 0, 0, useUtc);
     }
 
+    /** @brief 取当前自然年起始时刻（1 月 1 日 00:00:00.000） */
     static int64_t StartOfYear(int64_t unixMs, bool useUtc = false)
     {
         auto p = ToParts(unixMs, useUtc);
@@ -277,11 +315,23 @@ public:
         return months;
     }
 
+    /** @brief 计算两个时间戳的秒差（unixMs2 - unixMs1） */
     static int64_t SecondsBetween(int64_t unixMs1, int64_t unixMs2)
     {
         return (unixMs2 - unixMs1) / 1000;
     }
 
+    /**
+     * @brief 由年月日时分秒构造 Unix 毫秒时间戳
+     * @param year 年（如 2026）
+     * @param month 月（1-12）
+     * @param day 日（1-31）
+     * @param hour 时（0-23）
+     * @param minute 分（0-59）
+     * @param second 秒（0-59）
+     * @param asUtc 是否按 UTC 解释输入分量
+     * @return Unix 毫秒时间戳；失败返回 0
+     */
     static int64_t FromParts(int year, int month, int day,
                              int hour, int minute, int second,
                              bool asUtc = false)
@@ -326,6 +376,12 @@ public:
     }
 
 private:
+    /**
+     * @brief 将 time_t 填充为 tm 结构
+     * @param sec 秒级时间戳
+     * @param useUtc true=UTC，false=本地时区
+     * @param out [out] 解析后的 tm 结构
+     */
     static void FillTm(time_t sec, bool useUtc, struct tm& out)
     {
         if (useUtc)
@@ -346,6 +402,12 @@ private:
         }
     }
 
+    /**
+     * @brief 时间戳转日期分量内部实现
+     * @param unixMs Unix 毫秒
+     * @param useUtc true=UTC，false=本地时区
+     * @return 日期时间分量
+     */
     static DateTimeParts ToParts(int64_t unixMs, bool useUtc)
     {
         DateTimeParts p;
@@ -363,6 +425,11 @@ private:
         return p;
     }
 
+    /**
+     * @brief 跨平台 UTC tm -> time_t
+     * @param tm UTC 时间分量
+     * @return 秒级 Unix 时间戳
+     */
     static time_t TimeGm(struct tm* tm)
     {
 #if defined(_WIN32)
@@ -372,6 +439,12 @@ private:
 #endif
     }
 
+    /**
+     * @brief 替换格式串中的自定义占位符
+     * @param s 待替换字符串
+     * @param tok 目标 token（如 "%ms"）
+     * @param val 替换值
+     */
     static void ReplaceToken(std::string& s, const char* tok,
                              const std::string& val)
     {
@@ -384,6 +457,7 @@ private:
         }
     }
 
+    /** @brief 毫秒数格式化为 3 位字符串（000-999） */
     static std::string MsToken(int ms)
     {
         char buf[8];
@@ -391,6 +465,7 @@ private:
         return buf;
     }
 
+    /** @brief 毫秒数转换为 6 位微秒字符串（000000-999000） */
     static std::string UsToken(int ms)
     {
         char buf[8];

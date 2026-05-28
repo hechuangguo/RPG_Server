@@ -74,11 +74,11 @@ struct UserProxy
 /** @brief 登录流程中的待完成上下文 */
 struct PendingLogin
 {
-    UserID       userID;
-    ConnID       gatewayConnID;
-    uint32_t     gatewayClientConnID;
-    ConnID       sceneConnID;
-    UserBaseWire userData{};
+    UserID       userID;               /**< 用户 ID（作为 pending key） */
+    ConnID       gatewayConnID;        /**< 发起登录的 Gateway 连接 */
+    uint32_t     gatewayClientConnID;  /**< Gateway 内客户端连接 ID */
+    ConnID       sceneConnID;          /**< 预分配的 SceneServer 连接 */
+    UserBaseWire userData{};           /**< Record 返回的用户基础数据 */
 };
 
 /**
@@ -90,7 +90,8 @@ struct PendingLogin
 class SuperServer : public INetCallback
 {
 public:
-    SuperServer() : m_server(this) {}
+    /** @brief 构造 SuperServer 实例（初始化路由与定时器容器） */
+    SuperServer();
 
     /**
      * @brief 初始化 SuperServer
@@ -100,55 +101,27 @@ public:
      *
      * 注册消息处理函数，启动 30 秒间隔心跳检查定时器。
      */
-    bool Init(const std::string& ip, uint16_t port)
-    {
-        Logger::Instance().SetServerName("SuperServer");
-        LOG_INFO("SuperServer starting on %s:%d", ip.c_str(), port);
-        if (!m_server.Start(ip, port)) { LOG_FATAL("Start failed"); return false; }
-
-        RegisterHandlers();
-
-        TimerMgr::Instance().Register(30000, 30000, [this]{ CheckHeartbeat(); });
-        LOG_INFO("SuperServer started.");
-        return true;
-    }
+    bool Init(const std::string& ip, uint16_t port);
 
     /** @brief 主循环：轮询网络事件 + 驱动定时器 */
-    void Run()
-    {
-        while (true)
-        {
-            m_server.Poll(10);
-            TimerMgr::Instance().Update();
-        }
-    }
+    void Run();
 
     // ============================================================
     //  INetCallback 实现
     // ============================================================
 
-    void OnConnect(ConnID id) override
-    {
-        LOG_INFO("SubServer connected, connID=%u", id);
-    }
+    void OnConnect(ConnID id) override;
 
     /**
      * @brief 子服务器断开
      *
      * 移除该服务器的路由表记录，后续 FindSubServer 将返回 INVALID_CONN_ID。
      */
-    void OnDisconnect(ConnID id) override
-    {
-        LOG_WARN("SubServer disconnected, connID=%u", id);
-        RemoveSubServer(id);
-    }
+    void OnDisconnect(ConnID id) override;
 
     /** @brief 消息到达后派发给 MsgDispatcher */
     void OnMessage(ConnID id, uint8_t module, uint8_t sub,
-                   const char* data, uint16_t len) override
-    {
-        MsgDispatcher::Instance().Dispatch(id, module, sub, data, len);
-    }
+                   const char* data, uint16_t len) override;
 
 private:
     /**
@@ -159,22 +132,7 @@ private:
      * GW_USER_LOGIN_REQ→ OnUserLoginReq（登录调度）
      * SS_KICK_USER     → OnKickUser（踢人）
      */
-    void RegisterHandlers()
-    {
-        auto& d = MsgDispatcher::Instance();
-        d.Register((uint16_t)InternalMsgID::S2S_REGISTER_REQ,
-            [this](uint32_t c, const char* d, uint16_t l){ OnRegister(c, d, l); });
-        d.Register((uint16_t)InternalMsgID::S2S_HEARTBEAT,
-            [this](uint32_t c, const char* d, uint16_t l){ OnHeartbeat(c, d, l); });
-        d.Register((uint16_t)InternalMsgID::GW_USER_LOGIN_REQ,
-            [this](uint32_t c, const char* d, uint16_t l){ OnUserLoginReq(c, d, l); });
-        d.Register((uint16_t)InternalMsgID::REC_LOAD_USER_RSP,
-            [this](uint32_t c, const char* d, uint16_t l){ OnLoadUserRsp(c, d, l); });
-        d.Register((uint16_t)InternalMsgID::SCE_USER_ENTER_RSP,
-            [this](uint32_t c, const char* d, uint16_t l){ OnUserEnterRsp(c, d, l); });
-        d.Register((uint16_t)InternalMsgID::SS_KICK_USER,
-            [this](uint32_t c, const char* d, uint16_t l){ OnKickUser(c, d, l); });
-    }
+    void RegisterHandlers();
 
     /**
      * @brief 处理子服务器注册
@@ -182,44 +140,14 @@ private:
      * 收到 Msg_S2S_Register 后记录服务器信息到 m_servers，
      * 并回复 S2S_REGISTER_RSP 确认。
      */
-    void OnRegister(ConnID connID, const char* data, uint16_t len)
-    {
-        if (len < sizeof(Msg_S2S_Register)) return;
-        const auto* req = reinterpret_cast<const Msg_S2S_Register*>(data);
-        SubServerInfo info;
-        info.connID        = connID;
-        info.type          = (SubServerType)req->serverType;
-        info.serverID      = req->serverID;
-        info.ip            = req->ip;
-        info.port          = req->port;
-        info.alive         = true;
-        info.lastHeartbeat = TimerMgr::NowMs();
-        m_servers[connID]  = info;
-        LOG_INFO("SubServer registered: type=%d serverID=%u ip=%s port=%d",
-                 (int)info.type, info.serverID, info.ip.c_str(), info.port);
-
-        char rsp[4] = {0};
-        m_server.SendMsg(connID, (uint16_t)InternalMsgID::S2S_REGISTER_RSP, rsp, sizeof(rsp));
-    }
+    void OnRegister(ConnID connID, const char* data, uint16_t len);
 
     /**
      * @brief 处理心跳
      *
      * 更新 lastHeartbeat 时间戳并回复 ACK（含服务器时间）。
      */
-    void OnHeartbeat(ConnID connID, const char* data, uint16_t len)
-    {
-        auto it = m_servers.find(connID);
-        if (it != m_servers.end())
-            it->second.lastHeartbeat = TimerMgr::NowMs();
-
-        Msg_S2S_Heartbeat ack{};
-        if (len >= sizeof(Msg_S2S_Heartbeat))
-            ack.seq = reinterpret_cast<const Msg_S2S_Heartbeat*>(data)->seq;
-        ack.timestamp = TimerMgr::NowMs();
-        m_server.SendMsg(connID, (uint16_t)InternalMsgID::S2S_HEARTBEAT_ACK,
-                         reinterpret_cast<char*>(&ack), sizeof(ack));
-    }
+    void OnHeartbeat(ConnID connID, const char* data, uint16_t len);
 
     /**
      * @brief 处理用户登录请求
@@ -227,158 +155,23 @@ private:
      * GatewayServer 验证账号密码后将结果发给 SuperServer，
      * SuperServer 负责分配 SceneServer 并通知 RecordServer 加载用户数据。
      */
-    void OnUserLoginReq(ConnID connID, const char* data, uint16_t len)
-    {
-        if (len < sizeof(Msg_REC_LoginVerifyRsp)) return;
-        const auto* rsp = reinterpret_cast<const Msg_REC_LoginVerifyRsp*>(data);
-        if (rsp->code != 0) return;
+    void OnUserLoginReq(ConnID connID, const char* data, uint16_t len);
 
-        ConnID sceneConn = FindSceneServer();
-        if (sceneConn == INVALID_CONN_ID)
-        {
-            LOG_WARN("UserLogin: no SceneServer available userID=%llu", rsp->userID);
-            SendLoginFailToGateway(connID, rsp->gatewayConnID, -1);
-            return;
-        }
+    /** @brief 处理 RecordServer 的用户加载返回，继续触发入场流程 */
+    void OnLoadUserRsp(ConnID connID, const char* data, uint16_t len);
 
-        PendingLogin pending{};
-        pending.userID              = rsp->userID;
-        pending.gatewayConnID       = connID;
-        pending.gatewayClientConnID = rsp->gatewayConnID;
-        pending.sceneConnID         = sceneConn;
-        m_pendingLogins[rsp->userID] = pending;
+    /** @brief 处理 SceneServer 入场返回，给 Gateway 回登录最终结果 */
+    void OnUserEnterRsp(ConnID connID, const char* data, uint16_t len);
 
-        LOG_INFO("UserLogin: userID=%llu gatewayConn=%u sceneConn=%u",
-                 rsp->userID, connID, sceneConn);
-
-        ConnID recConn = FindSubServer(SubServerType::RECORD);
-        if (recConn != INVALID_CONN_ID)
-        {
-            UserID uid = rsp->userID;
-            m_server.SendMsg(recConn, (uint16_t)InternalMsgID::REC_LOAD_USER_REQ,
-                             reinterpret_cast<char*>(&uid), sizeof(uid));
-        }
-        else
-        {
-            SendLoginFailToGateway(connID, rsp->gatewayConnID, -1);
-            m_pendingLogins.erase(rsp->userID);
-        }
-    }
-
-    void OnLoadUserRsp(ConnID /*connID*/, const char* data, uint16_t len)
-    {
-        if (len < sizeof(Msg_REC_LoadUserRsp)) return;
-        const auto* hdr = reinterpret_cast<const Msg_REC_LoadUserRsp*>(data);
-        auto pit = m_pendingLogins.find(hdr->userID);
-        if (pit == m_pendingLogins.end()) return;
-
-        if (hdr->code != 0 || len < sizeof(Msg_REC_LoadUserRsp) + sizeof(UserBaseWire))
-        {
-            SendLoginFailToGateway(pit->second.gatewayConnID,
-                                   pit->second.gatewayClientConnID, hdr->code);
-            m_pendingLogins.erase(pit);
-            return;
-        }
-
-        const auto* wire = reinterpret_cast<const UserBaseWire*>(
-            data + sizeof(Msg_REC_LoadUserRsp));
-
-        Msg_SCE_UserEnterReq enter{};
-        enter.userID              = wire->userID;
-        enter.mapID               = wire->mapID ? wire->mapID : 1001;
-        enter.x                   = wire->posX;
-        enter.y                   = wire->posY;
-        enter.z                   = wire->posZ;
-        enter.gatewayClientConnID = pit->second.gatewayClientConnID;
-        snprintf(enter.name, sizeof(enter.name), "%s", wire->name);
-        enter.level    = wire->level;
-        enter.vocation = wire->vocation;
-        enter.sex      = wire->sex;
-        enter.hp       = wire->hp;
-        enter.maxHP    = wire->maxHP;
-        enter.mp       = wire->mp;
-        enter.maxMP    = wire->maxMP;
-        enter.gold     = wire->gold;
-
-        pit->second.userData = *wire;
-
-        UserProxy proxy;
-        proxy.userID              = wire->userID;
-        proxy.gatewayConnID       = pit->second.gatewayConnID;
-        proxy.gatewayClientConnID = pit->second.gatewayClientConnID;
-        proxy.sceneConnID         = pit->second.sceneConnID;
-        m_users[wire->userID]     = proxy;
-
-        m_server.SendMsg(pit->second.sceneConnID,
-                         (uint16_t)InternalMsgID::SCE_USER_ENTER_REQ,
-                         reinterpret_cast<char*>(&enter), sizeof(enter));
-    }
-
-    void OnUserEnterRsp(ConnID /*connID*/, const char* data, uint16_t len)
-    {
-        if (len < sizeof(Msg_SCE_UserEnterRsp)) return;
-        const auto* rsp = reinterpret_cast<const Msg_SCE_UserEnterRsp*>(data);
-        auto pit = m_pendingLogins.find(rsp->userID);
-        if (pit == m_pendingLogins.end()) return;
-
-        Msg_GW_UserLoginRsp gwRsp{};
-        gwRsp.code                = rsp->code;
-        gwRsp.gatewayClientConnID = rsp->gatewayClientConnID;
-        gwRsp.userID              = rsp->userID;
-        gwRsp.mapID               = rsp->mapID;
-        if (rsp->code == 0)
-        {
-            const auto& w = pit->second.userData;
-            gwRsp.x     = w.posX;
-            gwRsp.y     = w.posY;
-            gwRsp.z     = w.posZ;
-            gwRsp.level = w.level;
-            gwRsp.hp    = w.hp;
-            gwRsp.maxHP = w.maxHP;
-            gwRsp.mp    = w.mp;
-            gwRsp.maxMP = w.maxMP;
-            snprintf(gwRsp.name, sizeof(gwRsp.name), "%s", w.name);
-        }
-
-        auto rit = m_users.find(rsp->userID);
-        if (rit != m_users.end())
-        {
-            m_server.SendMsg(rit->second.gatewayConnID,
-                             (uint16_t)InternalMsgID::GW_USER_LOGIN_RSP,
-                             reinterpret_cast<char*>(&gwRsp), sizeof(gwRsp));
-        }
-
-        if (rsp->code != 0)
-            m_users.erase(rsp->userID);
-        m_pendingLogins.erase(pit);
-    }
-
-    void SendLoginFailToGateway(ConnID gatewayConnID, uint32_t clientConnID, int32_t code)
-    {
-        Msg_GW_UserLoginRsp gwRsp{};
-        gwRsp.code                = code;
-        gwRsp.gatewayClientConnID = clientConnID;
-        m_server.SendMsg(gatewayConnID, (uint16_t)InternalMsgID::GW_USER_LOGIN_RSP,
-                         reinterpret_cast<char*>(&gwRsp), sizeof(gwRsp));
-    }
+    /** @brief 向 Gateway 回登录失败（调度/加载/入场任一步失败） */
+    void SendLoginFailToGateway(ConnID gatewayConnID, uint32_t clientConnID, int32_t code);
 
     /**
      * @brief 处理踢人请求
      *
      * 通知对应 GatewayServer 踢除指定用户的客户端连接。
      */
-    void OnKickUser(ConnID /*connID*/, const char* data, uint16_t len)
-    {
-        if (len < sizeof(UserID)) return;
-        UserID uid = *reinterpret_cast<const UserID*>(data);
-        auto it = m_users.find(uid);
-        if (it == m_users.end()) return;
-        m_server.SendMsg(it->second.gatewayConnID,
-                         (uint16_t)InternalMsgID::GW_KICK_CLIENT,
-                         reinterpret_cast<char*>(&it->second.gatewayClientConnID),
-                         sizeof(uint32_t));
-        m_users.erase(it);
-    }
+    void OnKickUser(ConnID connID, const char* data, uint16_t len);
 
     /**
      * @brief 定期心跳检查
@@ -395,30 +188,14 @@ private:
      *    断开由底层网络事件触发 OnDisconnect 回调处理。标记为离线的服务器
      *    将不会被 FindSubServer 选中，从而实现故障隔离。
      */
-    void CheckHeartbeat()
-    {
-        uint64_t now = TimerMgr::NowMs();
-        for (auto& [cid, info] : m_servers)
-        {
-            if (now - info.lastHeartbeat > 90000)
-            {
-                LOG_WARN("SubServer timeout: connID=%u type=%d", cid, (int)info.type);
-                info.alive = false;
-            }
-        }
-    }
+    void CheckHeartbeat();
 
     /**
      * @brief 查找指定类型的子服务器连接
      * @param type 服务器类型
      * @return 找到的连接 ID，未找到返回 INVALID_CONN_ID
      */
-    ConnID FindSubServer(SubServerType type)
-    {
-        for (auto& [cid, info] : m_servers)
-            if (info.type == type && info.alive) return cid;
-        return INVALID_CONN_ID;
-    }
+    ConnID FindSubServer(SubServerType type);
 
     /**
      * @brief 选择 SceneServer（负载均衡策略）
@@ -440,16 +217,10 @@ private:
      *
      * @return 选中的 SceneServer 连接 ID，无可用服务器返回 INVALID_CONN_ID
      */
-    ConnID FindSceneServer()
-    {
-        return FindSubServer(SubServerType::SCENE);
-    }
+    ConnID FindSceneServer();
 
     /** @brief 从路由表中删除指定连接 */
-    void RemoveSubServer(ConnID connID)
-    {
-        m_servers.erase(connID);
-    }
+    void RemoveSubServer(ConnID connID);
 
     TcpServer m_server;  /**< 监听所有子服务器的 TCP Server */
 

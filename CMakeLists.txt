@@ -136,7 +136,7 @@ include_directories(
 #   1. 扫描 SERVER_NAME 目录下的所有 .cpp/.cc 源文件
 #   2. 创建可执行目标
 #   3. 链接公共依赖（pthread + Lua + tinyxml2）+ 额外依赖
-#   4. 设置输出目录为 build/bin/
+#   4. 设置输出目录为各服务器源码目录（便于单服直接启动）
 # -------------------------------------------------------
 macro(add_server SERVER_NAME EXTRA_LIBS)
     file(GLOB SERVER_SRC
@@ -152,7 +152,7 @@ macro(add_server SERVER_NAME EXTRA_LIBS)
         ${EXTRA_LIBS}    # 服务器特有的额外链接库
     )
     set_target_properties(${SERVER_NAME} PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin  # 可执行文件统一输出到 build/bin/
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/${SERVER_NAME}  # 可执行文件输出到各服务器目录
     )
 endmacro()
 

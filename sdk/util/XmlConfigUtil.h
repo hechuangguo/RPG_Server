@@ -26,6 +26,11 @@ constexpr const char* ENV_CONFIG_PATH = "RPG_CONFIG_PATH";
 /** @brief 环境变量：覆盖 server_info.xml 路径 */
 constexpr const char* ENV_SCENE_INFO_PATH = "RPG_SCENE_INFO_PATH";
 
+/**
+ * @brief 设置错误输出字符串
+ * @param errOut 可选错误输出指针，可为空
+ * @param msg 错误信息文本
+ */
 inline void setError(std::string* errOut, const std::string& msg)
 {
     if (errOut)
@@ -122,6 +127,12 @@ inline std::string trimCopy(const char* text)
     return std::string(begin, end);
 }
 
+/**
+ * @brief 解析十进制整数字符串
+ * @param value 输入 C 字符串
+ * @param fallback 解析失败或空串时返回值
+ * @return 解析后的整数
+ */
 inline int parseInt(const char* value, int fallback)
 {
     if (!value || value[0] == '\0')
@@ -129,6 +140,12 @@ inline int parseInt(const char* value, int fallback)
     return std::atoi(value);
 }
 
+/**
+ * @brief 解析十进制无符号整数字符串
+ * @param value 输入 C 字符串
+ * @param fallback 解析失败或空串时返回值
+ * @return 解析后的 uint32_t 值
+ */
 inline uint32_t parseUInt32(const char* value, uint32_t fallback)
 {
     if (!value || value[0] == '\0')
@@ -136,6 +153,13 @@ inline uint32_t parseUInt32(const char* value, uint32_t fallback)
     return static_cast<uint32_t>(std::strtoul(value, nullptr, 10));
 }
 
+/**
+ * @brief 读取 XML 属性并解析为 int
+ * @param elem XML 元素
+ * @param name 属性名
+ * @param fallback 属性缺失或非法时返回值
+ * @return 属性整数值
+ */
 inline int readIntAttr(const tinyxml2::XMLElement* elem, const char* name, int fallback)
 {
     if (!elem || !name)
@@ -143,6 +167,13 @@ inline int readIntAttr(const tinyxml2::XMLElement* elem, const char* name, int f
     return parseInt(elem->Attribute(name), fallback);
 }
 
+/**
+ * @brief 读取 XML 属性并解析为 uint32_t
+ * @param elem XML 元素
+ * @param name 属性名
+ * @param fallback 属性缺失或非法时返回值
+ * @return 属性无符号整数值
+ */
 inline uint32_t readUIntAttr(const tinyxml2::XMLElement* elem, const char* name,
                              uint32_t fallback)
 {
@@ -151,6 +182,12 @@ inline uint32_t readUIntAttr(const tinyxml2::XMLElement* elem, const char* name,
     return parseUInt32(elem->Attribute(name), fallback);
 }
 
+/**
+ * @brief 读取 XML 字符串属性
+ * @param elem XML 元素
+ * @param name 属性名
+ * @param out [out] 属性值（仅在属性存在时覆盖）
+ */
 inline void readStrAttr(const tinyxml2::XMLElement* elem, const char* name, std::string& out)
 {
     if (!elem || !name)

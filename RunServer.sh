@@ -12,8 +12,19 @@ set -o pipefail
 
 # 脚本所在目录作为项目根目录，用于推导其他路径
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BIN_DIR="$SCRIPT_DIR/.build/bin"         # 编译后的二进制文件目录
 LOG_DIR="$SCRIPT_DIR/logs"              # 日志输出目录（按服务器名分别保存）
+# 解析服务器二进制路径（优先服务器目录，其次兼容旧的 .build/bin）
+resolve_server_binary() {
+    local NAME=$1
+    local CANDIDATE_NEW="$SCRIPT_DIR/$NAME/$NAME"
+    local CANDIDATE_OLD="$SCRIPT_DIR/.build/bin/$NAME"
+    if [ -f "$CANDIDATE_NEW" ]; then
+        echo "$CANDIDATE_NEW"
+    else
+        echo "$CANDIDATE_OLD"
+    fi
+}
+
 CONFIG="$SCRIPT_DIR/config/config.xml"   # 主配置文件（各服务器通用）
 SCENE_INFO="$SCRIPT_DIR/config/server_info.xml"  # 场景信息配置文件
 PID_DIR="$SCRIPT_DIR/run"               # PID 文件目录（用于进程管理和守护检查）
@@ -193,7 +204,8 @@ show_startup_error() {
 # -------------------------------------------------------
 start_server() {
     local NAME=$1
-    local BINARY="$BIN_DIR/$NAME"
+    local BINARY
+    BINARY=$(resolve_server_binary "$NAME")
     local PIDFILE="$PID_DIR/$NAME.pid"
     shift
 
@@ -214,10 +226,9 @@ start_server() {
         rm -f "$PIDFILE"
     fi
 
-    # 后台启动，将标准输出和错误都重定向到日志文件，
-    # 实际业务日志由各服务器自行写入 super.log 等文件
+    # 后台启动：子 shell 内 exec 到二进制，$! 即为服务器进程 PID（避免 nohup 子 shell 导致 PID 错位）
     # cwd 固定为项目根，便于 Lua 加载 script/database/basefile
-    (cd "$SCRIPT_DIR" && nohup "$BINARY" "$@" > "$LOG_DIR/${NAME}_stdout.log" 2>&1) &
+    (cd "$SCRIPT_DIR" && exec "$BINARY" "$@") > "$LOG_DIR/${NAME}_stdout.log" 2>&1 &
     local PID=$!
     echo "$PID" > "$PIDFILE"
     log_info "Started $NAME (pid=$PID)"

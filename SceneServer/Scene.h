@@ -39,32 +39,42 @@ public:
     SceneState getState() const { return state; }
     size_t getPlayerCount() const { return players.size(); }
 
+    /** @brief 加载场景资源（模板方法，内部会调用 onLoadResources） */
     virtual bool loadResources();
+    /** @brief 启动场景并切换到 RUNNING */
     bool start();
+    /** @brief 关闭场景并触发停止回调 */
     void shutdown();
 
+    /** @brief 添加玩家到场景（已存在则返回 false） */
     bool addPlayer(UserID userId);
+    /** @brief 从场景移除玩家 */
     bool removePlayer(UserID userId);
+    /** @brief 查询玩家是否在场景内 */
     bool hasPlayer(UserID userId) const;
 
     void setStartedCallback(SceneStartedCallback cb) { onStarted = std::move(cb); }
     void setStoppedCallback(SceneStoppedCallback cb) { onStopped = std::move(cb); }
 
+    /** @brief 用地图配置构造场景基础信息 */
     Scene(uint32_t sceneServerId, uint64_t sceneInstanceId, const MapConfig& cfg);
 
 protected:
+    /** @brief 子类资源加载扩展点 */
     virtual bool onLoadResources();
+    /** @brief 子类启动后钩子 */
     virtual void onStartedHook();
+    /** @brief 子类关闭前钩子 */
     virtual void onShutdownHook();
 
-    uint32_t            sceneServerId   = 0;
-    uint64_t            sceneInstanceId = INVALID_SCENE_INSTANCE_ID;
-    uint32_t            mapId           = 0;
-    std::string         mapName;
-    std::string         mapFile;
-    uint32_t            maxPlayer       = 200;
-    SceneState          state           = SceneState::CREATING;
-    std::vector<UserID> players;
-    SceneStartedCallback onStarted;
-    SceneStoppedCallback onStopped;
+    uint32_t            sceneServerId   = 0;                       /**< 承载该场景的 SceneServer ID */
+    uint64_t            sceneInstanceId = INVALID_SCENE_INSTANCE_ID; /**< 场景实例 ID */
+    uint32_t            mapId           = 0;                       /**< 地图模板 ID */
+    std::string         mapName;                                   /**< 地图名称 */
+    std::string         mapFile;                                   /**< 地图文件路径 */
+    uint32_t            maxPlayer       = 200;                     /**< 最大容纳玩家数 */
+    SceneState          state           = SceneState::CREATING;    /**< 生命周期状态 */
+    std::vector<UserID> players;                                   /**< 当前玩家 ID 列表 */
+    SceneStartedCallback onStarted;                                /**< 场景启动回调 */
+    SceneStoppedCallback onStopped;                                /**< 场景关闭回调 */
 };
