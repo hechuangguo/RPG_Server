@@ -26,6 +26,7 @@
 #include "../sdk/net/TcpServer.h"
 #include "../sdk/util/MsgDispatcher.h"
 #include "../sdk/util/UserBase.h"
+#include "../sdk/util/Singleton.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
 #include "../protocal/InternalMsg.h"
@@ -87,11 +88,18 @@ struct PendingLogin
  * 实现 INetCallback，通过 TcpServer 监听所有子服务器的 TCP 长连接。
  * 单例模式运行（一个游戏区仅一个进程）。
  */
-class SuperServer : public INetCallback
+class SuperServer : public INetCallback, public LazySingleton<SuperServer>
 {
 public:
+    friend class LazySingleton<SuperServer>;
+    /** @brief 获取 SuperServer 单例指针 */
+    static SuperServer* Instance() { return &LazySingleton<SuperServer>::Instance(); }
+
+private:
     /** @brief 构造 SuperServer 实例（初始化路由与定时器容器） */
     SuperServer();
+
+public:
 
     /**
      * @brief 初始化 SuperServer

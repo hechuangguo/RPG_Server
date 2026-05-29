@@ -32,10 +32,10 @@ int main(int argc, char* argv[])
     Logger::Instance().SetPath(
         ServerBootstrap::logPathFor(cfg, "AOIServer", "logs/aoi.log"));
 
-    AOIServer server;
-    if (!server.Init("0.0.0.0", (uint16_t)cfg.aoiPort,
-                     cfg.superIP, (uint16_t)cfg.superPort,
-                     "127.0.0.1", (uint16_t)cfg.sessionPort)) return 1;
-    server.Run();
+    auto* server = AOIServer::Instance();
+    if (!server->Init("0.0.0.0", (uint16_t)cfg.aoiPort,
+                      cfg.superIP, (uint16_t)cfg.superPort,
+                      "127.0.0.1", (uint16_t)cfg.sessionPort)) return 1;
+    server->Run();
     return 0;
 }

@@ -66,6 +66,7 @@
 #include "../sdk/net/TcpServer.h"
 #include "../sdk/net/TcpClient.h"
 #include "../sdk/util/MsgDispatcher.h"
+#include "../sdk/util/Singleton.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
 #include "../protocal/InternalMsg.h"
@@ -90,11 +91,18 @@ struct ZoneRoute
  *
  * 单进程运行，维护所有游戏区之间的路由转发。
  */
-class ZoneServer : public INetCallback
+class ZoneServer : public INetCallback, public LazySingleton<ZoneServer>
 {
 public:
+    friend class LazySingleton<ZoneServer>;
+    /** @brief 获取 ZoneServer 单例指针 */
+    static ZoneServer* Instance() { return &LazySingleton<ZoneServer>::Instance(); }
+
+private:
     /** @brief 构造 ZoneServer（初始化跨区路由表） */
     ZoneServer();
+
+public:
 
     /**
      * @brief 初始化 ZoneServer

@@ -24,6 +24,7 @@
 #include "../sdk/util/MsgDispatcher.h"
 #include "../sdk/util/ConfigLoader.h"
 #include "../sdk/util/WireStringUtil.h"
+#include "../sdk/util/Singleton.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
 #include "../common/ClientMsg.h"
@@ -41,11 +42,18 @@
  * 双 TcpServer：m_clientServer（客户端） + m_innerServer（内部）。
  * 通过 INetCallback::OnConnect 的 connID 区分客户端/内部连接。
  */
-class GatewayServer : public INetCallback
+class GatewayServer : public INetCallback, public LazySingleton<GatewayServer>
 {
 public:
+    friend class LazySingleton<GatewayServer>;
+    /** @brief 获取 GatewayServer 单例指针 */
+    static GatewayServer* Instance() { return &LazySingleton<GatewayServer>::Instance(); }
+
+private:
     /** @brief 构造 GatewayServer（初始化会话管理与状态） */
     GatewayServer();
+
+public:
 
     /**
      * @brief 初始化 GatewayServer

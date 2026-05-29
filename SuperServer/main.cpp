@@ -41,8 +41,8 @@ int main(int argc, char* argv[])
     Logger::Instance().SetPath(
         ServerBootstrap::logPathFor(cfg, "SuperServer", "logs/super.log"));
 
-    SuperServer server;
-    if (!server.Init(cfg.superIP, (uint16_t)cfg.superPort)) return 1;
-    server.Run();
+    auto* server = SuperServer::Instance();
+    if (!server->Init(cfg.superIP, (uint16_t)cfg.superPort)) return 1;
+    server->Run();
     return 0;
 }

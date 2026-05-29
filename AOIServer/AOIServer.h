@@ -92,6 +92,7 @@
 #include "../sdk/util/UserBase.h"
 #include "../sdk/util/MsgDispatcher.h"
 #include "../sdk/util/WireStringUtil.h"
+#include "../sdk/util/Singleton.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
 #include "../protocal/InternalMsg.h"
@@ -138,11 +139,18 @@ struct GridHash
  *
  * 单进程运行。提供实体空间索引：mapID + grid → entity set 的快速查找。
  */
-class AOIServer : public INetCallback
+class AOIServer : public INetCallback, public LazySingleton<AOIServer>
 {
 public:
+    friend class LazySingleton<AOIServer>;
+    /** @brief 获取 AOIServer 单例指针 */
+    static AOIServer* Instance() { return &LazySingleton<AOIServer>::Instance(); }
+
+private:
     /** @brief 构造 AOIServer（初始化 AOI 索引容器） */
     AOIServer();
+
+public:
 
     /**
      * @brief 初始化 AOIServer

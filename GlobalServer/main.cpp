@@ -31,8 +31,8 @@ int main(int argc, char* argv[])
     Logger::Instance().SetPath(
         ServerBootstrap::logPathFor(cfg, "GlobalServer", "logs/global.log"));
 
-    GlobalServer server;
-    if (!server.Init("0.0.0.0", (uint16_t)cfg.globalPort)) return 1;
-    server.Run();
+    auto* server = GlobalServer::Instance();
+    if (!server->Init("0.0.0.0", (uint16_t)cfg.globalPort)) return 1;
+    server->Run();
     return 0;
 }

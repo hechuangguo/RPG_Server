@@ -8,18 +8,17 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 /**
- * @brief 用户完整存档（UserBase + JSON 扩展字段）
+ * @brief 用户完整存档（UserBase + 功能数据二进制）
  */
 struct UserRecord
 {
-    UserBase    base;               /**< 基础角色数据（与 CharBase 对齐） */
-    std::string bagJson;            /**< 背包扩展 JSON */
-    std::string skillJson;          /**< 技能扩展 JSON */
-    std::string questJson;          /**< 任务扩展 JSON */
-    uint64_t    lastSaveTime = 0;   /**< 上次成功落库时间戳（ms） */
-    bool        dirty        = false; /**< 存档是否有改动 */
+    UserBase             base;          /**< 基础角色数据（与 CharBase 对齐） */
+    std::vector<uint8_t> binary;        /**< 对应 CharBase.binary：包裹/技能/Buff/任务等功能数据序列化集合（序列化管线后续接入） */
+    uint64_t             lastSaveTime = 0;   /**< 上次成功落库时间戳（ms） */
+    bool                 dirty        = false; /**< 存档是否有改动 */
 };
 
 /**

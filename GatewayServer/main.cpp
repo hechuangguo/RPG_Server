@@ -33,10 +33,10 @@ int main(int argc, char* argv[])
     Logger::Instance().SetPath(
         ServerBootstrap::logPathFor(cfg, "GatewayServer", "logs/gateway.log"));
 
-    GatewayServer server;
+    auto* server = GatewayServer::Instance();
     uint16_t clientPort = (uint16_t)cfg.gatewayPort;
     uint16_t innerPort  = (uint16_t)(cfg.gatewayPort + 10000);
-    if (!server.Init(clientPort, innerPort, cfg)) return 1;
-    server.Run();
+    if (!server->Init(clientPort, innerPort, cfg)) return 1;
+    server->Run();
     return 0;
 }

@@ -23,6 +23,7 @@
 #include "../sdk/net/TcpClient.h"
 #include "../sdk/util/UserBase.h"
 #include "../sdk/util/MsgDispatcher.h"
+#include "../sdk/util/Singleton.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
 #include "../protocal/InternalMsg.h"
@@ -45,11 +46,18 @@ struct RankEntry
  *
  * 单进程运行，不依赖 SuperServer（独立监听），各 SceneServer 直接连接。
  */
-class GlobalServer : public INetCallback
+class GlobalServer : public INetCallback, public LazySingleton<GlobalServer>
 {
 public:
+    friend class LazySingleton<GlobalServer>;
+    /** @brief 获取 GlobalServer 单例指针 */
+    static GlobalServer* Instance() { return &LazySingleton<GlobalServer>::Instance(); }
+
+private:
     /** @brief 构造 GlobalServer（初始化榜单与连接表） */
     GlobalServer();
+
+public:
 
     /**
      * @brief 初始化 GlobalServer

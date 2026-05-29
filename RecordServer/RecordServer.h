@@ -28,6 +28,7 @@
 #include "../sdk/util/ConfigLoader.h"
 #include "../sdk/util/UserWireUtil.h"
 #include "../sdk/util/WireStringUtil.h"
+#include "../sdk/util/Singleton.h"
 #include "../protocal/InternalMsg.h"
 #include "RecordUser.h"
 #include "RecordUserManager.h"
@@ -41,12 +42,18 @@
  *
  * 单进程运行，持有 MySQL 连接，同时维护到 SuperServer 和 SessionServer 的 TcpClient。
  */
-class RecordServer : public INetCallback
+class RecordServer : public INetCallback, public LazySingleton<RecordServer>
 {
 public:
+    friend class LazySingleton<RecordServer>;
+    /** @brief 获取 RecordServer 单例指针 */
+    static RecordServer* Instance() { return &LazySingleton<RecordServer>::Instance(); }
+
+private:
     /** @brief 构造 RecordServer（初始化网络/缓存状态） */
     RecordServer();
 
+public:
     /** @brief 析构 RecordServer（关闭 DB 连接等） */
     ~RecordServer();
 
@@ -97,16 +104,14 @@ private:
     void SendHeartbeat();
 
     /**
-     * @brief 账号密码验证
+     * @brief 登录验证（按角色名）
      *
-     * 使用 SELECT ... WHERE account='?' AND password=MD5('?') 查询 t_account 表。
-     * @note init.sql 当前无账号表；登录逻辑待与 CharBase 或 Account 表对齐。
+     * CharBase 已合表，无 account/password 列；故 account 视为角色名，
+     * 执行 SELECT user_id FROM CharBase WHERE name='?'。
+     * 未命中则首登自动建号（INSERT CharBase(name)，其余列走 init.sql 默认值），
+     * 以 mysql_insert_id() 返回新角色 ID。req->password 暂不参与校验。
      *
-     * @warning 【安全风险】当前实现使用 snprintf 拼接 SQL 字符串，存在 SQL 注入风险。
-     *          如果 req->account 或 req->password 中包含单引号等特殊字符，
-     *          攻击者可构造恶意输入绕过认证或执行任意 SQL。
-     *          生产环境必须使用 mysql_real_escape_string() 转义用户输入，
-     *          或改用 mysql_stmt_prepare() / mysql_stmt_bind_param() 参数化查询。
+     * @note account 入库前用 mysql_real_escape_string() 转义，规避 SQL 注入。
      */
     void OnLoginVerify(ConnID fromConn, const char* data, uint16_t len);
 

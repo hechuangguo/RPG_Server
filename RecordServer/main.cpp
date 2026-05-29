@@ -30,8 +30,8 @@ int main(int argc, char* argv[])
     Logger::Instance().SetPath(
         ServerBootstrap::logPathFor(cfg, "RecordServer", "logs/record.log"));
 
-    RecordServer server;
-    if (!server.Init("0.0.0.0", (uint16_t)cfg.recordPort, cfg)) return 1;
-    server.Run();
+    auto* server = RecordServer::Instance();
+    if (!server->Init("0.0.0.0", (uint16_t)cfg.recordPort, cfg)) return 1;
+    server->Run();
     return 0;
 }

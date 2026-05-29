@@ -135,10 +135,16 @@ void RecordServer::OnLoginVerify(ConnID fromConn, const char* data, uint16_t len
     Msg_REC_LoginVerifyRsp rsp{};
     rsp.gatewayConnID = req->gatewayConnID;
 
-    char sql[512];
+    // account 作为角色名登录；CharBase 无 account/password 列，故按 name 查找。
+    // 用 mysql_real_escape_string 转义，消除 SQL 注入风险（account 为 char[32]）。
+    char accName[sizeof(req->account)];
+    copyToWire(accName, sizeof(accName), req->account);
+    char escName[sizeof(accName) * 2 + 1];
+    mysql_real_escape_string(m_db, escName, accName, strlen(accName));
+
+    char sql[256];
     snprintf(sql, sizeof(sql),
-             "SELECT user_id FROM t_account WHERE account='%s' AND password=MD5('%s') LIMIT 1",
-             req->account, req->password);
+             "SELECT user_id FROM CharBase WHERE name='%s' LIMIT 1", escName);
 
     if (mysql_query(m_db, sql) != 0)
     {
@@ -154,13 +160,28 @@ void RecordServer::OnLoginVerify(ConnID fromConn, const char* data, uint16_t len
             rsp.code = 0;
             rsp.userID = (uint64_t)strtoull(row[0], nullptr, 10);
         }
-        else
-        {
-            rsp.code = 1;
-        }
         if (res)
         {
             mysql_free_result(res);
+        }
+
+        // 未命中：首登自动建号，其余列走 init.sql 默认值（level=1/map_id=1001/hp=mp=100 等）
+        if (!row)
+        {
+            snprintf(sql, sizeof(sql),
+                     "INSERT INTO CharBase (name) VALUES ('%s')", escName);
+            if (mysql_query(m_db, sql) != 0)
+            {
+                LOG_ERR("Auto-create char failed: %s", mysql_error(m_db));
+                rsp.code = -1;
+            }
+            else
+            {
+                rsp.code = 0;
+                rsp.userID = (uint64_t)mysql_insert_id(m_db);
+                LOG_INFO("Auto-create char: name=%s userID=%llu",
+                         accName, (unsigned long long)rsp.userID);
+            }
         }
     }
     m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::REC_LOGIN_VERIFY_RSP,

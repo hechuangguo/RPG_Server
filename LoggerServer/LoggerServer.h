@@ -79,6 +79,7 @@
 #include "../sdk/net/TcpClient.h"
 #include "../sdk/util/MsgDispatcher.h"
 #include "../sdk/util/WireStringUtil.h"
+#include "../sdk/util/Singleton.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/log/LogFileWriter.h"
 #include "../sdk/timer/TimerMgr.h"
@@ -114,11 +115,18 @@ struct Msg_Log_WriteReq
  * 单进程运行，维护按服务器类型索引的 LogFileWriter 句柄表。
  * 每种服务器类型对应一个独立的日志文件系列（实时文件 + 按小时归档文件）。
  */
-class LoggerServer : public INetCallback
+class LoggerServer : public INetCallback, public LazySingleton<LoggerServer>
 {
 public:
+    friend class LazySingleton<LoggerServer>;
+    /** @brief 获取 LoggerServer 单例指针 */
+    static LoggerServer* Instance() { return &LazySingleton<LoggerServer>::Instance(); }
+
+private:
     /** @brief 构造 LoggerServer（初始化写入器索引） */
     LoggerServer();
+
+public:
 
     /**
      * @brief 初始化 LoggerServer

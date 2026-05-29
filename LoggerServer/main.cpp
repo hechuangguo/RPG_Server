@@ -39,11 +39,11 @@ int main(int argc, char* argv[])
     if (slash != std::string::npos)
         logDir = loggerPath.substr(0, slash);
 
-    LoggerServer server;
-    if (!server.Init("0.0.0.0", (uint16_t)cfg.loggerPort,
-                     cfg.superIP, (uint16_t)cfg.superPort,
-                     "127.0.0.1", (uint16_t)cfg.sessionPort,
-                     logDir)) return 1;
-    server.Run();
+    auto* server = LoggerServer::Instance();
+    if (!server->Init("0.0.0.0", (uint16_t)cfg.loggerPort,
+                      cfg.superIP, (uint16_t)cfg.superPort,
+                      "127.0.0.1", (uint16_t)cfg.sessionPort,
+                      logDir)) return 1;
+    server->Run();
     return 0;
 }
