@@ -143,7 +143,9 @@ macro(add_server SERVER_NAME EXTRA_LIBS)
         "${CMAKE_SOURCE_DIR}/${SERVER_NAME}/*.cpp"
         "${CMAKE_SOURCE_DIR}/${SERVER_NAME}/*.cc"
     )
-    add_executable(${SERVER_NAME} ${SERVER_SRC})
+    # SDK 公共实现源（如 sdk/math/*.cpp）：随各服务器一并编译链接
+    file(GLOB_RECURSE SDK_SRC "${CMAKE_SOURCE_DIR}/sdk/*.cpp")
+    add_executable(${SERVER_NAME} ${SERVER_SRC} ${SDK_SRC})
     target_link_libraries(${SERVER_NAME}
         PRIVATE
         pthread          # POSIX 线程库（所有服务器均需多线程支持）

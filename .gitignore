@@ -15,3 +15,14 @@ run/
 
 # Excel 临时锁文件
 DataDoc/~$*
+
+# 各服务器编译产物（可执行文件，与目录同名）
+SuperServer/SuperServer
+SessionServer/SessionServer
+RecordServer/RecordServer
+AOIServer/AOIServer
+SceneServer/SceneServer
+GatewayServer/GatewayServer
+LoggerServer/LoggerServer
+GlobalServer/GlobalServer
+ZoneServer/ZoneServer
