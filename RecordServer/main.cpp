@@ -21,6 +21,7 @@
 int main(int argc, char* argv[])
 {
     signal(SIGPIPE, SIG_IGN);
+    ServerBootstrap::applyDaemonFlag(argc, argv);
 
     ServerConfig cfg;
     const char* cfgPath = nullptr;

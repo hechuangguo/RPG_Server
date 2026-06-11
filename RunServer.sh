@@ -1,9 +1,19 @@
 #!/bin/bash
 # ============================================================
-#  RunServer.sh —— 按依赖顺序启动所有服务器
-#  用法：./RunServer.sh [config_path] [scene_info_path]
-#  默认配置：config/config.xml（包含各服务器 IP/端口等配置）
-#  默认场景：config/server_info.xml（场景服务专用配置）
+#  RunServer.sh —— 按依赖顺序启动 RPG 服务器
+#
+#  用法：
+#    ./RunServer.sh              启动区内 6 服（不含 Logger/Global/Zone）
+#    ./RunServer.sh all          同上
+#    ./RunServer.sh <子命令>     仅启动指定服务器
+#    ./RunServer.sh help         显示子命令列表
+#
+#  区内子命令：super | session | record | aoi | scene | gateway
+#  外联子命令：logger | global | zone
+#
+#  二进制守护：./SceneServer/SceneServer -d（-d 后台运行，非配置路径）
+#  配置默认：config/config.xml、config/server_info.xml（Scene）
+#            外联服读各目录 extern_*.xml
 # ============================================================
 
 # 任何命令失败立即退出，避免部分启动导致的不一致状态
@@ -259,90 +269,131 @@ start_server() {
 }
 
 # -------------------------------------------------------
-#  启动顺序（严格按依赖关系排列）：
-#
-#  SuperServer → SessionServer → RecordServer/AOIServer/SceneServer
-#  → GatewayServer
-#  外联（独立机器）：LoggerServer / GlobalServer / ZoneServer（loginserverlist.xml + extern_*.xml）
-#
-#  依赖说明：
-#    • 任一服务器启动失败则中止后续启动，并输出该服 stdout 日志尾部
-#    • SuperServer：全局服务，无依赖，最先启动
-#    • SessionServer：会话管理，依赖 SuperServer 注册服务
-#    • RecordServer：数据记录，依赖 SessionServer 提供会话上下文
-#    • AOIServer：AOI（Area Of Interest）可见性管理，依赖 SessionServer
-#    • SceneServer：场景逻辑，依赖 SessionServer + SCENE_INFO 场景配置
-#    • GatewayServer：客户端网关入口，依赖 SceneServer/RecordServer 已就绪
-#    • 外联服不在此脚本默认启动；区内拓扑来自 DB ServerList，外联见 loginserverlist.xml
-#
-#  配置：
-#    • config.xml：SuperServer、Database、LogPaths
-#    • DB ServerList：区内 Session/Record/AOI/Scene/Gateway 端口
-#    • loginserverlist.xml：外联 Logger/Global/Zone 连接地址
+#  打印用法与子命令列表
 # -------------------------------------------------------
+print_usage() {
+    cat <<EOF
+Usage:
+  ./RunServer.sh                 Start in-zone cluster (6 servers)
+  ./RunServer.sh all             Same as default
+  ./RunServer.sh <command>       Start one server only
 
-log_info "===== RPG Server Startup ====="
+In-zone commands:
+  super    SuperServer
+  session  SessionServer
+  record   RecordServer
+  aoi      AOIServer
+  scene    SceneServer
+  gateway  GatewayServer
 
-# -------------------------------------------------------
-#  第1步：启动 SuperServer
-#  - 整个集群的服务注册中心，无依赖，必须最先启动
-#  - 其他所有服务器启动时都会向 SuperServer 注册
-# -------------------------------------------------------
-start_server SuperServer "$CONFIG"
-sleep 1
+External commands:
+  logger   LoggerServer  (LoggerServer/extern_logger.xml)
+  global   GlobalServer  (GlobalServer/extern_global.xml)
+  zone     ZoneServer    (ZoneServer/extern_zone.xml)
+
+Daemon mode (binary directly):
+  ./SceneServer/SceneServer -d   Fork to background; -d is not a config path
+
+Stop all: ./StopServer.sh
+Logs:     ./log.sh
+EOF
+}
 
 # -------------------------------------------------------
-#  第2步：启动 SessionServer
-#  - 管理客户端连接会话，登录/登出/心跳检测
-#  - 依赖 SuperServer 已就绪才能完成服务注册
+#  启动区内 6 服（Super → Session → Record/AOI/Scene → Gateway）
+#  任一失败则中止并输出诊断信息
 # -------------------------------------------------------
-start_server SessionServer "$CONFIG"
-sleep 1
+start_all_inzone() {
+    log_info "===== RPG In-Zone Startup (6 servers) ====="
+
+    start_server SuperServer "$CONFIG" || return 1
+    sleep 1
+
+    start_server SessionServer "$CONFIG" || return 1
+    sleep 1
+
+    start_server RecordServer "$CONFIG" || return 1
+    start_server AOIServer    "$CONFIG" || return 1
+    start_server SceneServer  "$CONFIG" "$SCENE_INFO" || return 1
+    sleep 1
+
+    start_server GatewayServer "$CONFIG" || return 1
+
+    log_info "===== In-zone servers started ====="
+    return 0
+}
 
 # -------------------------------------------------------
-#  第3步：并行启动 RecordServer、AOIServer、SceneServer
-#  - RecordServer：处理用户数据持久化（存档、物品、属性等）
-#  - AOIServer：管理玩家可见范围（AOI 九宫格算法核心）
-#  - SceneServer：处理场景内逻辑（移动、战斗、NPC 交互等）
-#    额外传入 SCENE_INFO 配置，支持多场景部署
+#  按子命令启动单个服务器（不自动拉依赖；失败打印具体原因）
 # -------------------------------------------------------
-start_server RecordServer "$CONFIG"
-start_server AOIServer    "$CONFIG"
-start_server SceneServer  "$CONFIG" "$SCENE_INFO"
-sleep 1
+start_one_command() {
+    local CMD
+    CMD=$(echo "$1" | tr '[:upper:]' '[:lower:]')
+
+    case "$CMD" in
+        super)
+            log_info "===== Start SuperServer ====="
+            start_server SuperServer "$CONFIG"
+            ;;
+        session)
+            log_info "===== Start SessionServer ====="
+            start_server SessionServer "$CONFIG"
+            ;;
+        record)
+            log_info "===== Start RecordServer ====="
+            start_server RecordServer "$CONFIG"
+            ;;
+        aoi)
+            log_info "===== Start AOIServer ====="
+            start_server AOIServer "$CONFIG"
+            ;;
+        scene)
+            log_info "===== Start SceneServer ====="
+            start_server SceneServer "$CONFIG" "$SCENE_INFO"
+            ;;
+        gateway)
+            log_info "===== Start GatewayServer ====="
+            start_server GatewayServer "$CONFIG"
+            ;;
+        logger)
+            log_info "===== Start LoggerServer (external) ====="
+            start_server LoggerServer
+            ;;
+        global)
+            log_info "===== Start GlobalServer (external) ====="
+            start_server GlobalServer
+            ;;
+        zone)
+            log_info "===== Start ZoneServer (external) ====="
+            start_server ZoneServer
+            ;;
+        *)
+            log_error "Unknown command: $1"
+            echo ""
+            print_usage
+            return 1
+            ;;
+    esac
+}
 
 # -------------------------------------------------------
-#  第4步：启动 GatewayServer
-#  - 客户端连接的唯一入口，负责协议转发和负载均衡
-#  - 依赖 SceneServer/RecordServer 已注册，否则无法路由请求
+#  入口：无参/all → 区内 6 服；help → 用法；否则单服子命令
 # -------------------------------------------------------
-start_server GatewayServer "$CONFIG"
-sleep 0.5
+CMD=${1:-}
 
-# -------------------------------------------------------
-#  第5步：可选外联服（默认不启用，可部署在任意机器）
-#  - ENABLE_LOGGER=1：启动 LoggerServer（读 LoggerServer/extern_logger.xml）
-#  - ENABLE_GLOBAL=1：启动 GlobalServer（读 GlobalServer/extern_global.xml）
-#  - ENABLE_ZONE=1：启动 ZoneServer（读 ZoneServer/extern_zone.xml）
-#  - 游戏区经 loginserverlist.xml 连接外联地址
-# -------------------------------------------------------
-ENABLE_LOGGER=${ENABLE_LOGGER:-0}
-ENABLE_GLOBAL=${ENABLE_GLOBAL:-0}
-ENABLE_ZONE=${ENABLE_ZONE:-0}
+case "$CMD" in
+    ""|all)
+        start_all_inzone || exit 1
+        ;;
+    help|-h|--help)
+        print_usage
+        exit 0
+        ;;
+    *)
+        start_one_command "$CMD" || exit 1
+        ;;
+esac
 
-if [ "$ENABLE_LOGGER" = "1" ]; then
-    start_server LoggerServer
-fi
-
-if [ "$ENABLE_GLOBAL" = "1" ]; then
-    start_server GlobalServer
-fi
-
-if [ "$ENABLE_ZONE" = "1" ]; then
-    start_server ZoneServer
-fi
-
-log_info "===== All servers started ====="
 log_info "Log dir : $LOG_DIR"
 log_info "PID dir : $PID_DIR"
 log_info "Use './log.sh' to watch logs in real-time."

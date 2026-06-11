@@ -6,6 +6,7 @@
 #pragma once
 
 #include "ConfigLoader.h"
+#include "DaemonUtil.h"
 #include "ExternServerConfig.h"
 #include "ExternalServerHub.h"
 #include "LoginServerList.h"
@@ -19,6 +20,16 @@
 #include <string>
 
 namespace ServerBootstrap {
+
+/**
+ * @brief 解析并剥离 -d，若存在则守护化后台运行（须在配置加载前调用）
+ * @param argc [in/out] main 参数个数
+ * @param argv main 参数数组
+ */
+inline void applyDaemonFlag(int& argc, char** argv)
+{
+    DaemonUtil::extractAndDaemonize(argc, argv);
+}
 
 /** @brief 当前进程的服务器实例编号：环境变量 RPG_SERVER_ID（>0）覆盖，默认 1 */
 inline uint32_t resolveServerID()
