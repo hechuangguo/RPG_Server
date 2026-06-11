@@ -6,11 +6,29 @@
 #pragma once
 
 #include "LoginServerList.h"
+#include "MsgDispatcher.h"
 #include "../net/NetDefine.h"
 #include "../net/TcpClient.h"
 
 #include <cstdint>
 #include <string>
+
+/**
+ * @brief 将入站消息转交 MsgDispatcher（Gateway 连 LoginServer 注册口时使用）
+ */
+class DispatchingNetCallback : public INetCallback
+{
+public:
+    void OnConnect(ConnID) override {}
+
+    void OnDisconnect(ConnID) override {}
+
+    void OnMessage(ConnID id, uint8_t module, uint8_t sub,
+                   const char* data, uint16_t len) override
+    {
+        MsgDispatcher::Instance().Dispatch(id, module, sub, data, len);
+    }
+};
 
 /**
  * @brief 空网络回调（外联出站连接无需处理入站业务时使用）
@@ -29,7 +47,11 @@ public:
 class ExternalServerConnector
 {
 public:
-    ExternalServerConnector();
+    /**
+     * @brief 构造外联连接器
+     * @param cb 可选入站回调；nullptr 时使用内部 NullNetCallback
+     */
+    explicit ExternalServerConnector(INetCallback* cb = nullptr);
 
     /**
      * @brief 设置外联目标（来自 LoginServerList）

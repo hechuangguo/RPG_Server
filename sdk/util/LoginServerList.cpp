@@ -38,6 +38,8 @@ SubServerType tagToType(const char* tag)
         return SubServerType::GLOBAL;
     if (std::strcmp(tag, "ZoneServer") == 0)
         return SubServerType::ZONE;
+    if (std::strcmp(tag, "LoginServer") == 0)
+        return SubServerType::LOGIN;
     return SubServerType::UNKNOWN;
 }
 

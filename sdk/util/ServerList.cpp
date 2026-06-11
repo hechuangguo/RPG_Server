@@ -59,6 +59,16 @@ const ServerEntry* ServerList::findFirst(SubServerType type) const
     return nullptr;
 }
 
+void ServerList::findAll(SubServerType type, std::vector<const ServerEntry*>& out) const
+{
+    out.clear();
+    for (const auto& e : m_entries)
+    {
+        if (e.type == type)
+            out.push_back(&e);
+    }
+}
+
 // ============================================================
 //  ServerListClient::fetch —— 启动期同步拉取
 // ============================================================

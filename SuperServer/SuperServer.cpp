@@ -337,6 +337,9 @@ void SuperServer::OnUserEnterRsp(ConnID /*connID*/, const char* data, uint16_t l
         gwRsp.mp = w.mp;
         gwRsp.maxMP = w.maxMP;
         snprintf(gwRsp.name, sizeof(gwRsp.name), "%s", w.name);
+        auto sit = m_servers.find(pit->second.sceneConnID);
+        if (sit != m_servers.end())
+            gwRsp.sceneServerId = sit->second.serverID;
     }
 
     auto rit = m_users.find(rsp->userID);

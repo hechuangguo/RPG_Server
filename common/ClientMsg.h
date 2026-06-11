@@ -62,6 +62,7 @@ enum class ClientMsgID : uint16_t
     C2S_CREATE_USER_REQ  = 0x0007,  /**< C→S: 创建用户 */
     S2C_CREATE_USER_RSP  = 0x0008,  /**< S→C: 创建用户响应 */
     S2C_ENTER_GAME       = 0x0009,  /**< S→C: 通知客户端进入游戏世界 */
+    S2C_GATEWAY_INFO     = 0x000A,  /**< S→C: LoginServer 下发可用网关地址 */
 
     // ============================================================
     //  场景/移动 (0x0101 ~ 0x0107)
@@ -168,6 +169,17 @@ struct Msg_S2C_LoginRsp
     int32_t  code;      /**< 错误码：0=成功, 1=账号密码错误, -1=服务器内部错误 */
     char     msg[64];   /**< 可读的错误描述 */
     uint64_t userID;    /**< 上次登录用户 ID（0=无用户） */
+};
+
+/**
+ * @brief S→C: LoginServer 登录成功后下发游戏区网关（客户端再连 Gateway）
+ */
+struct Msg_S2C_GatewayInfo
+{
+    int32_t  code;           /**< 0=成功，非 0 无可用网关 */
+    char     gatewayIP[32];  /**< 网关 IP */
+    uint16_t gatewayPort;    /**< 网关 clientPort */
+    char     msg[64];        /**< 可读说明 */
 };
 
 /**

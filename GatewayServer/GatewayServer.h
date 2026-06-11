@@ -31,6 +31,7 @@
 #include "GatewayUserManager.h"
 #include "ClientMsgValidator.h"
 #include "ClientMsgRouter.h"
+#include "GatewayScenePool.h"
 #include <string>
 #include <vector>
 
@@ -100,8 +101,28 @@ private:
      * - GW_KICK_CLIENT：主动踢除客户端连接
      * - REC_LOGIN_VERIFY_RSP：RecordServer 的登录验证响应
      * - GW_USER_LOGIN_RSP：SuperServer 完成登录调度后的响应
+     * - S2S_REGISTER_RSP：Super 注册成功后延迟建立区内出站
+     * - LOGIN_GATEWAY_REGISTER_RSP：LoginServer 网关注册确认
      */
     void RegisterHandlers();
+
+    /** @brief Super 注册成功后连接 Record/Session/全部 Scene */
+    void setupUpstreamClients();
+
+    /** @brief 轮询区内出站直至就绪或超时 */
+    void pollUpstreamUntilReady();
+
+    /** @brief 向 LoginServer 上报本网关（RegisterListen 口） */
+    void reportGatewayToLoginServer();
+
+    /** @brief 定时发送 LOGIN_GATEWAY_HEARTBEAT */
+    void sendLoginGatewayHeartbeat();
+
+    /** @brief 收到 Super S2S_REGISTER_RSP 后触发延迟出站（幂等） */
+    void onSuperRegisterRsp(ConnID fromConn, const char* data, uint16_t len);
+
+    /** @brief LoginServer 网关注册响应（可选日志） */
+    void onLoginGatewayRegisterRsp(ConnID fromConn, const char* data, uint16_t len);
 
     /**
      * @brief 客户端消息处理
@@ -210,12 +231,15 @@ private:
     TcpServer m_clientServer;   /**< 入站：游戏客户端连接 */
     TcpClient m_superClient;    /**< 出站 SuperServer（注册、登录调度） */
     TcpClient m_recordClient;   /**< 出站 RecordServer（账号验证） */
-    TcpClient m_sceneClient;    /**< 出站 SceneServer（上行转发 + 下行 GW_SEND_TO_CLIENT） */
     TcpClient m_sessionClient;  /**< 出站 SessionServer（社交/任务） */
+    GatewayScenePool m_scenePool; /**< 出站多 SceneServer 连接池 */
     uint32_t  m_hbSeq = 0;      /**< 心跳序列号，每次发送心跳递增 */
     uint16_t  m_clientPort = 9005;   /**< 客户端监听端口 */
     ServerEntry m_self;              /**< 本进程在 ServerList 中的拓扑条目（注册上报用） */
-    ExternalServerHub m_externHub;   /**< 外联 Logger */
+    ServerList m_serverList;         /**< 启动期拉取的集群拓扑（延迟出站用） */
+    ExternalServerHub m_externHub;   /**< 外联 Logger + Login 注册 */
+    bool m_upstreamReady = false;    /**< 是否已完成区内出站连接 */
+    bool m_reportedToLogin = false;  /**< 是否已向 LoginServer 上报网关 */
     // --- 客户端管理 ---
     GatewayUserManager m_userManager;  /**< 客户端会话表（connID -> GatewayUser） */
 };

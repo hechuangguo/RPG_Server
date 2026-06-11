@@ -17,18 +17,20 @@ void applyEntry(ExternalServerConnector& conn, bool want,
     if (const ExternalServerEntry* e = list.find(type))
         conn.setEntry(*e);
 }
-}  // namespace
+} // namespace
 
 void ExternalServerHub::configure(const LoginServerList& list, bool wantLogger,
-                                  bool wantGlobal, bool wantZone)
+                                  bool wantGlobal, bool wantZone, bool wantLogin)
 {
     m_wantLogger = wantLogger;
     m_wantGlobal = wantGlobal;
     m_wantZone   = wantZone;
+    m_wantLogin  = wantLogin;
 
     applyEntry(m_logger, wantLogger, list, SubServerType::LOGGER);
     applyEntry(m_global, wantGlobal, list, SubServerType::GLOBAL);
     applyEntry(m_zone, wantZone, list, SubServerType::ZONE);
+    applyEntry(m_login, wantLogin, list, SubServerType::LOGIN);
 }
 
 void ExternalServerHub::connectAll()
@@ -39,6 +41,8 @@ void ExternalServerHub::connectAll()
         m_global.connectIfConfigured();
     if (m_wantZone)
         m_zone.connectIfConfigured();
+    if (m_wantLogin)
+        m_login.connectIfConfigured();
 }
 
 void ExternalServerHub::poll()
@@ -49,6 +53,8 @@ void ExternalServerHub::poll()
         m_global.poll();
     if (m_wantZone)
         m_zone.poll();
+    if (m_wantLogin)
+        m_login.poll();
 }
 
 void ExternalServerHub::tickReconnect()
@@ -60,6 +66,8 @@ void ExternalServerHub::tickReconnect()
         m_global.tickReconnect(now);
     if (m_wantZone)
         m_zone.tickReconnect(now);
+    if (m_wantLogin)
+        m_login.tickReconnect(now);
 }
 
 ExternalServerConnector* ExternalServerHub::connector(SubServerType type)
@@ -72,6 +80,8 @@ ExternalServerConnector* ExternalServerHub::connector(SubServerType type)
         return m_wantGlobal ? &m_global : nullptr;
     case SubServerType::ZONE:
         return m_wantZone ? &m_zone : nullptr;
+    case SubServerType::LOGIN:
+        return m_wantLogin ? &m_login : nullptr;
     default:
         return nullptr;
     }

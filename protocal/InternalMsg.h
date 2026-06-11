@@ -51,6 +51,7 @@ enum class SubServerType : uint8_t
     LOGGER  = 6, /**< LoggerServer：集中日志写入 */
     GLOBAL  = 7, /**< GlobalServer：全区共享业务 */
     ZONE    = 8, /**< ZoneServer：跨区转发与互通 */
+    LOGIN   = 9, /**< LoginServer：外联登录验证与网关列表（不入 DB ServerList） */
 };
 
 /**
@@ -152,6 +153,13 @@ enum class InternalMsgID : uint16_t
     ZONE_CROSS_REQ       = 0x1801,  /**< 跨区请求 */
     ZONE_CROSS_RSP       = 0x1802,  /**< 跨区响应 */
     ZONE_FORWARD         = 0x1803,  /**< 跨区转发 */
+
+    // ============================================================
+    //  LoginServer (0x1901 ~ 0x1903)
+    // ============================================================
+    LOGIN_GATEWAY_REGISTER_REQ = 0x1901, /**< GatewayServer → LoginServer: 上报网关 */
+    LOGIN_GATEWAY_REGISTER_RSP = 0x1902, /**< LoginServer → GatewayServer: 注册确认 */
+    LOGIN_GATEWAY_HEARTBEAT    = 0x1903, /**< GatewayServer → LoginServer: 网关存活心跳 */
 };
 
 // ============================================================
@@ -433,6 +441,28 @@ struct Msg_GW_UserLoginRsp
     uint32_t maxHP = 100;         /**< 最大生命值 */
     uint32_t mp    = 100;         /**< 当前魔法值 */
     uint32_t maxMP = 100;         /**< 最大魔法值 */
+    uint32_t sceneServerId = 0;   /**< 用户所在 SceneServer 实例 ID（ServerList.server_id） */
+};
+
+/**
+ * @brief GatewayServer → LoginServer: 网关注册/心跳（LOGIN_GATEWAY_HEARTBEAT 复用本结构）
+ */
+struct Msg_Login_GatewayRegister
+{
+    uint32_t gatewayServerId; /**< 网关实例 ID（ServerList） */
+    char     ip[32];          /**< 客户端可连 IP */
+    uint16_t port;            /**< 客户端监听端口（如 9005） */
+    char     name[32];        /**< 网关名称 */
+    char     zoneName[32];    /**< 可选区服名 */
+};
+
+/**
+ * @brief LoginServer → GatewayServer: 网关注册结果
+ */
+struct Msg_Login_GatewayRegisterRsp
+{
+    int32_t  code;            /**< 0=成功 */
+    uint32_t gatewayServerId; /**< 回显网关 ID */
 };
 
 /**

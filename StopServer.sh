@@ -25,7 +25,7 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 # 与 RunServer.sh / Build.sh 一致的服务器列表（反序停止）
 ALL_SERVERS=(
-    ZoneServer GlobalServer LoggerServer GatewayServer
+    ZoneServer GlobalServer LoggerServer LoginServer GatewayServer
     SceneServer AOIServer RecordServer SessionServer SuperServer
 )
 

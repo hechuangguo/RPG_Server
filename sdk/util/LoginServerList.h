@@ -2,7 +2,7 @@
  * @file    LoginServerList.h
  * @brief   外联服客户端配置 —— loginserverlist.xml 解析与容器
  *
- * 游戏区进程读取项目根 loginserverlist.xml，获取 Logger/Global/Zone
+ * 游戏区进程读取项目根 loginserverlist.xml，获取 Logger/Global/Zone/Login
  * 远端 ip/port/reconnect，用于 TcpClient 出站连接；外联服自身监听配置见 extern_*.xml。
  */
 
@@ -45,7 +45,7 @@ public:
 
     /**
      * @brief 按类型查找外联配置
-     * @param type LOGGER / GLOBAL / ZONE
+     * @param type LOGGER / GLOBAL / ZONE / LOGIN
      * @return 命中且 port>0 时返回指针；否则 nullptr
      */
     const ExternalServerEntry* find(SubServerType type) const;

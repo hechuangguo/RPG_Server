@@ -53,6 +53,12 @@ public:
         Base().userID = userId;
     }
 
+    /** @brief 用户所在 SceneServer 实例 ID（ServerList.server_id） */
+    uint32_t getSceneServerId() const { return sceneServerId; }
+
+    /** @brief 登录调度成功后绑定 Scene 实例 */
+    void setSceneServerId(uint32_t serverId) { sceneServerId = serverId; }
+
 private:
     /** @brief 为 GatewayUser 构造最小 UserBase（仅 connID） */
     static UserBase makeBase(ConnID connId)
@@ -63,4 +69,5 @@ private:
     }
     ClientState clientState = ClientState::CONNECTED; /**< 会话状态机状态 */
     uint64_t    lastHeartbeat = 0;                    /**< 最近心跳时间戳（ms） */
+    uint32_t    sceneServerId = 0;                    /**< 绑定的 SceneServer 实例 ID */
 };

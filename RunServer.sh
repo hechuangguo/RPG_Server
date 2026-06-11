@@ -9,7 +9,7 @@
 #    ./RunServer.sh help         显示子命令列表
 #
 #  区内子命令：super | session | record | aoi | scene | gateway
-#  外联子命令：logger | global | zone
+#  外联子命令：logger | global | zone | login
 #
 #  二进制守护：./SceneServer/SceneServer -d（-d 后台运行，非配置路径）
 #  配置默认：config/config.xml、config/server_info.xml（Scene）
@@ -68,6 +68,7 @@ server_log_path() {
         LoggerServer)  echo "$LOG_DIR/logger.log" ;;
         GlobalServer)  echo "$LOG_DIR/global.log" ;;
         ZoneServer)    echo "$LOG_DIR/zone.log" ;;
+        LoginServer)   echo "$LOG_DIR/login.log" ;;
         *)             echo "" ;;
     esac
 }
@@ -290,6 +291,7 @@ External commands:
   logger   LoggerServer  (LoggerServer/extern_logger.xml)
   global   GlobalServer  (GlobalServer/extern_global.xml)
   zone     ZoneServer    (ZoneServer/extern_zone.xml)
+  login    LoginServer   (LoginServer/extern_login.xml)
 
 Daemon mode (binary directly):
   ./SceneServer/SceneServer -d   Fork to background; -d is not a config path
@@ -368,6 +370,10 @@ start_one_command() {
         zone)
             log_info "===== Start ZoneServer (external) ====="
             start_server ZoneServer
+            ;;
+        login)
+            log_info "===== Start LoginServer (external) ====="
+            start_server LoginServer
             ;;
         *)
             log_error "Unknown command: $1"

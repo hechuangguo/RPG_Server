@@ -33,8 +33,11 @@ flowchart TB
     LOG[LoggerServer]
     GLB[GlobalServer]
     ZON[ZoneServer]
+    LS[LoginServer]
     DB[(MySQL)]
 
+    Client -->|可选：登录| LS
+    LS -->|S2C_GATEWAY_INFO| Client
     Client -->|inbound| GW
     GW -->|outbound| REC
     GW -->|outbound| SES
@@ -74,10 +77,15 @@ flowchart TB
     SCE -.->|loginserverlist.xml| GLB
     SCE -.->|loginserverlist.xml| ZON
     SES -.->|loginserverlist.xml| ZON
+    GW -.->|LOGIN_GATEWAY_REGISTER| LS
     gameZone[区内进程] -.->|loginserverlist.xml| LOG
+    GW -.->|loginserverlist.xml RegisterListen| LS
+    LS --> DB
 ```
 
-**外联服**（Logger / Global / Zone）不注册 SuperServer，可部署在任意机器。Super 主要经 `loginserverlist.xml` 外联；区内其它进程按需读取同一文件连接 Logger/Global/Zone。外联进程读各自目录 `extern_*.xml`。
+**外联服**（Logger / Global / Zone / **Login**）不注册 SuperServer，可部署在任意机器。Super 主要经 `loginserverlist.xml` 外联；区内其它进程按需读取同一文件连接 Logger/Global/Zone。**Gateway** 另经 `loginserverlist.xml` 的 `LoginServer` 条目连接 **RegisterListen**（默认 19010）上报网关。外联进程读各自目录 `extern_*.xml`。
+
+**客户端两阶段连接（可选）**：`LoginServer` ClientListen（默认 9010）校验账号 → `S2C_GATEWAY_INFO` 下发网关地址 → 客户端再连区内 `GatewayServer`（9005）。存量客户端仍可直连 Gateway。
 
 ### 2.2 启动依赖与顺序
 
@@ -96,6 +104,7 @@ flowchart LR
     S7[LoggerServer] -.->|RunServer.sh logger| opt1[外联可选]
     S8[GlobalServer] -.->|RunServer.sh global| opt2[外联可选]
     S9[ZoneServer] -.->|RunServer.sh zone| opt3[外联可选]
+    S10[LoginServer] -.->|RunServer.sh login| opt4[外联可选]
 ```
 
 | 服务器 | 端口（默认） | 进程数 | 依赖 | 必选 |
@@ -109,6 +118,7 @@ flowchart LR
 | LoggerServer | 9006 | 1 | 无（外联） | 否 |
 | GlobalServer | 9007 | 1（全区） | 无（外联） | 否 |
 | ZoneServer | 9008 | 1（全区） | 无（外联） | 否 |
+| LoginServer | 9010（客户端）/ 19010（网关注册） | 1（外联） | 无（外联） | 否 |
 
 ---
 
@@ -171,9 +181,17 @@ RPG/
 
 ### GatewayServer — 客户端接入
 
-- 出站：Super / Record / Scene / Session
+- 启动：仅监听客户端 + 连接 Super；收到 `S2S_REGISTER_RSP` 后再出站连接 Record / Session / **全部 Scene 实例**（`GatewayScenePool`）
+- 出站：Super / Record / Session / 多 Scene；`loginserverlist.xml` → LoginServer RegisterListen（`LOGIN_GATEWAY_REGISTER` + 心跳）
 - 入站：游戏客户端（clientPort）
+- 登录成功后按 `Msg_GW_UserLoginRsp.sceneServerId` 绑定用户并路由上行消息
 - `ClientMsgValidator` + `ClientMsgRouter`；60 秒心跳超时踢人
+
+### LoginServer — 外联登录与网关列表
+
+- **ClientListen**（默认 9010）：`C2S_LOGIN_REQ` → 可选 MySQL 校验（同 Record `CharBase.name`）→ `S2C_LOGIN_RSP` + `S2C_GATEWAY_INFO`
+- **RegisterListen**（默认 19010）：Gateway `LOGIN_GATEWAY_REGISTER` / `LOGIN_GATEWAY_HEARTBEAT`；内存网关表轮询 LB
+- 不向 SuperServer 注册；配置见 `LoginServer/extern_login.xml`
 
 ### LoggerServer — 集中日志
 

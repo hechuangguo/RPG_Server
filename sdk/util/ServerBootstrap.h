@@ -177,9 +177,10 @@ inline const char* externConfigPath(int argc, char* argv[], int argIndex,
  * @brief 装配游戏区外联连接并绑定远程日志
  */
 inline void initGameZoneExtern(ExternalServerHub& hub, const LoginServerList& list,
-                               SubServerType selfType, bool wantGlobal, bool wantZone)
+                               SubServerType selfType, bool wantGlobal, bool wantZone,
+                               bool wantLogin = false)
 {
-    hub.configure(list, true, wantGlobal, wantZone);
+    hub.configure(list, true, wantGlobal, wantZone, wantLogin);
     hub.connectAll();
     if (TcpClient* loggerClient = hub.client(SubServerType::LOGGER))
         RemoteLogClient::bind(loggerClient, selfType);

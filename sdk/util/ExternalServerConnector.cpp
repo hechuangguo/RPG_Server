@@ -15,8 +15,8 @@ constexpr uint32_t MIN_RETRY_MS = 1000;
 constexpr uint32_t MAX_RETRY_MS = 30000;
 }  // namespace
 
-ExternalServerConnector::ExternalServerConnector()
-    : m_client(&m_cb)
+ExternalServerConnector::ExternalServerConnector(INetCallback* cb)
+    : m_client(cb ? cb : &m_cb)
     , m_nextRetryMs(0)
     , m_retryDelayMs(MIN_RETRY_MS)
 {

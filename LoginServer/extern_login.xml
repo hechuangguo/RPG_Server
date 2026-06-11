@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  extern_login.xml — LoginServer 独立部署配置
+
+  职责：
+    - ClientListen：玩家客户端登录（C2S_LOGIN_REQ）
+    - RegisterListen：游戏区 Gateway 上报网关（LOGIN_GATEWAY_REGISTER）
+    - 可选 Database：与 RecordServer 同库做账号校验
+
+  loginserverlist.xml 中 <LoginServer port="..."/> 须与 RegisterListen 一致。
+  修改后需重启 LoginServer 生效。
+-->
+<ExternServer>
+    <!-- 玩家登录入口（客户端连接） -->
+    <ClientListen ip="0.0.0.0" port="9010"/>
+    <!-- 游戏区 Gateway 网关注册/心跳（非玩家口） -->
+    <RegisterListen ip="0.0.0.0" port="19010"/>
+    <LogPath>logs/login.log</LogPath>
+    <!-- 可选：与 config.xml Database 同库 -->
+    <Database host="127.0.0.1" port="3306" user="rpg_table" pass="rpg_table" name="rpg_game"/>
+</ExternServer>

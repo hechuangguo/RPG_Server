@@ -5,7 +5,7 @@
   ============================================================================
 
   职责：
-    - 登记 LoggerServer / GlobalServer / ZoneServer 的远端地址
+    - 登记 LoggerServer / GlobalServer / ZoneServer / LoginServer 的远端地址
     - 游戏区内各进程启动时读取本文件，作为 TcpClient 连接目标
     - 外联服可部署在任意机器，与本文件所在游戏区解耦
 
@@ -24,4 +24,6 @@
     <GlobalServer ip="127.0.0.1" port="9007" reconnect="1"/>
     <!-- 跨区转发（可选） -->
     <ZoneServer ip="127.0.0.1" port="9008" reconnect="0"/>
+    <!-- 外联登录：port 为网关注册口（与 extern_login.xml RegisterListen 一致，非玩家 ClientListen 9010） -->
+    <LoginServer ip="127.0.0.1" port="19010" reconnect="1"/>
 </LoginServerList>

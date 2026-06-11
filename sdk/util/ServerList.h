@@ -65,6 +65,13 @@ public:
      */
     const ServerEntry* findFirst(SubServerType type) const;
 
+    /**
+     * @brief 收集指定类型的全部条目（多实例水平扩展）
+     * @param type 服务器类型
+     * @param out  输出指针列表（指向内部存储，生命周期同本对象）
+     */
+    void findAll(SubServerType type, std::vector<const ServerEntry*>& out) const;
+
 private:
     std::vector<ServerEntry> m_entries;  /**< 拓扑条目列表 */
 };

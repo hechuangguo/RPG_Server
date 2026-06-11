@@ -1,6 +1,6 @@
 /**
  * @file    ExternalServerHub.h
- * @brief   游戏区进程外联服连接聚合（Logger / Global / Zone）
+ * @brief   游戏区进程外联服连接聚合（Logger / Global / Zone / Login）
  */
 
 #pragma once
@@ -16,15 +16,21 @@
 class ExternalServerHub
 {
 public:
+    /** @brief 构造 Hub；Login 连接器使用 DispatchingNetCallback 派发注册响应 */
+    ExternalServerHub()
+        : m_login(&m_loginMsgCb)
+    {}
+
     /**
      * @brief 根据 loginserverlist 与进程需求装配连接器
      * @param list        已加载的外联配置
      * @param wantLogger  是否连接 LoggerServer
      * @param wantGlobal  是否连接 GlobalServer
      * @param wantZone    是否连接 ZoneServer
+     * @param wantLogin   是否连接 LoginServer（网关注册口）
      */
     void configure(const LoginServerList& list, bool wantLogger,
-                   bool wantGlobal, bool wantZone);
+                   bool wantGlobal, bool wantZone, bool wantLogin = false);
 
     /** @brief 对已装配且 port>0 的条目发起连接 */
     void connectAll();
@@ -37,7 +43,7 @@ public:
 
     /**
      * @brief 获取指定类型的连接器
-     * @param type LOGGER / GLOBAL / ZONE
+     * @param type LOGGER / GLOBAL / ZONE / LOGIN
      * @return 对应连接器；未装配时返回 nullptr
      */
     ExternalServerConnector* connector(SubServerType type);
@@ -49,7 +55,10 @@ private:
     ExternalServerConnector m_logger; /**< 到 LoggerServer */
     ExternalServerConnector m_global; /**< 到 GlobalServer */
     ExternalServerConnector m_zone;   /**< 到 ZoneServer */
+    DispatchingNetCallback m_loginMsgCb; /**< Login 注册口入站派发 */
+    ExternalServerConnector m_login;  /**< 到 LoginServer（网关注册） */
     bool m_wantLogger = false;      /**< 本进程是否需要 Logger 外联 */
     bool m_wantGlobal = false;      /**< 本进程是否需要 Global 外联 */
     bool m_wantZone   = false;      /**< 本进程是否需要 Zone 外联 */
+    bool m_wantLogin  = false;      /**< 本进程是否需要 Login 外联 */
 };

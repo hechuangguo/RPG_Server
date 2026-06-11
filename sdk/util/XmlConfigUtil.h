@@ -40,6 +40,9 @@ constexpr const char* ENV_EXTERN_GLOBAL_CONFIG = "RPG_EXTERN_GLOBAL_CONFIG";
 constexpr const char* EXTERN_ZONE_CONFIG_DEFAULT = "ZoneServer/extern_zone.xml";
 constexpr const char* ENV_EXTERN_ZONE_CONFIG = "RPG_EXTERN_ZONE_CONFIG";
 
+constexpr const char* EXTERN_LOGIN_CONFIG_DEFAULT = "LoginServer/extern_login.xml";
+constexpr const char* ENV_EXTERN_LOGIN_CONFIG = "RPG_EXTERN_LOGIN_CONFIG";
+
 /**
  * @brief 设置错误输出字符串
  * @param errOut 可选错误输出指针，可为空

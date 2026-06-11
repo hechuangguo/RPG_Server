@@ -12,6 +12,8 @@
 
 namespace {
 
+constexpr uint64_t UPSTREAM_CONNECT_TIMEOUT_MS = 5000;
+
 /** @brief 区内服出站 TcpClient 回调：仅派发消息，不创建客户端会话 */
 class GatewayUpstreamCallback : public INetCallback
 {
@@ -35,8 +37,8 @@ GatewayServer::GatewayServer()
     : m_clientServer(this)
     , m_superClient(&g_upstreamCb)
     , m_recordClient(&g_upstreamCb)
-    , m_sceneClient(&g_upstreamCb)
     , m_sessionClient(&g_upstreamCb)
+    , m_scenePool(&g_upstreamCb)
 {
 }
 
@@ -46,6 +48,7 @@ bool GatewayServer::Init(uint16_t clientPort,
     Logger::Instance().SetServerName("GatewayServer");
     LOG_INFO("GatewayServer starting: clientPort=%d", clientPort);
 
+    m_serverList = list;
     if (const ServerEntry* self = list.find(SubServerType::GATEWAY, selfId))
         m_self = *self;
 
@@ -53,21 +56,15 @@ bool GatewayServer::Init(uint16_t clientPort,
     { LOG_FATAL("Client listen failed"); return false; }
 
     m_superClient.Connect(cfg.superIP, (uint16_t)cfg.superPort);
-    if (const ServerEntry* rec = list.findFirst(SubServerType::RECORD))
-        m_recordClient.Connect(rec->ip, rec->port);
-    if (const ServerEntry* sce = list.findFirst(SubServerType::SCENE))
-        m_sceneClient.Connect(sce->ip, sce->port);
-    if (const ServerEntry* ses = list.findFirst(SubServerType::SESSION))
-        m_sessionClient.Connect(ses->ip, ses->port);
-
     m_clientPort = clientPort;
 
     RegisterHandlers();
     TimerMgr::Instance().Register(500,   0,     [this]{ RegisterToSuper(); });
     TimerMgr::Instance().Register(10000, 10000, [this]{ SendHeartbeat(); });
     TimerMgr::Instance().Register(30000, 30000, [this]{ CheckTimeout(); });
+    TimerMgr::Instance().Register(10000, 10000, [this]{ sendLoginGatewayHeartbeat(); });
 
-    LOG_INFO("GatewayServer started.");
+    LOG_INFO("GatewayServer started (awaiting S2S_REGISTER_RSP for upstream).");
     return true;
 }
 
@@ -76,9 +73,12 @@ void GatewayServer::Run()
     while (true)
     {
         m_superClient.Poll(0);
-        m_recordClient.Poll(0);
-        m_sceneClient.Poll(0);
-        m_sessionClient.Poll(0);
+        if (m_upstreamReady)
+        {
+            m_recordClient.Poll(0);
+            m_sessionClient.Poll(0);
+            m_scenePool.pollAll();
+        }
         m_clientServer.Poll(5);
         ServerBootstrap::tickGameZoneExtern(m_externHub);
         TimerMgr::Instance().Update();
@@ -96,11 +96,17 @@ void GatewayServer::OnDisconnect(ConnID id)
     auto user = m_userManager.findUser(id);
     if (user)
     {
-        if (user->GetID() != INVALID_USER_ID)
+        if (user->GetID() != INVALID_USER_ID && m_upstreamReady)
         {
             UserID uid = user->GetID();
-            m_sceneClient.SendMsg((uint16_t)InternalMsgID::SCE_USER_LEAVE,
-                reinterpret_cast<const char*>(&uid), sizeof(UserID));
+            TcpClient* scene = m_scenePool.clientFor(user->getSceneServerId());
+            if (!scene)
+                scene = m_scenePool.firstConnected();
+            if (scene)
+            {
+                scene->SendMsg((uint16_t)InternalMsgID::SCE_USER_LEAVE,
+                               reinterpret_cast<const char*>(&uid), sizeof(UserID));
+            }
         }
         m_userManager.removeUser(id);
     }
@@ -126,6 +132,131 @@ void GatewayServer::RegisterHandlers()
         [this](uint32_t c, const char* d, uint16_t l){ OnLoginVerifyRsp(c, d, l); });
     d.Register((uint16_t)InternalMsgID::GW_USER_LOGIN_RSP,
         [this](uint32_t c, const char* d, uint16_t l){ OnUserLoginRsp(c, d, l); });
+    d.Register((uint16_t)InternalMsgID::S2S_REGISTER_RSP,
+        [this](uint32_t c, const char* d, uint16_t l){ onSuperRegisterRsp(c, d, l); });
+    d.Register((uint16_t)InternalMsgID::LOGIN_GATEWAY_REGISTER_RSP,
+        [this](uint32_t c, const char* d, uint16_t l){ onLoginGatewayRegisterRsp(c, d, l); });
+}
+
+void GatewayServer::onSuperRegisterRsp(ConnID /*fromConn*/, const char* /*data*/, uint16_t /*len*/)
+{
+    if (m_upstreamReady)
+        return;
+    LOG_INFO("S2S_REGISTER_RSP received, setting up upstream clients");
+    setupUpstreamClients();
+}
+
+void GatewayServer::setupUpstreamClients()
+{
+    if (m_upstreamReady)
+        return;
+
+    if (const ServerEntry* rec = m_serverList.findFirst(SubServerType::RECORD))
+        m_recordClient.Connect(rec->ip, rec->port);
+    else
+        LOG_WARN("ServerList missing RECORD entry");
+
+    if (const ServerEntry* ses = m_serverList.findFirst(SubServerType::SESSION))
+        m_sessionClient.Connect(ses->ip, ses->port);
+    else
+        LOG_WARN("ServerList missing SESSION entry");
+
+    if (!m_scenePool.connectAll(m_serverList))
+        LOG_WARN("No SCENE connections initiated");
+
+    pollUpstreamUntilReady();
+
+    m_upstreamReady = true;
+    LOG_INFO("Gateway upstream ready: record=%d session=%d scene=%d",
+             m_recordClient.IsConnected() ? 1 : 0,
+             m_sessionClient.IsConnected() ? 1 : 0,
+             m_scenePool.hasAnyConnected() ? 1 : 0);
+
+    reportGatewayToLoginServer();
+}
+
+void GatewayServer::pollUpstreamUntilReady()
+{
+    const uint64_t deadline = TimerMgr::NowMs() + UPSTREAM_CONNECT_TIMEOUT_MS;
+    while (TimerMgr::NowMs() < deadline)
+    {
+        m_recordClient.Poll(10);
+        m_sessionClient.Poll(10);
+        m_scenePool.pollAll();
+        m_superClient.Poll(0);
+        m_clientServer.Poll(0);
+        ServerBootstrap::tickGameZoneExtern(m_externHub);
+        if (m_recordClient.IsConnected() && m_sessionClient.IsConnected() &&
+            m_scenePool.hasAnyConnected())
+        {
+            return;
+        }
+    }
+    LOG_WARN("Gateway upstream connect timeout (partial connections may exist)");
+}
+
+void GatewayServer::reportGatewayToLoginServer()
+{
+    TcpClient* loginClient = m_externHub.client(SubServerType::LOGIN);
+    if (!loginClient || !loginClient->IsConnected())
+    {
+        LOG_WARN("LoginServer not configured or not connected; skip gateway register");
+        return;
+    }
+
+    Msg_Login_GatewayRegister req{};
+    req.gatewayServerId = m_self.id;
+    req.port = m_clientPort;
+    copyToWire(req.ip, sizeof(req.ip),
+               m_self.ip.empty() ? "127.0.0.1" : m_self.ip.c_str());
+    copyToWire(req.name, sizeof(req.name), m_self.name.c_str());
+    copyToWire(req.zoneName, sizeof(req.zoneName), "game-zone");
+
+    loginClient->SendMsg((uint16_t)InternalMsgID::LOGIN_GATEWAY_REGISTER_REQ,
+                         reinterpret_cast<char*>(&req), sizeof(req));
+    LOG_INFO("LOGIN_GATEWAY_REGISTER sent: id=%u %s:%u",
+             req.gatewayServerId, req.ip, req.port);
+}
+
+void GatewayServer::sendLoginGatewayHeartbeat()
+{
+    if (!m_upstreamReady)
+        return;
+    if (!m_reportedToLogin)
+    {
+        reportGatewayToLoginServer();
+        if (!m_reportedToLogin)
+            return;
+    }
+    TcpClient* loginClient = m_externHub.client(SubServerType::LOGIN);
+    if (!loginClient || !loginClient->IsConnected())
+        return;
+
+    Msg_Login_GatewayRegister hb{};
+    hb.gatewayServerId = m_self.id;
+    hb.port = m_clientPort;
+    copyToWire(hb.ip, sizeof(hb.ip),
+               m_self.ip.empty() ? "127.0.0.1" : m_self.ip.c_str());
+    copyToWire(hb.name, sizeof(hb.name), m_self.name.c_str());
+    loginClient->SendMsg((uint16_t)InternalMsgID::LOGIN_GATEWAY_HEARTBEAT,
+                         reinterpret_cast<char*>(&hb), sizeof(hb));
+}
+
+void GatewayServer::onLoginGatewayRegisterRsp(ConnID /*fromConn*/, const char* data, uint16_t len)
+{
+    if (len < sizeof(Msg_Login_GatewayRegisterRsp))
+        return;
+    const auto* rsp = reinterpret_cast<const Msg_Login_GatewayRegisterRsp*>(data);
+    if (rsp->code == 0)
+    {
+        m_reportedToLogin = true;
+        LOG_INFO("LOGIN_GATEWAY_REGISTER_RSP ok: gatewayId=%u", rsp->gatewayServerId);
+    }
+    else
+    {
+        LOG_WARN("LOGIN_GATEWAY_REGISTER_RSP failed: code=%d gatewayId=%u",
+                 rsp->code, rsp->gatewayServerId);
+    }
 }
 
 void GatewayServer::HandleClientMsg(ConnID connID, uint8_t module, uint8_t sub,
@@ -161,13 +292,31 @@ void GatewayServer::HandleClientMsg(ConnID connID, uint8_t module, uint8_t sub,
         break;
     case ClientForwardTarget::SCENE:
         if (user->getClientState() == ClientState::LOGGED_IN)
-            forwardClientMsg(m_sceneClient, connID, module, sub, data, len);
+        {
+            if (!m_upstreamReady)
+            {
+                sendClientError(connID, ValidateResult::BAD_STATE);
+                break;
+            }
+            TcpClient* scene = m_scenePool.clientFor(user->getSceneServerId());
+            if (!scene)
+                scene = m_scenePool.firstConnected();
+            if (scene)
+                forwardClientMsg(*scene, connID, module, sub, data, len);
+            else
+                sendClientError(connID, ValidateResult::BAD_STATE);
+        }
         else
             sendClientError(connID, ValidateResult::BAD_STATE);
         break;
     case ClientForwardTarget::SESSION:
         if (user->getClientState() == ClientState::LOGGED_IN)
-            forwardClientMsg(m_sessionClient, connID, module, sub, data, len);
+        {
+            if (!m_upstreamReady)
+                sendClientError(connID, ValidateResult::BAD_STATE);
+            else
+                forwardClientMsg(m_sessionClient, connID, module, sub, data, len);
+        }
         else
             sendClientError(connID, ValidateResult::BAD_STATE);
         break;
@@ -200,6 +349,11 @@ void GatewayServer::sendClientError(ConnID connID, ValidateResult vr)
 
 void GatewayServer::OnClientLogin(ConnID connID, const char* data, uint16_t len)
 {
+    if (!m_upstreamReady || !m_recordClient.IsConnected())
+    {
+        sendClientError(connID, ValidateResult::BAD_STATE);
+        return;
+    }
     if (len < sizeof(Msg_C2S_LoginReq)) return;
     const auto* req = reinterpret_cast<const Msg_C2S_LoginReq*>(data);
     m_userManager.getUser(connID).setClientState(ClientState::LOGGING);
@@ -264,6 +418,7 @@ void GatewayServer::OnUserLoginRsp(ConnID /*fromConn*/, const char* data, uint16
     if (rsp->code == 0)
     {
         user->setClientState(ClientState::LOGGED_IN);
+        user->setSceneServerId(rsp->sceneServerId);
         copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "Login OK");
 
         Msg_S2C_EnterGame enter{};
@@ -283,8 +438,8 @@ void GatewayServer::OnUserLoginRsp(ConnID /*fromConn*/, const char* data, uint16
                                reinterpret_cast<char*>(&loginRsp), sizeof(loginRsp));
         m_clientServer.SendMsg(clientConn, (uint16_t)ClientMsgID::S2C_ENTER_GAME,
                                reinterpret_cast<char*>(&enter), sizeof(enter));
-        LOG_INFO("EnterGame: connID=%u userID=%llu map=%u",
-                 clientConn, rsp->userID, rsp->mapID);
+        LOG_INFO("EnterGame: connID=%u userID=%llu map=%u sceneServerId=%u",
+                 clientConn, rsp->userID, rsp->mapID, rsp->sceneServerId);
     }
     else
     {
@@ -343,7 +498,8 @@ void GatewayServer::CheckTimeout()
 
 void GatewayServer::setupExternalClients(const LoginServerList& list)
 {
-    ServerBootstrap::initGameZoneExtern(m_externHub, list, SubServerType::GATEWAY, false, false);
+    ServerBootstrap::initGameZoneExtern(m_externHub, list, SubServerType::GATEWAY,
+                                        false, false, true);
 }
 
 void GatewayServer::RegisterToSuper()
