@@ -4,18 +4,13 @@
  *
  * ## 职责
  * - 面向客户端：监听公网端口，接受玩家 TCP 连接
- * - 面向内部：监听内网端口，接收来自 SceneServer 的下行消息
  * - 登录流程：验证账号 → 转发给 SuperServer 调度 → 返回登录结果
- * - 消息转发：客户端 → SceneServer（上行）、SceneServer → 客户端（下行）
+ * - 消息转发：客户端 → Scene/Session（上行）；Scene 下行经出站 Scene 连接回传
  * - 心跳超时检测（60 秒无心跳自动踢除）
  *
- * ## 双端口设计
- * - 外网端口 (clientPort = 9005)：客户端通过公网连接，进行登录和游戏数据交互
- * - 内网端口 (innerPort = 19005)：SceneServer 等内部服务器通过内网连接，传递下行消息和踢人指令
- * - 通过 connID 大小区分客户端连接（< 100000）和内部服务器连接（>= 100000）
- *
  * ## 依赖关系
- * - 依赖 SuperServer + RecordServer + SceneServer
+ * - 出站：SuperServer / RecordServer / SessionServer / SceneServer
+ * - 入站：游戏客户端（clientPort）
  */
 
 #pragma once
@@ -42,8 +37,7 @@
 /**
  * @brief GatewayServer 核心类
  *
- * 双 TcpServer：m_clientServer（客户端） + m_innerServer（内部）。
- * 通过 INetCallback::OnConnect 的 connID 区分客户端/内部连接。
+ * m_clientServer 接受玩家连接；区内服经 TcpClient 出站连接。
  */
 class GatewayServer : public INetCallback, public LazySingleton<GatewayServer>
 {
@@ -61,13 +55,12 @@ public:
     /**
      * @brief 初始化 GatewayServer
      * @param clientPort 面向客户端的监听端口（取自 ServerList 自身条目）
-     * @param innerPort  面向内部服务器的监听端口（约定 = clientPort + 10000）
      * @param cfg        全局配置（提供 SuperServer 地址）
      * @param list       集群拓扑（用于解析对端地址与自身登记信息）
      * @param selfId     本进程实例编号
      * @return 成功返回 true
      */
-    bool Init(uint16_t clientPort, uint16_t innerPort,
+    bool Init(uint16_t clientPort,
               const ServerConfig& cfg, const ServerList& list, uint32_t selfId);
 
     /** @brief 主循环 */
@@ -79,9 +72,7 @@ public:
     /**
      * @brief 连接建立回调
      *
-     * 通过 connID 大小区分客户端和内部连接。
-     * - connID < 100000：客户端连接，创建 ClientSession 记录
-     * - connID >= 100000：内部服务器连接（如 SceneServer），直接记录日志
+     * 客户端连接建立时创建 GatewayUser 会话。
      */
     void OnConnect(ConnID id) override;
 
@@ -95,9 +86,7 @@ public:
     /**
      * @brief 消息到达回调
      *
-     * 区分客户端消息和内部消息分别处理。
-     * - 客户端连接：通过 HandleClientMsg 处理登录、心跳和游戏消息
-     * - 内部连接：通过 MsgDispatcher 分发到对应的处理函数
+     * 客户端消息走 HandleClientMsg；区内服回包经 MsgDispatcher 处理。
      */
     void OnMessage(ConnID id, uint8_t module, uint8_t sub,
                    const char* data, uint16_t len) override;
@@ -218,18 +207,13 @@ private:
     void SendHeartbeat();
     // ======================== 成员变量 ========================
     // --- 网络服务 ---
-    TcpServer m_clientServer;   /**< 面向客户端的 TCP Server，监听外网端口 9005，接受玩家连接 */
-    TcpServer m_innerServer;    /**< 面向内部服务器的 TCP Server，监听内网端口 19005，接收 SceneServer 等内部连接 */
-    // --- 上游连接 ---
-    TcpClient m_superClient;    /**< 到 SuperServer 的连接，用于注册和登录调度 */
-    TcpClient m_recordClient;   /**< 到 RecordServer 的连接，用于账号密码验证 */
-    TcpClient m_sceneClient;    /**< 到 SceneServer 的连接 */
-    TcpClient m_sessionClient;  /**< 到 SessionServer 的连接（社交/任务） */
-    // --- 状态 ---
+    TcpServer m_clientServer;   /**< 入站：游戏客户端连接 */
+    TcpClient m_superClient;    /**< 出站 SuperServer（注册、登录调度） */
+    TcpClient m_recordClient;   /**< 出站 RecordServer（账号验证） */
+    TcpClient m_sceneClient;    /**< 出站 SceneServer（上行转发 + 下行 GW_SEND_TO_CLIENT） */
+    TcpClient m_sessionClient;  /**< 出站 SessionServer（社交/任务） */
     uint32_t  m_hbSeq = 0;      /**< 心跳序列号，每次发送心跳递增 */
-    // --- 双端口配置 ---
-    uint16_t  m_clientPort = 9005;   /**< 外网端口：客户端通过公网连接此端口进行登录和游戏数据交互 */
-    uint16_t  m_innerPort  = 19005;  /**< 内网端口：内部服务器（SceneServer 等）通过内网连接此端口发送下行消息 */
+    uint16_t  m_clientPort = 9005;   /**< 客户端监听端口 */
     ServerEntry m_self;              /**< 本进程在 ServerList 中的拓扑条目（注册上报用） */
     ExternalServerHub m_externHub;   /**< 外联 Logger */
     // --- 客户端管理 ---

@@ -3,18 +3,14 @@
  * @brief   网关服务器启动入口
  *
  * GatewayServer 是客户端与服务器集群之间的通信桥梁，负责客户端连接管理、
- * 协议转发、消息路由等。同时监听客户端端口和内部服务端口。
+ * 协议转发、消息路由等。
  *
  * 启动流程：
  *   1. 忽略 SIGPIPE 信号
  *   2. 通过 ConfigLoader 加载 XML 配置（默认 config/config.xml）
  *   3. 初始化日志（默认 logs/gateway.log）
- *   4. 创建 GatewayServer 实例，分别绑定客户端端口和内部端口
+ *   4. 创建 GatewayServer 实例，绑定客户端端口并出站连接区内服
  *   5. 进入 Run() 主循环
- *
- * 监听端口:
- *   - clientPort（外网）: gatewayPort（配置文件指定）
- *   - innerPort（内网）: gatewayPort + 10000
  */
 
 #include "GatewayServer.h"
@@ -47,11 +43,10 @@ int main(int argc, char* argv[])
 
     auto* server = GatewayServer::Instance();
     uint16_t clientPort = self->port;
-    uint16_t innerPort  = (uint16_t)(self->port + 10000);
     LoginServerList loginList;
     ServerBootstrap::loadLoginServerList(argc, argv, loginList);
 
-    if (!server->Init(clientPort, innerPort, cfg, list, selfId)) return 1;
+    if (!server->Init(clientPort, cfg, list, selfId)) return 1;
     server->setupExternalClients(loginList);
     server->Run();
     return 0;

@@ -167,7 +167,7 @@ set(RECORD_SERVER_LIBS ${MYSQL_LIB} ${MYSQL_EXTRA_LIBS})
 # 通过 TCP Socket 相互通信形成分布式集群
 # -------------------------------------------------------
 add_server(SuperServer    "${RECORD_SERVER_LIBS}")     # SuperServer：中心路由服务器；启动期只读 MySQL 加载 ServerList 拓扑
-add_server(SessionServer  "${RECORD_SERVER_LIBS}")     # SessionServer 直连 MySQL t_relation
+add_server(SessionServer  "")                          # SessionServer：Relation 经 RecordServer
 add_server(RecordServer   "${RECORD_SERVER_LIBS}")     # RecordServer：数据记录服务器，唯一连接MySQL的节点，代理所有DB操作
 add_server(AOIServer      "")                          # AOIServer：兴趣范围（Area Of Interest）服务器，9宫格算法管理视野
 add_server(SceneServer    "${LUA_LIBRARIES}")          # SceneServer：场景逻辑服务器，Lua脚本驱动战斗/NPC/任务等游戏玩法

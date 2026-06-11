@@ -9,7 +9,7 @@
 #include <cstring>
 
 AOIServer::AOIServer()
-    : m_server(this), m_superClient(this), m_sessionClient(this)
+    : m_server(this), m_superClient(this)
 {
 }
 
@@ -21,8 +21,6 @@ bool AOIServer::Init(const std::string& ip, uint16_t port,
         m_self = *self;
     if (!m_server.Start(ip, port)) { LOG_FATAL("AOIServer start failed"); return false; }
     m_superClient.Connect(cfg.superIP, (uint16_t)cfg.superPort);
-    if (const ServerEntry* ses = list.findFirst(SubServerType::SESSION))
-        m_sessionClient.Connect(ses->ip, ses->port);
     RegisterHandlers();
     TimerMgr::Instance().Register(500,   0,     [this]{ RegisterToSuper(); });
     TimerMgr::Instance().Register(10000, 10000, [this]{ SendHeartbeat(); });
@@ -35,7 +33,6 @@ void AOIServer::Run()
     while (true)
     {
         m_superClient.Poll(0);
-        m_sessionClient.Poll(0);
         m_server.Poll(10);
         ServerBootstrap::tickGameZoneExtern(m_externHub);
         TimerMgr::Instance().Update();

@@ -8,20 +8,20 @@
 #include "SessionUserManager.h"
 #include "SessionSceneManager.h"
 
+namespace {
+
+constexpr uint64_t RELATION_SYNC_TIMEOUT_MS = 30000;
+
+} // namespace
+
 SessionServer::SessionServer()
     : m_server(this)
     , m_superClient(this)
-    , m_db(nullptr)
+    , m_recordClient(this)
 {
 }
 
-SessionServer::~SessionServer()
-{
-    if (m_db)
-    {
-        mysql_close(m_db);
-    }
-}
+SessionServer::~SessionServer() = default;
 
 bool SessionServer::Init(const std::string& ip, uint16_t port,
                          const ServerConfig& cfg, const ServerList& list, uint32_t selfId)
@@ -36,28 +36,42 @@ bool SessionServer::Init(const std::string& ip, uint16_t port,
         return false;
     }
     if (!m_superClient.Connect(cfg.superIP, (uint16_t)cfg.superPort))
-    {
         LOG_WARN("Cannot connect to SuperServer");
-    }
 
-    if (!InitDB(cfg))
+    const ServerEntry* rec = list.findFirst(SubServerType::RECORD);
+    if (!rec)
     {
-        LOG_FATAL("DB init failed");
+        LOG_FATAL("ServerList missing RECORD entry");
         return false;
     }
-
-    if (!SessionUserManager::Instance().init(m_db))
+    if (!m_recordClient.Connect(rec->ip, rec->port))
     {
-        LOG_FATAL("SessionUserManager init failed");
+        LOG_FATAL("Cannot connect to RecordServer at %s:%u", rec->ip.c_str(), rec->port);
         return false;
     }
 
     RegisterHandlers();
 
+    const uint64_t connectDeadline = TimerMgr::NowMs() + 5000;
+    while (!m_recordClient.IsConnected() && TimerMgr::NowMs() < connectDeadline)
+        pollForRelationSync();
+
+    if (!m_recordClient.IsConnected())
+    {
+        LOG_FATAL("RecordServer connection not ready (start Record before Session)");
+        return false;
+    }
+
+    if (!preloadRelations())
+    {
+        LOG_FATAL("Relation preload from RecordServer failed");
+        return false;
+    }
+
     TimerMgr::Instance().Register(500, 0, [this] { RegisterToSuper(); });
     TimerMgr::Instance().Register(10000, 10000, [this] { SendHeartbeat(); });
     TimerMgr::Instance().Register(60000, 60000, [this] { AutoSaveAll(); });
-    LOG_INFO("SessionServer started (MySQL + SceneManager).");
+    LOG_INFO("SessionServer started (Record + SceneManager).");
     return true;
 }
 
@@ -66,6 +80,7 @@ void SessionServer::Run()
     while (true)
     {
         m_superClient.Poll(0);
+        m_recordClient.Poll(0);
         m_server.Poll(10);
         ServerBootstrap::tickGameZoneExtern(m_externHub);
         TimerMgr::Instance().Update();
@@ -93,30 +108,68 @@ void SessionServer::OnMessage(ConnID id, uint8_t module, uint8_t sub, const char
     MsgDispatcher::Instance().Dispatch(id, module, sub, data, len);
 }
 
-bool SessionServer::InitDB(const ServerConfig& cfg)
+void SessionServer::pollForRelationSync()
 {
-    m_db = mysql_init(nullptr);
-    if (!m_db)
+    m_recordClient.Poll(10);
+    m_superClient.Poll(0);
+    m_server.Poll(0);
+}
+
+bool SessionServer::preloadRelations()
+{
+    m_relationPreloadDone = false;
+    m_relationPreloadOk   = false;
+
+    Msg_REC_RelationPreloadReq req{};
+    if (!m_recordClient.SendMsg((uint16_t)InternalMsgID::REC_RELATION_PRELOAD_REQ,
+                                reinterpret_cast<char*>(&req), sizeof(req)))
     {
+        LOG_ERR("Failed to send REC_RELATION_PRELOAD_REQ");
         return false;
     }
 
-    if (!mysql_real_connect(m_db, cfg.dbHost.c_str(), cfg.dbUser.c_str(), cfg.dbPass.c_str(),
-                            cfg.dbName.c_str(), (unsigned int)cfg.dbPort, nullptr, 0))
-    {
-        LOG_ERR("MySQL connect failed: %s", mysql_error(m_db));
+    const uint64_t deadline = TimerMgr::NowMs() + RELATION_SYNC_TIMEOUT_MS;
+    while (!m_relationPreloadDone && TimerMgr::NowMs() < deadline)
+        pollForRelationSync();
+
+    return m_relationPreloadDone && m_relationPreloadOk;
+}
+
+bool SessionServer::loadRelationSync(UserID userID, RelationRowData& out)
+{
+    m_relationLoadDone = false;
+    m_relationLoadOk   = false;
+
+    if (!m_recordClient.SendMsg((uint16_t)InternalMsgID::REC_RELATION_LOAD_REQ,
+                                reinterpret_cast<const char*>(&userID), sizeof(userID)))
         return false;
-    }
-    mysql_set_character_set(m_db, "utf8mb4");
-    LOG_INFO("SessionServer MySQL connected: %s:%d/%s",
-             cfg.dbHost.c_str(), cfg.dbPort, cfg.dbName.c_str());
+
+    const uint64_t deadline = TimerMgr::NowMs() + RELATION_SYNC_TIMEOUT_MS;
+    while (!m_relationLoadDone && TimerMgr::NowMs() < deadline)
+        pollForRelationSync();
+
+    if (!m_relationLoadOk)
+        return false;
+    out = m_relationLoadRow;
     return true;
+}
+
+bool SessionServer::saveRelation(const RelationRowData& row)
+{
+    std::vector<char> buf;
+    RelationWireUtil::appendRow(row, buf);
+    return m_recordClient.SendMsg((uint16_t)InternalMsgID::REC_RELATION_SAVE_REQ,
+                                  buf.data(), static_cast<uint16_t>(buf.size()));
 }
 
 void SessionServer::RegisterHandlers()
 {
     auto& d = MsgDispatcher::Instance();
     d.Register((uint16_t)InternalMsgID::S2S_HEARTBEAT_ACK, [](uint32_t, const char*, uint16_t) {});
+    d.Register((uint16_t)InternalMsgID::REC_RELATION_PRELOAD_RSP,
+               [this](uint32_t c, const char* d, uint16_t l) { OnRelationPreloadRsp(c, d, l); });
+    d.Register((uint16_t)InternalMsgID::REC_RELATION_LOAD_RSP,
+               [this](uint32_t c, const char* d, uint16_t l) { OnRelationLoadRsp(c, d, l); });
     d.Register((uint16_t)InternalMsgID::SES_LOAD_USER_REQ,
                [this](uint32_t c, const char* d, uint16_t l) { OnLoadUserReq(c, d, l); });
     d.Register((uint16_t)InternalMsgID::SES_SAVE_USER_REQ,
@@ -133,38 +186,93 @@ void SessionServer::RegisterHandlers()
                [this](uint32_t c, const char* d, uint16_t l) { OnGatewayClientMsg(c, d, l); });
 }
 
+void SessionServer::OnRelationPreloadRsp(ConnID /*fromConn*/, const char* data, uint16_t len)
+{
+    if (len < sizeof(Msg_REC_RelationPreloadRsp))
+    {
+        m_relationPreloadOk   = false;
+        m_relationPreloadDone = true;
+        return;
+    }
+    const auto* hdr = reinterpret_cast<const Msg_REC_RelationPreloadRsp*>(data);
+    if (hdr->code != 0)
+    {
+        LOG_ERR("Relation preload rsp code=%d", hdr->code);
+        m_relationPreloadOk   = false;
+        m_relationPreloadDone = true;
+        return;
+    }
+
+    std::vector<RelationRowData> rows;
+    if (!RelationWireUtil::parseAllRows(data, len, sizeof(Msg_REC_RelationPreloadRsp), rows))
+    {
+        LOG_ERR("Relation preload rsp parse failed");
+        m_relationPreloadOk   = false;
+        m_relationPreloadDone = true;
+        return;
+    }
+
+    SessionUserManager::Instance().applyPreloadRows(rows);
+    m_relationPreloadOk   = true;
+    m_relationPreloadDone = true;
+}
+
+void SessionServer::OnRelationLoadRsp(ConnID /*fromConn*/, const char* data, uint16_t len)
+{
+    if (len < sizeof(Msg_REC_RelationLoadRsp))
+    {
+        m_relationLoadOk   = false;
+        m_relationLoadDone = true;
+        return;
+    }
+    const auto* hdr = reinterpret_cast<const Msg_REC_RelationLoadRsp*>(data);
+    if (hdr->code != 0)
+    {
+        m_relationLoadOk   = false;
+        m_relationLoadDone = true;
+        return;
+    }
+
+    std::vector<RelationRowData> rows;
+    if (!RelationWireUtil::parseAllRows(data, len, sizeof(Msg_REC_RelationLoadRsp), rows)
+        || rows.empty())
+    {
+        m_relationLoadOk   = false;
+        m_relationLoadDone = true;
+        return;
+    }
+
+    m_relationLoadRow  = rows[0];
+    m_relationLoadOk   = true;
+    m_relationLoadDone = true;
+}
+
 void SessionServer::OnGatewayClientMsg(ConnID /*fromConn*/, const char* data, uint16_t len)
 {
     if (len < sizeof(Msg_GW_ClientMsg))
-    {
         return;
-    }
     const auto* hdr = reinterpret_cast<const Msg_GW_ClientMsg*>(data);
     const char* body = data + sizeof(Msg_GW_ClientMsg);
     if (len < sizeof(Msg_GW_ClientMsg) + hdr->dataLen)
-    {
         return;
-    }
 
     LOG_INFO("GatewayClientMsg: conn=%u mod=0x%02X sub=0x%02X len=%u",
              hdr->clientConnID, hdr->module, hdr->sub, hdr->dataLen);
 
     if (hdr->module == static_cast<uint8_t>(ClientModule::SOCIAL))
-    {
         handleSocialClientMsg(hdr->clientConnID, hdr->sub, body, hdr->dataLen);
-    }
     else if (hdr->module == static_cast<uint8_t>(ClientModule::QUEST))
-    {
         handleQuestClientMsg(hdr->clientConnID, hdr->sub, body, hdr->dataLen);
-    }
 }
 
-void SessionServer::handleSocialClientMsg(uint32_t clientConnId, uint8_t sub, const char* /*data*/, uint16_t len)
+void SessionServer::handleSocialClientMsg(uint32_t clientConnId, uint8_t sub,
+                                          const char* /*data*/, uint16_t len)
 {
     LOG_DEBUG("SocialClientMsg: conn=%u sub=0x%02X len=%u", clientConnId, sub, len);
 }
 
-void SessionServer::handleQuestClientMsg(uint32_t clientConnId, uint8_t sub, const char* /*data*/, uint16_t len)
+void SessionServer::handleQuestClientMsg(uint32_t clientConnId, uint8_t sub,
+                                       const char* /*data*/, uint16_t len)
 {
     LOG_DEBUG("QuestClientMsg: conn=%u sub=0x%02X len=%u", clientConnId, sub, len);
 }
@@ -193,13 +301,11 @@ void SessionServer::SendHeartbeat()
 void SessionServer::OnLoadUserReq(ConnID fromConn, const char* data, uint16_t len)
 {
     if (len < sizeof(UserID))
-    {
         return;
-    }
     UserID uid = *reinterpret_cast<const UserID*>(data);
 
     auto user = SessionUserManager::Instance().getOrCreateUser(uid);
-    user->load(m_db);
+    user->load(*this);
     user->onOnline();
 
     m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::SES_LOAD_USER_RSP, data, len);
@@ -208,16 +314,12 @@ void SessionServer::OnLoadUserReq(ConnID fromConn, const char* data, uint16_t le
 void SessionServer::OnSaveUserReq(ConnID /*fromConn*/, const char* data, uint16_t len)
 {
     if (len < sizeof(UserID))
-    {
         return;
-    }
     UserID uid = *reinterpret_cast<const UserID*>(data);
     auto user = SessionUserManager::Instance().findUser(uid);
     if (!user)
-    {
         user = SessionUserManager::Instance().getOrCreateUser(uid);
-    }
-    user->save(m_db);
+    user->save(*this);
 }
 
 void SessionServer::OnFriendUpdate(ConnID /*fromConn*/, const char* /*data*/, uint16_t len)
@@ -228,9 +330,7 @@ void SessionServer::OnFriendUpdate(ConnID /*fromConn*/, const char* /*data*/, ui
 void SessionServer::OnSceneRegisterReq(ConnID fromConn, const char* data, uint16_t len)
 {
     if (len < sizeof(Msg_SES_SceneRegisterReq))
-    {
         return;
-    }
     const auto* req = reinterpret_cast<const Msg_SES_SceneRegisterReq*>(data);
 
     SessionSceneManager::Instance().registerScene(fromConn, *req);
@@ -245,9 +345,7 @@ void SessionServer::OnSceneRegisterReq(ConnID fromConn, const char* data, uint16
 void SessionServer::OnSceneUnregister(ConnID /*fromConn*/, const char* data, uint16_t len)
 {
     if (len < sizeof(Msg_SES_SceneUnregister))
-    {
         return;
-    }
     const auto* req = reinterpret_cast<const Msg_SES_SceneUnregister*>(data);
     SessionSceneManager::Instance().unregisterScene(req->sceneInstanceId, req->sceneServerId);
 }
@@ -255,9 +353,7 @@ void SessionServer::OnSceneUnregister(ConnID /*fromConn*/, const char* data, uin
 void SessionServer::OnCopyCreateReq(ConnID fromConn, const char* data, uint16_t len)
 {
     if (len < sizeof(Msg_SES_CopyCreateReq))
-    {
         return;
-    }
     const auto* req = reinterpret_cast<const Msg_SES_CopyCreateReq*>(data);
 
     SessionSceneManager::Instance().bindSceneServer(fromConn, req->reqSceneServerId);
@@ -266,7 +362,8 @@ void SessionServer::OnCopyCreateReq(ConnID fromConn, const char* data, uint16_t 
     rsp.code = 0;
 
     const CopyType copyType = static_cast<CopyType>(req->copyType);
-    SessionCopyScene* existing = SessionSceneManager::Instance().findReusableCopy(copyType, req->mapId, req->ownerId);
+    SessionCopyScene* existing =
+        SessionSceneManager::Instance().findReusableCopy(copyType, req->mapId, req->ownerId);
 
     if (existing)
     {
@@ -284,9 +381,7 @@ void SessionServer::OnCopyCreateReq(ConnID fromConn, const char* data, uint16_t 
     {
         uint32_t targetId = SessionSceneManager::Instance().pickSceneServerId();
         if (targetId == 0)
-        {
             targetId = req->reqSceneServerId;
-        }
 
         const uint64_t copyId = SessionSceneManager::Instance().generateCopyInstanceId();
         SessionSceneManager::Instance().createCopyRecord(targetId, copyId, *req);
@@ -332,8 +427,6 @@ void SessionServer::AutoSaveAll()
     SessionUserManager::Instance().forEach([this](UserID uid, const std::shared_ptr<SessionUser>& user) {
         (void)uid;
         if (user->needSave())
-        {
-            user->save(m_db);
-        }
+            user->save(*this);
     });
 }

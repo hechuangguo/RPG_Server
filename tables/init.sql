@@ -45,9 +45,9 @@ CREATE TABLE IF NOT EXISTS CharBase (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- -----------------------------------------------------------
--- 表：Relation（社会关系 —— SessionServer 直连读写）
+-- 表：Relation（社会关系 —— RecordServer 读写，Session 经 REC_RELATION_* 访问）
 -- 设计意图：好友/黑名单/公会/队伍；friends_json/blacklist_json 存 ID 列表；
---           binary 存社交扩展二进制（申请列表、缓存等，由 SessionServer 序列化）。
+--           binary 存社交扩展二进制（申请列表、缓存等，由 SessionServer 序列化后经 Record 落库）。
 -- -----------------------------------------------------------
 CREATE TABLE IF NOT EXISTS Relation (
     user_id         INT UNSIGNED PRIMARY KEY COMMENT '用户ID',

@@ -9,7 +9,6 @@
 RecordServer::RecordServer()
     : m_server(this)
     , m_superClient(this)
-    , m_sessionClient(this)
     , m_db(nullptr)
 {
 }
@@ -41,8 +40,6 @@ bool RecordServer::Init(const std::string& ip, uint16_t port,
     }
 
     m_superClient.Connect(cfg.superIP, (uint16_t)cfg.superPort);
-    if (const ServerEntry* ses = list.findFirst(SubServerType::SESSION))
-        m_sessionClient.Connect(ses->ip, ses->port);
 
     RegisterHandlers();
 
@@ -59,7 +56,6 @@ void RecordServer::Run()
     while (true)
     {
         m_superClient.Poll(0);
-        m_sessionClient.Poll(0);
         m_server.Poll(10);
         ServerBootstrap::tickGameZoneExtern(m_externHub);
         TimerMgr::Instance().Update();
@@ -113,6 +109,12 @@ void RecordServer::RegisterHandlers()
                [this](uint32_t c, const char* d, uint16_t l) { OnLoadUser(c, d, l); });
     d.Register((uint16_t)InternalMsgID::REC_SAVE_USER_REQ,
                [this](uint32_t c, const char* d, uint16_t l) { OnSaveUser(c, d, l); });
+    d.Register((uint16_t)InternalMsgID::REC_RELATION_PRELOAD_REQ,
+               [this](uint32_t c, const char* d, uint16_t l) { OnRelationPreloadReq(c, d, l); });
+    d.Register((uint16_t)InternalMsgID::REC_RELATION_LOAD_REQ,
+               [this](uint32_t c, const char* d, uint16_t l) { OnRelationLoadReq(c, d, l); });
+    d.Register((uint16_t)InternalMsgID::REC_RELATION_SAVE_REQ,
+               [this](uint32_t c, const char* d, uint16_t l) { OnRelationSaveReq(c, d, l); });
 }
 
 void RecordServer::RegisterToSuper()
@@ -287,6 +289,62 @@ void RecordServer::OnSaveUser(ConnID fromConn, const char* data, uint16_t len)
     rsp.code = 0;
     rsp.userID = rid;
     m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::REC_SAVE_USER_RSP,
+                     reinterpret_cast<char*>(&rsp), sizeof(rsp));
+}
+
+void RecordServer::OnRelationPreloadReq(ConnID fromConn, const char* /*data*/, uint16_t /*len*/)
+{
+    RelationStore store(m_db);
+    std::vector<RelationRow> rows;
+    std::vector<char> buf;
+    if (!store.preloadAll(rows))
+    {
+        RelationStore::encodePreloadRsp(-1, rows, buf);
+    }
+    else
+    {
+        RelationStore::encodePreloadRsp(0, rows, buf);
+        LOG_INFO("RelationPreload: %zu row(s) to Session", rows.size());
+    }
+    m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::REC_RELATION_PRELOAD_RSP,
+                     buf.data(), static_cast<uint16_t>(buf.size()));
+}
+
+void RecordServer::OnRelationLoadReq(ConnID fromConn, const char* data, uint16_t len)
+{
+    if (len < sizeof(UserID))
+        return;
+
+    const UserID uid = *reinterpret_cast<const UserID*>(data);
+    RelationStore store(m_db);
+    RelationRow row;
+    std::vector<char> buf;
+    if (!store.loadOne(uid, row))
+        RelationStore::encodeLoadRsp(-1, uid, nullptr, buf);
+    else
+        RelationStore::encodeLoadRsp(0, uid, &row, buf);
+
+    m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::REC_RELATION_LOAD_RSP,
+                     buf.data(), static_cast<uint16_t>(buf.size()));
+}
+
+void RecordServer::OnRelationSaveReq(ConnID fromConn, const char* data, uint16_t len)
+{
+    RelationStore store(m_db);
+    RelationRow row;
+    Msg_REC_RelationSaveRsp rsp{};
+    rsp.userID = row.userID;
+    if (!RelationStore::decodeSaveReq(data, len, row))
+    {
+        rsp.code = -1;
+        m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::REC_RELATION_SAVE_RSP,
+                         reinterpret_cast<char*>(&rsp), sizeof(rsp));
+        return;
+    }
+
+    rsp.userID = row.userID;
+    rsp.code = store.saveOne(row) ? 0 : -1;
+    m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::REC_RELATION_SAVE_RSP,
                      reinterpret_cast<char*>(&rsp), sizeof(rsp));
 }
 

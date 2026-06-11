@@ -1,6 +1,10 @@
 /**
  * @file    SessionServer.h
  * @brief  会话服务器 —— 社会关系 + 全区场景/副本管理
+ *
+ * ## 依赖关系
+ * - 出站：SuperServer / RecordServer（Relation）/ 外联 Zone 等
+ * - 入站：GatewayServer / SceneServer
  */
 
 #pragma once
@@ -12,13 +16,13 @@
 #include "../sdk/util/ServerList.h"
 #include "../sdk/util/ExternalServerHub.h"
 #include "../sdk/util/LoginServerList.h"
+#include "../sdk/util/RelationWireUtil.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
 #include "../protocal/InternalMsg.h"
 #include "../common/ClientMsg.h"
 #include "../sdk/net/MsgId.h"
 #include "SessionUser.h"
-#include <mysql/mysql.h>
 #include <string>
 
 /**
@@ -30,14 +34,14 @@ public:
     /** @brief 构造 SessionServer，准备网络与状态容器 */
     SessionServer();
 
-    /** @brief 析构 SessionServer，释放 DB 连接等资源 */
+    /** @brief 析构 SessionServer */
     ~SessionServer();
 
     /**
-     * @brief 初始化网络、MySQL、Relation 预载与消息处理器
+     * @brief 初始化网络、Record 预载与消息处理器
      * @param ip     监听 IP
      * @param port   监听端口（取自 ServerList 自身条目）
-     * @param cfg    服务器与数据库配置（含 SuperServer 地址）
+     * @param cfg    服务器配置（含 SuperServer 地址）
      * @param list   集群拓扑（用于自身登记信息）
      * @param selfId 本进程实例编号
      */
@@ -64,10 +68,25 @@ public:
     void OnMessage(ConnID id, uint8_t module, uint8_t sub,
                    const char* data, uint16_t len) override;
 
-private:
-    /** @brief 初始化 MySQL 连接（Session 专用存档） */
-    bool InitDB(const ServerConfig& cfg);
+    /**
+     * @brief 同步从 Record 加载单用户 Relation（启动期/OnLoadUserReq）
+     * @param userID 用户 ID
+     * @param out    输出行
+     * @return 成功 true
+     */
+    bool loadRelationSync(UserID userID, RelationRowData& out);
 
+    /**
+     * @brief 向 Record 发送 Relation 保存（异步，不等待响应）
+     * @param row 待保存行
+     * @return 发送成功 true
+     */
+    bool saveRelation(const RelationRowData& row);
+
+    /** @brief Init 阶段短循环 poll（仅启动预载/同步加载用） */
+    void pollForRelationSync();
+
+private:
     /** @brief 注册 Session 服间消息处理器 */
     void RegisterHandlers();
 
@@ -90,6 +109,15 @@ private:
     /** @brief 定时向 SuperServer 发送心跳 */
     void SendHeartbeat();
 
+    /** @brief 启动期经 Record 预载 Relation */
+    bool preloadRelations();
+
+    /** @brief Record 预载响应 */
+    void OnRelationPreloadRsp(ConnID fromConn, const char* data, uint16_t len);
+
+    /** @brief Record 单用户加载响应 */
+    void OnRelationLoadRsp(ConnID fromConn, const char* data, uint16_t len);
+
     /** @brief 处理加载用户请求（供登录/切图流程读取 Session 数据） */
     void OnLoadUserReq(ConnID fromConn, const char* data, uint16_t len);
 
@@ -110,10 +138,16 @@ private:
 
     /** @brief 自动保存在线用户的 Session 数据 */
     void AutoSaveAll();
-    TcpServer             m_server;       /**< Session 对内监听 */
-    TcpClient             m_superClient;  /**< 到 SuperServer 的控制连接 */
-    MYSQL*                m_db;           /**< Session 服 DB 句柄 */
+
+    TcpServer             m_server;       /**< 入站：Gateway / Scene */
+    TcpClient             m_superClient;  /**< 出站 SuperServer */
+    TcpClient             m_recordClient; /**< 出站 RecordServer（Relation） */
     uint32_t              m_hbSeq = 0;    /**< 心跳序列号 */
     ServerEntry           m_self;         /**< 本进程在 ServerList 中的拓扑条目（注册上报用） */
     ExternalServerHub     m_externHub;    /**< 外联 Logger / Zone */
+    bool                  m_relationPreloadDone = false; /**< 启动预载是否完成 */
+    bool                  m_relationPreloadOk   = false; /**< 启动预载是否成功 */
+    bool                  m_relationLoadDone = false;    /**< 同步单用户加载完成 */
+    bool                  m_relationLoadOk   = false;    /**< 同步单用户加载成功 */
+    RelationRowData       m_relationLoadRow;             /**< 同步加载结果缓存 */
 };

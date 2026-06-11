@@ -16,7 +16,6 @@ SceneServer::SceneServer()
     , m_sessionClient(this)
     , m_recordClient(this)
     , m_aoiClient(this)
-    , m_gatewayClient(this)
     , m_sceneID(0)
 {
 }
@@ -40,9 +39,6 @@ bool SceneServer::Init(const std::string& ip, uint16_t port,
         m_recordClient.Connect(rec->ip, rec->port);
     if (const ServerEntry* aoi = list.findFirst(SubServerType::AOI))
         m_aoiClient.Connect(aoi->ip, aoi->port);
-    // Gateway 内网口约定：在 ServerList 登记的 gateway 端口基础上 +10000
-    if (const ServerEntry* gw = list.findFirst(SubServerType::GATEWAY))
-        m_gatewayClient.Connect(gw->ip, (uint16_t)(gw->port + 10000));
     m_listenPort = port;
 
     SceneManager::Instance().setStartedCallback([this](Scene& scene) { onSceneStarted(scene); });
@@ -73,7 +69,6 @@ void SceneServer::Run()
         m_sessionClient.Poll(0);
         m_recordClient.Poll(0);
         m_aoiClient.Poll(0);
-        m_gatewayClient.Poll(0);
         m_server.Poll(10);
         ServerBootstrap::tickGameZoneExtern(m_externHub);
         TimerMgr::Instance().Update();
@@ -97,9 +92,19 @@ void SceneServer::requestCreateCopy(CopyType copyType, uint32_t mapId, uint64_t 
     LOG_INFO("CopyCreateReq sent: type=%u map=%u owner=%llu", req.copyType, mapId, ownerId);
 }
 
-void SceneServer::OnConnect(ConnID /*id*/) {}
+void SceneServer::OnConnect(ConnID id)
+{
+    if (m_gatewayInboundConn == INVALID_CONN_ID)
+        m_gatewayInboundConn = id;
+    LOG_INFO("SceneServer inbound conn=%u (gateway=%u)", id, m_gatewayInboundConn);
+}
 
-void SceneServer::OnDisconnect(ConnID id) { LOG_WARN("SceneServer conn lost=%u", id); }
+void SceneServer::OnDisconnect(ConnID id)
+{
+    if (id == m_gatewayInboundConn)
+        m_gatewayInboundConn = INVALID_CONN_ID;
+    LOG_WARN("SceneServer conn lost=%u", id);
+}
 
 void SceneServer::OnMessage(ConnID id, uint8_t module, uint8_t sub,
                             const char* data, uint16_t len)
@@ -466,8 +471,14 @@ void SceneServer::SendToClient(uint32_t clientConnID, uint8_t module, uint8_t su
     hdr->dataLen = len;
     if (len > 0)
         memcpy(buf.data() + sizeof(Msg_GW_SendToClient), data, len);
-    m_gatewayClient.SendMsg(static_cast<uint16_t>(InternalMsgID::GW_SEND_TO_CLIENT),
-                            buf.data(), static_cast<uint16_t>(buf.size()));
+    if (m_gatewayInboundConn == INVALID_CONN_ID)
+    {
+        LOG_WARN("SendToClient: no Gateway inbound conn clientConn=%u", clientConnID);
+        return;
+    }
+    m_server.SendMsg(m_gatewayInboundConn,
+                     static_cast<uint16_t>(InternalMsgID::GW_SEND_TO_CLIENT),
+                     buf.data(), static_cast<uint16_t>(buf.size()));
 }
 
 void SceneServer::SendToClient(uint32_t clientConnID, uint16_t flatMsgId,

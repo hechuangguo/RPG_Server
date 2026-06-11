@@ -9,8 +9,8 @@
  * - 处理踢人请求（通知 GatewayServer 断开客户端）
  *
  * ## 依赖关系
- * - 不依赖任何其他服务器（最先启动）
- * - 被所有其他服务器依赖（通过 TcpClient 连接注册）
+ * - 自举：读 MySQL ServerList；出站 loginserverlist.xml 外联（Logger/Global/Zone）
+ * - 入站：区内子进程注册（Gateway/Session/Record/AOI/Scene）
  *
  * ## 架构位置
  * @code

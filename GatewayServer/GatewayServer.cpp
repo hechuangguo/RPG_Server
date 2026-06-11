@@ -10,29 +10,47 @@
 #include <cstring>
 #include <vector>
 
+namespace {
+
+/** @brief 区内服出站 TcpClient 回调：仅派发消息，不创建客户端会话 */
+class GatewayUpstreamCallback : public INetCallback
+{
+public:
+    void OnConnect(ConnID) override {}
+
+    void OnDisconnect(ConnID) override {}
+
+    void OnMessage(ConnID id, uint8_t module, uint8_t sub,
+                   const char* data, uint16_t len) override
+    {
+        MsgDispatcher::Instance().Dispatch(id, module, sub, data, len);
+    }
+};
+
+GatewayUpstreamCallback g_upstreamCb;
+
+} // namespace
+
 GatewayServer::GatewayServer()
     : m_clientServer(this)
-    , m_innerServer(this)
-    , m_superClient(this)
-    , m_recordClient(this)
-    , m_sceneClient(this)
-    , m_sessionClient(this)
+    , m_superClient(&g_upstreamCb)
+    , m_recordClient(&g_upstreamCb)
+    , m_sceneClient(&g_upstreamCb)
+    , m_sessionClient(&g_upstreamCb)
 {
 }
 
-bool GatewayServer::Init(uint16_t clientPort, uint16_t innerPort,
+bool GatewayServer::Init(uint16_t clientPort,
                          const ServerConfig& cfg, const ServerList& list, uint32_t selfId)
 {
     Logger::Instance().SetServerName("GatewayServer");
-    LOG_INFO("GatewayServer starting: clientPort=%d innerPort=%d", clientPort, innerPort);
+    LOG_INFO("GatewayServer starting: clientPort=%d", clientPort);
 
     if (const ServerEntry* self = list.find(SubServerType::GATEWAY, selfId))
         m_self = *self;
 
     if (!m_clientServer.Start("0.0.0.0", clientPort))
     { LOG_FATAL("Client listen failed"); return false; }
-    if (!m_innerServer.Start("0.0.0.0", innerPort))
-    { LOG_FATAL("Inner listen failed"); return false; }
 
     m_superClient.Connect(cfg.superIP, (uint16_t)cfg.superPort);
     if (const ServerEntry* rec = list.findFirst(SubServerType::RECORD))
@@ -43,7 +61,6 @@ bool GatewayServer::Init(uint16_t clientPort, uint16_t innerPort,
         m_sessionClient.Connect(ses->ip, ses->port);
 
     m_clientPort = clientPort;
-    m_innerPort  = innerPort;
 
     RegisterHandlers();
     TimerMgr::Instance().Register(500,   0,     [this]{ RegisterToSuper(); });
@@ -63,7 +80,6 @@ void GatewayServer::Run()
         m_sceneClient.Poll(0);
         m_sessionClient.Poll(0);
         m_clientServer.Poll(5);
-        m_innerServer.Poll(5);
         ServerBootstrap::tickGameZoneExtern(m_externHub);
         TimerMgr::Instance().Update();
     }
@@ -71,15 +87,8 @@ void GatewayServer::Run()
 
 void GatewayServer::OnConnect(ConnID id)
 {
-    if (id < 100000)
-    {
-        m_userManager.addUser(id);
-        LOG_INFO("Client connected: connID=%u", id);
-    }
-    else
-    {
-        LOG_INFO("InnerServer connected: connID=%u", id);
-    }
+    m_userManager.addUser(id);
+    LOG_INFO("Client connected: connID=%u", id);
 }
 
 void GatewayServer::OnDisconnect(ConnID id)

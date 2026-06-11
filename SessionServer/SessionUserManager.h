@@ -11,7 +11,7 @@
 #include <memory>
 #include <unordered_map>
 #include <vector>
-#include <mysql/mysql.h>
+#include "../sdk/util/RelationWireUtil.h"
 
 /**
  * @brief 离线消息（目标用户不在线时暂存）
@@ -34,8 +34,8 @@ public:
     /** @brief 获取全局唯一实例 */
     static SessionUserManager& Instance() { return LazySingleton<SessionUserManager>::Instance(); }
 
-    /** @brief 启动时从 Relation 表全量预载到内存 */
-    bool init(MYSQL* db);
+    /** @brief 启动时应用 Record 预载的 Relation 行到内存缓存 */
+    void applyPreloadRows(const std::vector<RelationRowData>& rows);
 
     /** @brief 按 userId 查找缓存用户 */
     std::shared_ptr<SessionUser> findUser(UserID userId) const;

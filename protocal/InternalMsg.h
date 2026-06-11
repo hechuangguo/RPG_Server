@@ -11,7 +11,7 @@
  * | 0x1F01 ~ 0x1F04    | 注册/心跳（所有服务器共用） |
  * | 0x1001 ~ 0x1003    | SuperServer   |
  * | 0x1101 ~ 0x1105    | SessionServer |
- * | 0x1201 ~ 0x1206    | RecordServer  |
+ * | 0x1201 ~ 0x1212    | RecordServer  |
  * | 0x1301 ~ 0x1306    | SceneServer   |
  * | 0x1401 ~ 0x1405    | GatewayServer |
  * | 0x1501 ~ 0x1504    | AOIServer     |
@@ -99,6 +99,12 @@ enum class InternalMsgID : uint16_t
     REC_SAVE_USER_RSP    = 0x1204,  /**< 保存结果响应 */
     REC_LOGIN_VERIFY_REQ = 0x1205,  /**< 账号密码验证请求 */
     REC_LOGIN_VERIFY_RSP = 0x1206,  /**< 验证结果响应 */
+    REC_RELATION_PRELOAD_REQ = 0x1207, /**< SessionServer → RecordServer: 启动预载 Relation 全表 */
+    REC_RELATION_PRELOAD_RSP = 0x1208, /**< RecordServer → SessionServer: 预载响应（变长多行） */
+    REC_RELATION_LOAD_REQ    = 0x1209, /**< SessionServer → RecordServer: 单用户 Relation 加载 */
+    REC_RELATION_LOAD_RSP    = 0x120A, /**< RecordServer → SessionServer: 单用户 Relation 响应 */
+    REC_RELATION_SAVE_REQ    = 0x120B, /**< SessionServer → RecordServer: 保存 Relation 行 */
+    REC_RELATION_SAVE_RSP    = 0x120C, /**< RecordServer → SessionServer: 保存结果 */
 
     // ============================================================
     //  SceneServer (0x1301 ~ 0x1306)
@@ -320,6 +326,64 @@ struct Msg_REC_SaveUserReq
 {
     uint64_t     userID; /**< 需要保存的用户 ID */
     UserBaseWire wire;   /**< 完整基础属性快照 */
+};
+
+/**
+ * @brief SessionServer → RecordServer: 启动期预载 Relation（body 可为空）
+ */
+struct Msg_REC_RelationPreloadReq
+{
+    uint32_t reserved = 0; /**< 保留，填 0 */
+};
+
+/**
+ * @brief RecordServer → SessionServer: Relation 预载响应头
+ *
+ * 成功时 body 紧随 count 条 RelationWireRow（见 RelationWireRow 编码说明）。
+ */
+struct Msg_REC_RelationPreloadRsp
+{
+    int32_t  code;   /**< 0=成功，非 0 失败 */
+    uint32_t count;  /**< 紧随的行数 */
+};
+
+/**
+ * @brief RecordServer → SessionServer: 单用户 Relation 加载响应头
+ *
+ * code=0 时 body 紧随一条 RelationWireRow。
+ */
+struct Msg_REC_RelationLoadRsp
+{
+    int32_t  code;    /**< 0=成功，-1=不存在或 DB 错误 */
+    uint64_t userID;  /**< 请求的用户 ID */
+};
+
+/**
+ * @brief RecordServer → SessionServer: Relation 保存结果
+ */
+struct Msg_REC_RelationSaveRsp
+{
+    int32_t  code;    /**< 0=成功 */
+    uint64_t userID;  /**< 保存的用户 ID */
+};
+
+/**
+ * @brief Relation 表单行线格式（预载/加载/保存变长 body 共用）
+ *
+ * 按序序列化（小端，紧密排列）：
+ * | userID (8B) | friendsLen (4B) | blacklistLen (4B) | guildId (8B) |
+ * | teamId (4B) | binaryLen (4B) | friends[friendsLen] | blacklist[blacklistLen] | binary[binaryLen] |
+ *
+ * friends/blacklist 为逗号分隔的 userId 文本（与 DB friends_json 列一致）。
+ */
+struct RelationWireRowHeader
+{
+    uint64_t userID       = 0;
+    uint32_t friendsLen   = 0;
+    uint32_t blacklistLen = 0;
+    uint64_t guildId      = 0;
+    uint32_t teamId       = 0;
+    uint32_t binaryLen    = 0;
 };
 
 /**

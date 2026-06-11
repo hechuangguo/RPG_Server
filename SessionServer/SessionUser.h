@@ -2,12 +2,12 @@
  * @file    SessionUser.h
  * @brief  SessionServer 用户对象 —— 社会关系与生命周期
  *
- * 直连 MySQL 读写 Relation；save/load 在 onOffline 等时机由 SessionServer 调用。
+ * Relation 经 SessionServer 出站 RecordServer 读写；save/load 在 onOffline 等时机调用。
  */
 
 #pragma once
 #include "../sdk/util/UserBase.h"
-#include <mysql/mysql.h>
+#include "../sdk/util/RelationWireUtil.h"
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -22,6 +22,8 @@ struct SocialData
     uint32_t            teamId  = 0;              /**< 当前队伍 ID（0 表示无队伍） */
     std::vector<uint8_t> binary;   /**< 社交扩展二进制（对应 Relation.binary） */
 };
+
+class SessionServer;
 
 /**
  * @brief Session 进程内用户实例
@@ -41,19 +43,25 @@ public:
     /** @brief 用户下线钩子（触发必要保存） */
     bool onOffline();
 
-    /** @brief 将社交数据写回 Session 存储 */
-    bool save(MYSQL* db);
+    /** @brief 将社交数据经 RecordServer 落库 */
+    bool save(SessionServer& server);
 
     /** @brief 是否存在待落库改动 */
     bool needSave() const;
 
-    /** @brief 从 Session 存储加载社交数据 */
-    bool load(MYSQL* db);
+    /** @brief 经 RecordServer 加载社交数据 */
+    bool load(SessionServer& server);
+
+    /** @brief 用 Relation 行填充 m_social */
+    void applyRelationRow(const RelationRowData& row);
 
     /** @brief 用 Relation 查询行字段填充 m_social（不 INSERT） */
     void applyRelationFromDbRow(const char* friendsJson, const char* blacklistJson,
                                 const char* guildIdStr, const char* teamIdStr,
                                 const char* binaryPtr, unsigned long binaryLen);
+
+    /** @brief 导出当前社交数据为 Relation 线格式行 */
+    RelationRowData toRelationRow() const;
 
     /** @brief 帧循环更新（跨日判断等） */
     void loop(uint64_t nowMs);

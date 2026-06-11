@@ -300,7 +300,7 @@ EOF
 }
 
 # -------------------------------------------------------
-#  启动区内 6 服（Super → Session → Record/AOI/Scene → Gateway）
+#  启动区内 6 服（Super → Record → AOI → Session → Scene → Gateway）
 #  任一失败则中止并输出诊断信息
 # -------------------------------------------------------
 start_all_inzone() {
@@ -309,11 +309,13 @@ start_all_inzone() {
     start_server SuperServer "$CONFIG" || return 1
     sleep 1
 
+    start_server RecordServer "$CONFIG" || return 1
+    start_server AOIServer    "$CONFIG" || return 1
+    sleep 1
+
     start_server SessionServer "$CONFIG" || return 1
     sleep 1
 
-    start_server RecordServer "$CONFIG" || return 1
-    start_server AOIServer    "$CONFIG" || return 1
     start_server SceneServer  "$CONFIG" "$SCENE_INFO" || return 1
     sleep 1
 

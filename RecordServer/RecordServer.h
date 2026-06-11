@@ -5,11 +5,12 @@
  * ## 职责
  * - MySQL 直连：账号验证、用户数据加载/保存
  * - 定时自动存档（每 60 秒 AutoSaveAll）
- * - 内部通信：连接 SuperServer + SessionServer
+ * - 内部通信：出站 SuperServer；入站 Gateway / Scene / Session
  *
  * ## 依赖关系
- * - 依赖 SuperServer（注册） + SessionServer（社会关系数据）
- * - 被 GatewayServer（登录验证）、SuperServer（加载用户）、SceneServer（保存用户）调用
+ * - 出站：SuperServer（注册）
+ * - 入站：GatewayServer（登录验证）、SceneServer（存档）、SessionServer（Relation）
+ * - 被 SuperServer（加载用户）经入站连接调用
  *
  * ## 数据流
  * @code
@@ -38,12 +39,13 @@
 #include <string>
 #include <vector>
 #include <mysql/mysql.h>
+#include "RelationStore.h"
 #include <cinttypes>
 
 /**
  * @brief RecordServer 核心类
  *
- * 单进程运行，持有 MySQL 连接，同时维护到 SuperServer 和 SessionServer 的 TcpClient。
+ * 单进程运行，持有 MySQL 连接，出站连接 SuperServer 注册。
  */
 class RecordServer : public INetCallback, public LazySingleton<RecordServer>
 {
@@ -133,6 +135,15 @@ private:
     /** @brief 处理用户保存请求 */
     void OnSaveUser(ConnID fromConn, const char* data, uint16_t len);
 
+    /** @brief Session 启动预载 Relation 全表 */
+    void OnRelationPreloadReq(ConnID fromConn, const char* data, uint16_t len);
+
+    /** @brief Session 单用户 Relation 加载 */
+    void OnRelationLoadReq(ConnID fromConn, const char* data, uint16_t len);
+
+    /** @brief Session Relation 保存 */
+    void OnRelationSaveReq(ConnID fromConn, const char* data, uint16_t len);
+
     /**
      * @brief 从 MySQL 加载用户数据到内存
      *
@@ -174,9 +185,8 @@ private:
      *       保存成功后将 dirty 重置为 false。
      */
     void AutoSaveAll();
-    TcpServer  m_server;          /**< 内部连接监听（接收来自 Gateway/Super/Scene Server 的请求） */
-    TcpClient  m_superClient;     /**< 到 SuperServer 的连接（用于注册服务器、发送心跳） */
-    TcpClient  m_sessionClient;   /**< 到 SessionServer 的连接（用于查询社会关系/好友数据） */
+    TcpServer  m_server;          /**< 入站监听（Gateway / Scene / Session / Super） */
+    TcpClient  m_superClient;     /**< 出站 SuperServer（注册、心跳） */
     MYSQL*     m_db;              /**< MySQL 连接句柄（全局共享，非线程安全） */
     uint32_t   m_hbSeq = 0;       /**< 心跳序列号（每次自增，SuperServer 用于检测丢包） */
     ServerEntry m_self;           /**< 本进程在 ServerList 中的拓扑条目（注册上报用） */

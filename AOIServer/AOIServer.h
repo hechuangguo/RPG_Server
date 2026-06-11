@@ -82,8 +82,8 @@
  *    该实体视野范围内的其他玩家。
  *
  * ## 依赖关系
- * - 依赖 SuperServer + SessionServer
- * - SceneServer 通过 AOI_ENTER / AOI_LEAVE / AOI_MOVE 交互
+ * - 出站：SuperServer（注册）
+ * - 入站：SceneServer（AOI_ENTER / AOI_LEAVE / AOI_MOVE）
  */
 
 #pragma once
@@ -268,9 +268,8 @@ private:
 
     /** @brief 定时发送 AOI 存活心跳 */
     void SendHeartbeat();
-    TcpServer  m_server;         /**< 内部连接监听 */
-    TcpClient  m_superClient;    /**< 到 SuperServer 的连接 */
-    TcpClient  m_sessionClient;  /**< 到 SessionServer 的连接 */
+    TcpServer  m_server;         /**< 入站监听（SceneServer） */
+    TcpClient  m_superClient;    /**< 出站 SuperServer（注册、心跳） */
     uint32_t   m_hbSeq = 0;      /**< 心跳序列号 */
     ServerEntry m_self;          /**< 本进程在 ServerList 中的拓扑条目（注册上报用） */
     ExternalServerHub m_externHub; /**< 外联 Logger */

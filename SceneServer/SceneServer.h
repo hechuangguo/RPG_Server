@@ -9,7 +9,8 @@
  * - 与 AOIServer 协同管理视野
  *
  * ## 依赖关系
- * - 依赖 SuperServer / SessionServer / RecordServer / AOIServer / GatewayServer
+ * - 出站：SuperServer / SessionServer / RecordServer / AOIServer
+ * - 入站：GatewayServer（GW_CLIENT_MSG / 下行回包）、SessionServer（副本指令等）
  * - 可选经 loginserverlist.xml 连接外联 GlobalServer / ZoneServer
  * - 支持多进程负载均衡（多 SceneServer 承载不同地图）
  *
@@ -278,12 +279,12 @@ private:
 
     /** @brief 定时发送 Scene 心跳 */
     void SendHeartbeat();
-    TcpServer  m_server;          /**< 内部连接监听 */
-    TcpClient  m_superClient;     /**< 到 SuperServer */
-    TcpClient  m_sessionClient;   /**< 到 SessionServer */
-    TcpClient  m_recordClient;    /**< 到 RecordServer */
-    TcpClient  m_aoiClient;       /**< 到 AOIServer */
-    TcpClient  m_gatewayClient;   /**< 到 GatewayServer */
+    TcpServer  m_server;          /**< 入站监听（Gateway / Session） */
+    TcpClient  m_superClient;     /**< 出站 SuperServer */
+    TcpClient  m_sessionClient;   /**< 出站 SessionServer */
+    TcpClient  m_recordClient;    /**< 出站 RecordServer */
+    TcpClient  m_aoiClient;       /**< 出站 AOIServer */
+    ConnID     m_gatewayInboundConn = INVALID_CONN_ID; /**< Gateway 入站连接（下行 GW_SEND_TO_CLIENT） */
     uint32_t   m_sceneID;         /**< 场景服务器编号 */
     uint32_t   m_hbSeq = 0;       /**< 心跳序列号 */
     uint16_t   m_listenPort = 9004;  /**< Scene 对内监听端口 */

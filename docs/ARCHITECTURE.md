@@ -35,30 +35,49 @@ flowchart TB
     ZON[ZoneServer]
     DB[(MySQL)]
 
-    Client -->|TCP clientPort| GW
-    GW -->|innerPort| SCE
-    GW --> REC
-    GW --> SS
+    Client -->|inbound| GW
+    GW -->|outbound| REC
+    GW -->|outbound| SES
+    GW -->|outbound| SCE
+    GW -->|outbound| SS
 
-    SS --- SES
-    SS --- REC
-    SS --- AOI
-    SS --- SCE
-    SS --- GW
-    REC --> SES
+    SCE -->|outbound| REC
+    SCE -->|outbound| SES
+    SCE -->|outbound| AOI
+    SCE -->|outbound| SS
+
+    SES -->|outbound| REC
+    SES -->|outbound| SS
+
+    REC -->|outbound| SS
+    AOI -->|outbound| SS
+
+    SS -->|outbound| LOG
+    SS -->|outbound| GLB
+    SS -->|outbound| ZON
+    SS -->|inbound| REC
+    SS -->|inbound| AOI
+    SS -->|inbound| SES
+    SS -->|inbound| SCE
+    SS -->|inbound| GW
+
+    REC -->|inbound| GW
+    REC -->|inbound| SCE
+    REC -->|inbound| SES
+    AOI -->|inbound| SCE
+    SES -->|inbound| GW
+    SES -->|inbound| SCE
+
     REC --> DB
-    AOI --> SCE
-    SCE --> REC
-    SCE --> SES
-    SCE --> GW
-    SCE --> AOI
+    SS --> DB
+
     SCE -.->|loginserverlist.xml| GLB
     SCE -.->|loginserverlist.xml| ZON
     SES -.->|loginserverlist.xml| ZON
     gameZone[区内进程] -.->|loginserverlist.xml| LOG
 ```
 
-**外联服**（Logger / Global / Zone）不注册 SuperServer，可部署在任意机器；游戏区经根目录 `loginserverlist.xml` 出站连接。外联进程读各自目录 `extern_*.xml`（监听、LogPath/LogDir、可选 Database；Global 另含 HTTP 入站/出站）。
+**外联服**（Logger / Global / Zone）不注册 SuperServer，可部署在任意机器。Super 主要经 `loginserverlist.xml` 外联；区内其它进程按需读取同一文件连接 Logger/Global/Zone。外联进程读各自目录 `extern_*.xml`。
 
 ### 2.2 启动依赖与顺序
 
@@ -66,27 +85,30 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-    S1[SuperServer] --> S2[SessionServer]
-    S2 --> S3[RecordServer]
-    S2 --> S4[AOIServer]
-    S2 --> S5[SceneServer]
+    S1[SuperServer] --> S2[RecordServer]
+    S1 --> S3[AOIServer]
+    S2 --> S4[SessionServer]
+    S3 --> S4
+    S4 --> S5[SceneServer]
+    S2 --> S5
+    S3 --> S5
     S5 --> S6[GatewayServer]
-    S7[LoggerServer] -.->|ENABLE_LOGGER=1| opt1[外联可选]
-    S8[GlobalServer] -.->|ENABLE_GLOBAL=1| opt2[外联可选]
-    S9[ZoneServer] -.->|ENABLE_ZONE=1| opt3[外联可选]
+    S7[LoggerServer] -.->|RunServer.sh logger| opt1[外联可选]
+    S8[GlobalServer] -.->|RunServer.sh global| opt2[外联可选]
+    S9[ZoneServer] -.->|RunServer.sh zone| opt3[外联可选]
 ```
 
 | 服务器 | 端口（默认） | 进程数 | 依赖 | 必选 |
 |--------|-------------|--------|------|------|
-| SuperServer | 9000 | 1 | 无 | 是 |
-| SessionServer | 9001 | 1 | SuperServer | 是 |
-| RecordServer | 9002 | 1 | SessionServer | 是 |
-| AOIServer | 9003 | 1 | SessionServer | 是 |
-| SceneServer | 9004 | N | SessionServer | 是 |
-| GatewayServer | 9005 / 19005 | N | SceneServer | 是 |
-| LoggerServer | 9006 | 1 | SessionServer | 是 |
-| GlobalServer | 9007 | 1（全区） | 无 | 否 |
-| ZoneServer | 9008 | 1（全区） | 无 | 否 |
+| SuperServer | 9000 | 1 | MySQL（自举 ServerList） | 是 |
+| RecordServer | 9002 | 1 | SuperServer | 是 |
+| AOIServer | 9003 | 1 | SuperServer | 是 |
+| SessionServer | 9001 | 1 | SuperServer + RecordServer | 是 |
+| SceneServer | 9004 | N | Super + Record + Session + AOI | 是 |
+| GatewayServer | 9005 | N | Super + Record + Session + Scene | 是 |
+| LoggerServer | 9006 | 1 | 无（外联） | 否 |
+| GlobalServer | 9007 | 1（全区） | 无（外联） | 否 |
+| ZoneServer | 9008 | 1（全区） | 无（外联） | 否 |
 
 ---
 
@@ -117,45 +139,41 @@ RPG/
 
 ### SuperServer — 注册中心与登录调度
 
-- 子服务器通过 `S2S_REGISTER_REQ` 注册，维护路由表
-- 90 秒心跳超时标记离线
-- 维护 `UserProxy`（用户 ↔ Gateway / Scene 连接映射）
-- 协调登录：Gateway → Super → Record（加载）→ Scene
+- 自举：启动读 MySQL `ServerList`；子进程经 `S2S_SERVERLIST_REQ` 拉拓扑
+- 出站：`loginserverlist.xml` 外联 Logger/Global/Zone（可选）
+- 入站：区内子进程注册（`S2S_REGISTER_REQ`）
+- 维护 `UserProxy`；协调登录：Gateway → Super → Record（加载）→ Scene
 
 ### SessionServer — 社会关系与离线数据
 
-- 好友、离线消息、用户社会关系内存管理
-- 直连 MySQL 表 `Relation`：`friends_json` / `blacklist_json` / `guild_id` / `team_id` / `` `binary` ``（社交扩展 blob）
-- `SessionUser` 继承 `IUser`，扩展 `SocialData`（含 `binary` 字段落库）
-- 接收 Gateway 转发的 `GW_CLIENT_MSG`（社交 module=0x06、任务 module=0x07）
+- 出站：SuperServer、RecordServer（`REC_RELATION_*` 读写 Relation）
+- 入站：GatewayServer（`GW_CLIENT_MSG`）、SceneServer（场景/副本登记）
+- 好友、离线消息、社会关系内存管理；`SessionUser` + `SocialData`
 - 全区场景/副本：`SessionSceneManager` 登记与负载均衡
 
 ### RecordServer — 数据库读写
 
-- 唯一直连 MySQL 的进程
-- 账号验证、用户 load/save、定时自动存档
-- `RecordUser` 继承 `IUser`
+- 出站：SuperServer（注册）
+- 入站：Gateway（登录验证）、Scene（CharBase 存档）、Session（Relation）
+- 唯一直连 MySQL 的进程；账号验证、用户 load/save、Relation 表、定时存档
 
 ### AOIServer — 视野管理
 
-- 9 宫格 AOI，处理 enter/leave/move
-- 向 SceneServer 推送 `AOI_VIEW_NOTIFY`
+- 出站：SuperServer
+- 入站：SceneServer（enter/leave/move）
+- 9 宫格 AOI；向 Scene 推送 `AOI_VIEW_NOTIFY`
 
 ### SceneServer — 核心游戏逻辑
 
-- 在线用户与地图实例管理
-- 经 `GW_CLIENT_MSG` 接收 Gateway 转发的场景/战斗/技能/NPC 等客户端消息
-- 内嵌 Lua VM，加载 `script/scene/init.lua`；扩展消息 `OnMsg_{module}{sub}`
-- 下行经 `Msg_GW_SendToClient` 回 Gateway 再发往客户端
-- 唯一可水平扩展的进程
+- 出站：Super / Record / Session / AOI
+- 入站：Gateway（`GW_CLIENT_MSG` 上行 + 同连接 `GW_SEND_TO_CLIENT` 下行）、Session（副本指令等）
+- 内嵌 Lua；唯一可水平扩展的进程
 
 ### GatewayServer — 客户端接入
 
-- 双端口：clientPort（玩家）+ innerPort（内部下行）
-- 连接 Super / Record / Scene / **Session**
-- `ClientMsgValidator`：白名单、包长、登录状态、userID、payload 基础校验
-- `ClientMsgRouter`：Login/System 本地处理；玩法包转发 Scene 或 Session
-- 校验失败回 `S2C_ERROR`（0x0F/0x05）；60 秒心跳超时踢人
+- 出站：Super / Record / Scene / Session
+- 入站：游戏客户端（clientPort）
+- `ClientMsgValidator` + `ClientMsgRouter`；60 秒心跳超时踢人
 
 ### LoggerServer — 集中日志
 
