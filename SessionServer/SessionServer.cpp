@@ -4,6 +4,7 @@
  */
 
 #include "SessionServer.h"
+#include "../sdk/util/ServerBootstrap.h"
 #include "SessionUserManager.h"
 #include "SessionSceneManager.h"
 
@@ -22,10 +23,13 @@ SessionServer::~SessionServer()
     }
 }
 
-bool SessionServer::Init(const std::string& ip, uint16_t port, const ServerConfig& cfg)
+bool SessionServer::Init(const std::string& ip, uint16_t port,
+                         const ServerConfig& cfg, const ServerList& list, uint32_t selfId)
 {
     Logger::Instance().SetServerName("SessionServer");
     LOG_INFO("SessionServer starting on %s:%d", ip.c_str(), port);
+    if (const ServerEntry* self = list.find(SubServerType::SESSION, selfId))
+        m_self = *self;
     if (!m_server.Start(ip, port))
     {
         LOG_FATAL("Start failed");
@@ -63,8 +67,14 @@ void SessionServer::Run()
     {
         m_superClient.Poll(0);
         m_server.Poll(10);
+        ServerBootstrap::tickGameZoneExtern(m_externHub);
         TimerMgr::Instance().Update();
     }
+}
+
+void SessionServer::setupExternalClients(const LoginServerList& list)
+{
+    ServerBootstrap::initGameZoneExtern(m_externHub, list, SubServerType::SESSION, false, true);
 }
 
 void SessionServer::OnConnect(ConnID id)
@@ -163,9 +173,10 @@ void SessionServer::RegisterToSuper()
 {
     Msg_S2S_Register reg{};
     reg.serverType = (uint8_t)SubServerType::SESSION;
-    reg.serverID = 1;
-    copyToWire(reg.ip, sizeof(reg.ip), "127.0.0.1");
-    reg.port = 9001;
+    reg.serverID = m_self.id;
+    copyToWire(reg.ip, sizeof(reg.ip), m_self.ip.c_str());
+    reg.port = m_self.port;
+    copyToWire(reg.name, sizeof(reg.name), m_self.name.c_str());
     m_superClient.SendMsg((uint16_t)InternalMsgID::S2S_REGISTER_REQ,
                           reinterpret_cast<char*>(&reg), sizeof(reg));
 }

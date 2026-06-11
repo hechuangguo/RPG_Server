@@ -4,6 +4,7 @@
  */
 
 #include "AOIServer.h"
+#include "../sdk/util/ServerBootstrap.h"
 
 #include <cstring>
 
@@ -13,13 +14,15 @@ AOIServer::AOIServer()
 }
 
 bool AOIServer::Init(const std::string& ip, uint16_t port,
-                     const std::string& superIP, uint16_t superPort,
-                     const std::string& sessionIP, uint16_t sessionPort)
+                     const ServerConfig& cfg, const ServerList& list, uint32_t selfId)
 {
     Logger::Instance().SetServerName("AOIServer");
+    if (const ServerEntry* self = list.find(SubServerType::AOI, selfId))
+        m_self = *self;
     if (!m_server.Start(ip, port)) { LOG_FATAL("AOIServer start failed"); return false; }
-    m_superClient.Connect(superIP, superPort);
-    m_sessionClient.Connect(sessionIP, sessionPort);
+    m_superClient.Connect(cfg.superIP, (uint16_t)cfg.superPort);
+    if (const ServerEntry* ses = list.findFirst(SubServerType::SESSION))
+        m_sessionClient.Connect(ses->ip, ses->port);
     RegisterHandlers();
     TimerMgr::Instance().Register(500,   0,     [this]{ RegisterToSuper(); });
     TimerMgr::Instance().Register(10000, 10000, [this]{ SendHeartbeat(); });
@@ -34,8 +37,14 @@ void AOIServer::Run()
         m_superClient.Poll(0);
         m_sessionClient.Poll(0);
         m_server.Poll(10);
+        ServerBootstrap::tickGameZoneExtern(m_externHub);
         TimerMgr::Instance().Update();
     }
+}
+
+void AOIServer::setupExternalClients(const LoginServerList& list)
+{
+    ServerBootstrap::initGameZoneExtern(m_externHub, list, SubServerType::AOI, false, false);
 }
 
 void AOIServer::OnConnect(ConnID id)
@@ -185,9 +194,10 @@ void AOIServer::RegisterToSuper()
 {
     Msg_S2S_Register reg{};
     reg.serverType = (uint8_t)SubServerType::AOI;
-    reg.serverID   = 1;
-    copyToWire(reg.ip, sizeof(reg.ip), "127.0.0.1");
-    reg.port       = 9003;
+    reg.serverID   = m_self.id;
+    copyToWire(reg.ip, sizeof(reg.ip), m_self.ip.c_str());
+    reg.port       = m_self.port;
+    copyToWire(reg.name, sizeof(reg.name), m_self.name.c_str());
     m_superClient.SendMsg((uint16_t)InternalMsgID::S2S_REGISTER_REQ,
                           reinterpret_cast<char*>(&reg), sizeof(reg));
 }

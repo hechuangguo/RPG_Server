@@ -4,6 +4,7 @@
  */
 
 #include "GatewayServer.h"
+#include "../sdk/util/ServerBootstrap.h"
 
 #include <cstdio>
 #include <cstring>
@@ -20,20 +21,26 @@ GatewayServer::GatewayServer()
 }
 
 bool GatewayServer::Init(uint16_t clientPort, uint16_t innerPort,
-                         const ServerConfig& cfg)
+                         const ServerConfig& cfg, const ServerList& list, uint32_t selfId)
 {
     Logger::Instance().SetServerName("GatewayServer");
     LOG_INFO("GatewayServer starting: clientPort=%d innerPort=%d", clientPort, innerPort);
+
+    if (const ServerEntry* self = list.find(SubServerType::GATEWAY, selfId))
+        m_self = *self;
 
     if (!m_clientServer.Start("0.0.0.0", clientPort))
     { LOG_FATAL("Client listen failed"); return false; }
     if (!m_innerServer.Start("0.0.0.0", innerPort))
     { LOG_FATAL("Inner listen failed"); return false; }
 
-    m_superClient.Connect(cfg.superIP,   (uint16_t)cfg.superPort);
-    m_recordClient.Connect("127.0.0.1",  (uint16_t)cfg.recordPort);
-    m_sceneClient.Connect("127.0.0.1",   (uint16_t)cfg.scenePort);
-    m_sessionClient.Connect("127.0.0.1", (uint16_t)cfg.sessionPort);
+    m_superClient.Connect(cfg.superIP, (uint16_t)cfg.superPort);
+    if (const ServerEntry* rec = list.findFirst(SubServerType::RECORD))
+        m_recordClient.Connect(rec->ip, rec->port);
+    if (const ServerEntry* sce = list.findFirst(SubServerType::SCENE))
+        m_sceneClient.Connect(sce->ip, sce->port);
+    if (const ServerEntry* ses = list.findFirst(SubServerType::SESSION))
+        m_sessionClient.Connect(ses->ip, ses->port);
 
     m_clientPort = clientPort;
     m_innerPort  = innerPort;
@@ -57,6 +64,7 @@ void GatewayServer::Run()
         m_sessionClient.Poll(0);
         m_clientServer.Poll(5);
         m_innerServer.Poll(5);
+        ServerBootstrap::tickGameZoneExtern(m_externHub);
         TimerMgr::Instance().Update();
     }
 }
@@ -324,13 +332,20 @@ void GatewayServer::CheckTimeout()
     }
 }
 
+void GatewayServer::setupExternalClients(const LoginServerList& list)
+{
+    ServerBootstrap::initGameZoneExtern(m_externHub, list, SubServerType::GATEWAY, false, false);
+}
+
 void GatewayServer::RegisterToSuper()
 {
     Msg_S2S_Register reg{};
     reg.serverType = (uint8_t)SubServerType::GATEWAY;
-    reg.serverID   = 1;
-    copyToWire(reg.ip, sizeof(reg.ip), "127.0.0.1");
+    reg.serverID   = m_self.id;
+    copyToWire(reg.ip, sizeof(reg.ip),
+               m_self.ip.empty() ? "127.0.0.1" : m_self.ip.c_str());
     reg.port       = m_clientPort;
+    copyToWire(reg.name, sizeof(reg.name), m_self.name.c_str());
     m_superClient.SendMsg((uint16_t)InternalMsgID::S2S_REGISTER_REQ,
                           reinterpret_cast<char*>(&reg), sizeof(reg));
 }

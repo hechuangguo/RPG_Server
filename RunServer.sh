@@ -1,4 +1,4 @@
-﻿#!/bin/bash
+#!/bin/bash
 # ============================================================
 #  RunServer.sh —— 按依赖顺序启动所有服务器
 #  用法：./RunServer.sh [config_path] [scene_info_path]
@@ -262,8 +262,8 @@ start_server() {
 #  启动顺序（严格按依赖关系排列）：
 #
 #  SuperServer → SessionServer → RecordServer/AOIServer/SceneServer
-#  → GatewayServer → LoggerServer
-#  → GlobalServer(可选) → ZoneServer(可选)
+#  → GatewayServer
+#  外联（独立机器）：LoggerServer / GlobalServer / ZoneServer（loginserverlist.xml + extern_*.xml）
 #
 #  依赖说明：
 #    • 任一服务器启动失败则中止后续启动，并输出该服 stdout 日志尾部
@@ -273,12 +273,12 @@ start_server() {
 #    • AOIServer：AOI（Area Of Interest）可见性管理，依赖 SessionServer
 #    • SceneServer：场景逻辑，依赖 SessionServer + SCENE_INFO 场景配置
 #    • GatewayServer：客户端网关入口，依赖 SceneServer/RecordServer 已就绪
-#    • LoggerServer：集中日志收集，依赖 SessionServer
-#    • GlobalServer/ZoneServer：跨区/分区服务，可选启用
+#    • 外联服不在此脚本默认启动；区内拓扑来自 DB ServerList，外联见 loginserverlist.xml
 #
-#  端口分配（在 config/config.xml 中配置）：
-#    • SuperServer 端口在 config.xml 中静态配置，其他服务向 SuperServer
-#      注册后获取各自的绑定端口（动态分配），避免端口冲突
+#  配置：
+#    • config.xml：SuperServer、Database、LogPaths
+#    • DB ServerList：区内 Session/Record/AOI/Scene/Gateway 端口
+#    • loginserverlist.xml：外联 Logger/Global/Zone 连接地址
 # -------------------------------------------------------
 
 log_info "===== RPG Server Startup ====="
@@ -320,28 +320,26 @@ start_server GatewayServer "$CONFIG"
 sleep 0.5
 
 # -------------------------------------------------------
-#  第5步：启动 LoggerServer
-#  - 集中收集各服务器的业务日志，写入统一日志文件
-#  - 依赖 SessionServer 已就绪
+#  第5步：可选外联服（默认不启用，可部署在任意机器）
+#  - ENABLE_LOGGER=1：启动 LoggerServer（读 LoggerServer/extern_logger.xml）
+#  - ENABLE_GLOBAL=1：启动 GlobalServer（读 GlobalServer/extern_global.xml）
+#  - ENABLE_ZONE=1：启动 ZoneServer（读 ZoneServer/extern_zone.xml）
+#  - 游戏区经 loginserverlist.xml 连接外联地址
 # -------------------------------------------------------
-start_server LoggerServer "$CONFIG"
-sleep 0.5
-
-# -------------------------------------------------------
-#  第6步：可选服务器（默认不启用）
-#  - 通过环境变量 ENABLE_GLOBAL=1 和 ENABLE_ZONE=1 控制
-#  - GlobalServer：跨区服务，多区合服场景使用
-#  - ZoneServer：分区管理服务，大区逻辑隔离场景使用
-# -------------------------------------------------------
+ENABLE_LOGGER=${ENABLE_LOGGER:-0}
 ENABLE_GLOBAL=${ENABLE_GLOBAL:-0}
 ENABLE_ZONE=${ENABLE_ZONE:-0}
 
+if [ "$ENABLE_LOGGER" = "1" ]; then
+    start_server LoggerServer
+fi
+
 if [ "$ENABLE_GLOBAL" = "1" ]; then
-    start_server GlobalServer "$CONFIG"
+    start_server GlobalServer
 fi
 
 if [ "$ENABLE_ZONE" = "1" ]; then
-    start_server ZoneServer "$CONFIG"
+    start_server ZoneServer
 fi
 
 log_info "===== All servers started ====="

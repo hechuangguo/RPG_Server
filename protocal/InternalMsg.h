@@ -65,6 +65,8 @@ enum class InternalMsgID : uint16_t
     S2S_REGISTER_RSP     = 0x1F02,  /**< SuperServer → 子服务器: 注册响应 */
     S2S_HEARTBEAT        = 0x1F03,  /**< 子服务器 → SuperServer: 心跳 */
     S2S_HEARTBEAT_ACK    = 0x1F04,  /**< SuperServer → 子服务器: 心跳确认 */
+    S2S_SERVERLIST_REQ   = 0x1F05,  /**< 子服务器 → SuperServer: 启动期拉取集群拓扑 ServerList */
+    S2S_SERVERLIST_RSP   = 0x1F06,  /**< SuperServer → 子服务器: 返回 ServerList 全量条目 */
 
     // ============================================================
     //  SuperServer (0x1001 ~ 0x1003)
@@ -173,6 +175,7 @@ struct Msg_S2S_Register
     uint32_t serverID;    /**< 服务器实例编号（用于负载均衡） */
     char     ip[32];      /**< 服务器监听 IP（空终止字符串） */
     uint16_t port;        /**< 服务器监听端口 */
+    char     name[32];    /**< 服务器名（来自 ServerList，便于日志/运维识别） */
 };
 
 /**
@@ -193,6 +196,58 @@ struct Msg_S2S_Heartbeat
 {
     uint32_t seq;       /**< 序列号（自增） */
     uint64_t timestamp; /**< 发送时间戳（毫秒） */
+};
+
+/**
+ * @brief 子服务器 → SuperServer: 启动期拉取集群拓扑请求
+ *
+ * 触发时机：子服务器（Session/Record/AOI/Scene/Gateway）启动、连上 SuperServer 后，
+ * 发送本请求获取 ServerList；据此确定自身监听端口与对端地址，再绑定/连接/注册。
+ */
+struct Msg_S2S_ServerListReq
+{
+    uint8_t  serverType;  /**< 请求方服务器类型（对应 SubServerType） */
+    uint32_t serverID;    /**< 请求方服务器实例编号 */
+};
+
+/**
+ * @brief ServerList 单条目（集群中一个服务器进程的拓扑信息）
+ *
+ * 用于 S2S_SERVERLIST_RSP 的变长数组元素，与 DB 表 ServerList 字段一一对应。
+ */
+struct Msg_ServerEntry
+{
+    uint32_t serverID;    /**< 服务器实例编号 */
+    uint8_t  serverType;  /**< 服务器类型（对应 SubServerType） */
+    char     ip[32];      /**< 监听 IP（空终止字符串） */
+    uint16_t port;        /**< 监听端口 */
+    char     name[32];    /**< 服务器名 */
+};
+
+/**
+ * @brief SuperServer → 子服务器: ServerList 全量响应（变长）
+ *
+ * 线上布局：本头部（count）+ 紧随其后的 count 个 Msg_ServerEntry。
+ * 接收方按 count 顺序解析后续 count*sizeof(Msg_ServerEntry) 字节。
+ */
+struct Msg_S2S_ServerListRsp
+{
+    uint16_t count;       /**< 后续 Msg_ServerEntry 条目数量 */
+    // 紧随其后：Msg_ServerEntry entries[count];
+};
+
+/**
+ * @brief 游戏区进程 → LoggerServer: 远程日志写入请求（变长）
+ *
+ * 线上布局：本头部 + 紧随其后的 logLen 字节纯文本（可含换行）。
+ * LoggerServer 按 serverType 分文件落盘。
+ */
+struct Msg_Log_WriteReq
+{
+    uint8_t  serverType;  /**< 来源服务器类型（SubServerType 枚举值） */
+    uint8_t  level;       /**< 日志级别：0=DEBUG 1=INFO 2=WARN 3=ERR 4=FATAL */
+    uint32_t logLen;      /**< 日志文本长度（字节） */
+    // 紧随其后：char logText[logLen];
 };
 
 /**

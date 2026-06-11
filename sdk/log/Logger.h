@@ -19,6 +19,7 @@
 
 #pragma once
 #include "LogFileWriter.h"
+#include "RemoteLogClient.h"
 #include "../util/Singleton.h"
 #include "../time/TimeUtil.h"
 #include <cstdint>
@@ -103,6 +104,7 @@ public:
             m_writer.Write(line, static_cast<size_t>(n));
             m_writer.Flush();
         }
+        RemoteLogClient::trySend((int)lv, line, static_cast<size_t>(n));
     }
 
 private:

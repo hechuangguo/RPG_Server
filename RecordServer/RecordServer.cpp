@@ -4,6 +4,7 @@
  */
 
 #include "RecordServer.h"
+#include "../sdk/util/ServerBootstrap.h"
 
 RecordServer::RecordServer()
     : m_server(this)
@@ -21,10 +22,13 @@ RecordServer::~RecordServer()
     }
 }
 
-bool RecordServer::Init(const std::string& ip, uint16_t port, const ServerConfig& cfg)
+bool RecordServer::Init(const std::string& ip, uint16_t port,
+                        const ServerConfig& cfg, const ServerList& list, uint32_t selfId)
 {
     Logger::Instance().SetServerName("RecordServer");
     LOG_INFO("RecordServer starting on %s:%d", ip.c_str(), port);
+    if (const ServerEntry* self = list.find(SubServerType::RECORD, selfId))
+        m_self = *self;
     if (!m_server.Start(ip, port))
     {
         LOG_FATAL("Start failed");
@@ -37,7 +41,8 @@ bool RecordServer::Init(const std::string& ip, uint16_t port, const ServerConfig
     }
 
     m_superClient.Connect(cfg.superIP, (uint16_t)cfg.superPort);
-    m_sessionClient.Connect("127.0.0.1", (uint16_t)cfg.sessionPort);
+    if (const ServerEntry* ses = list.findFirst(SubServerType::SESSION))
+        m_sessionClient.Connect(ses->ip, ses->port);
 
     RegisterHandlers();
 
@@ -56,8 +61,14 @@ void RecordServer::Run()
         m_superClient.Poll(0);
         m_sessionClient.Poll(0);
         m_server.Poll(10);
+        ServerBootstrap::tickGameZoneExtern(m_externHub);
         TimerMgr::Instance().Update();
     }
+}
+
+void RecordServer::setupExternalClients(const LoginServerList& list)
+{
+    ServerBootstrap::initGameZoneExtern(m_externHub, list, SubServerType::RECORD, false, false);
 }
 
 void RecordServer::OnConnect(ConnID id)
@@ -108,9 +119,10 @@ void RecordServer::RegisterToSuper()
 {
     Msg_S2S_Register reg{};
     reg.serverType = (uint8_t)SubServerType::RECORD;
-    reg.serverID = 1;
-    copyToWire(reg.ip, sizeof(reg.ip), "127.0.0.1");
-    reg.port = 9002;
+    reg.serverID = m_self.id;
+    copyToWire(reg.ip, sizeof(reg.ip), m_self.ip.c_str());
+    reg.port = m_self.port;
+    copyToWire(reg.name, sizeof(reg.name), m_self.name.c_str());
     m_superClient.SendMsg((uint16_t)InternalMsgID::S2S_REGISTER_REQ,
                           reinterpret_cast<char*>(&reg), sizeof(reg));
 }

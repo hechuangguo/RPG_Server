@@ -42,8 +42,26 @@ int main(int argc, char* argv[])
     Logger::Instance().SetPath(
         ServerBootstrap::logPathFor(cfg, "SceneServer", "logs/scene.log"));
 
+    uint32_t selfId = sceneInfo.sceneID ? sceneInfo.sceneID
+                                        : ServerBootstrap::resolveServerID();
+    ServerList list;
+    if (!ServerBootstrap::fetchServerList(cfg, SubServerType::SCENE, selfId, list))
+        return 1;
+    const ServerEntry* self = list.find(SubServerType::SCENE, selfId);
+    if (!self)
+        self = list.findFirst(SubServerType::SCENE);
+    if (!self)
+    {
+        std::fprintf(stderr, "ServerList missing SCENE entry\n");
+        return 1;
+    }
+
+    LoginServerList loginList;
+    ServerBootstrap::loadLoginServerList(argc, argv, loginList);
+
     auto* server = SceneServer::Instance();
-    if (!server->Init("0.0.0.0", (uint16_t)cfg.scenePort, cfg, sceneInfo)) return 1;
+    if (!server->Init("0.0.0.0", self->port, cfg, sceneInfo, list, selfId)) return 1;
+    server->setupExternalClients(loginList);
     server->Run();
     return 0;
 }

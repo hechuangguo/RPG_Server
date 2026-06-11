@@ -33,10 +33,25 @@ int main(int argc, char* argv[])
     Logger::Instance().SetPath(
         ServerBootstrap::logPathFor(cfg, "GatewayServer", "logs/gateway.log"));
 
+    uint32_t selfId = ServerBootstrap::resolveServerID();
+    ServerList list;
+    if (!ServerBootstrap::fetchServerList(cfg, SubServerType::GATEWAY, selfId, list))
+        return 1;
+    const ServerEntry* self = list.find(SubServerType::GATEWAY, selfId);
+    if (!self)
+    {
+        std::fprintf(stderr, "ServerList missing GATEWAY entry id=%u\n", selfId);
+        return 1;
+    }
+
     auto* server = GatewayServer::Instance();
-    uint16_t clientPort = (uint16_t)cfg.gatewayPort;
-    uint16_t innerPort  = (uint16_t)(cfg.gatewayPort + 10000);
-    if (!server->Init(clientPort, innerPort, cfg)) return 1;
+    uint16_t clientPort = self->port;
+    uint16_t innerPort  = (uint16_t)(self->port + 10000);
+    LoginServerList loginList;
+    ServerBootstrap::loadLoginServerList(argc, argv, loginList);
+
+    if (!server->Init(clientPort, innerPort, cfg, list, selfId)) return 1;
+    server->setupExternalClients(loginList);
     server->Run();
     return 0;
 }

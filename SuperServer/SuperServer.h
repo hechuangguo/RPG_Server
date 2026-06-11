@@ -27,9 +27,14 @@
 #include "../sdk/util/MsgDispatcher.h"
 #include "../sdk/util/UserBase.h"
 #include "../sdk/util/Singleton.h"
+#include "../sdk/util/ConfigLoader.h"
+#include "../sdk/util/ServerList.h"
+#include "../sdk/util/ExternalServerHub.h"
+#include "../sdk/util/LoginServerList.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
 #include "../protocal/InternalMsg.h"
+#include <mysql/mysql.h>
 #include <unordered_map>
 #include <string>
 
@@ -46,6 +51,7 @@ struct SubServerInfo
     uint32_t       serverID;       /**< 服务器实例编号 */
     std::string    ip;             /**< 监听 IP */
     uint16_t       port;           /**< 监听端口 */
+    std::string    name;           /**< 服务器名（注册上报，来自 ServerList） */
     bool           alive;          /**< 是否存活（心跳超时则置 false） */
     uint64_t       lastHeartbeat;  /**< 最后一次心跳时间戳（ms） */
 };
@@ -100,19 +106,26 @@ private:
     SuperServer();
 
 public:
+    /** @brief 析构：关闭 ServerList 只读用的 MySQL 连接 */
+    ~SuperServer() override;
 
     /**
      * @brief 初始化 SuperServer
      * @param ip   监听 IP
      * @param port 监听端口
+     * @param cfg  全局配置（提供 MySQL 连接信息，用于只读加载 ServerList）
      * @return 成功返回 true
      *
-     * 注册消息处理函数，启动 30 秒间隔心跳检查定时器。
+     * 启动期直连 MySQL 只读加载 ServerList（集群拓扑），注册消息处理函数，
+     * 启动 30 秒间隔心跳检查定时器。
      */
-    bool Init(const std::string& ip, uint16_t port);
+    bool Init(const std::string& ip, uint16_t port, const ServerConfig& cfg);
 
     /** @brief 主循环：轮询网络事件 + 驱动定时器 */
     void Run();
+
+    /** @brief 按 loginserverlist.xml 连接可选外联 Logger */
+    void setupExternalClients(const LoginServerList& list);
 
     // ============================================================
     //  INetCallback 实现
@@ -156,6 +169,23 @@ private:
      * 更新 lastHeartbeat 时间戳并回复 ACK（含服务器时间）。
      */
     void OnHeartbeat(ConnID connID, const char* data, uint16_t len);
+
+    /**
+     * @brief 处理子服务器的 ServerList 拉取请求
+     *
+     * 收到 S2S_SERVERLIST_REQ 后，将缓存的 m_serverList 全量条目打包为
+     * S2S_SERVERLIST_RSP（count + count×Msg_ServerEntry）回发请求方。
+     */
+    void OnServerListReq(ConnID connID, const char* data, uint16_t len);
+
+    /**
+     * @brief 启动期直连 MySQL 只读加载 ServerList 到 m_serverList
+     * @param cfg 提供 host/port/user/pass/name 等连接信息
+     * @return 连接并查询成功返回 true
+     *
+     * @note 放宽“仅 RecordServer 连库”红线：此处仅启动期只读，写库仍只在 Record。
+     */
+    bool loadServerList(const ServerConfig& cfg);
 
     /**
      * @brief 处理用户登录请求
@@ -236,4 +266,10 @@ private:
     std::unordered_map<UserID, UserProxy>     m_users;
     /** @brief 登录中的用户：userID → 待完成上下文 */
     std::unordered_map<UserID, PendingLogin>  m_pendingLogins;
+    /** @brief 启动期只读加载的集群拓扑（下发给子服务器） */
+    ServerList m_serverList;
+    /** @brief 只读 ServerList 用的 MySQL 连接句柄（仅启动期使用） */
+    MYSQL* m_db = nullptr;
+    /** @brief 外联服出站连接（Logger 等） */
+    ExternalServerHub m_externHub;
 };

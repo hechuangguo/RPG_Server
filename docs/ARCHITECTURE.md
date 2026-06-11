@@ -45,10 +45,6 @@ flowchart TB
     SS --- AOI
     SS --- SCE
     SS --- GW
-    SS --- LOG
-    SS --- GLB
-    SS --- ZON
-
     REC --> SES
     REC --> DB
     AOI --> SCE
@@ -56,15 +52,17 @@ flowchart TB
     SCE --> SES
     SCE --> GW
     SCE --> AOI
-    SCE -.-> GLB
-    SCE -.-> ZON
-    SES -.-> GLB
-    SES -.-> ZON
+    SCE -.->|loginserverlist.xml| GLB
+    SCE -.->|loginserverlist.xml| ZON
+    SES -.->|loginserverlist.xml| ZON
+    gameZone[区内进程] -.->|loginserverlist.xml| LOG
 ```
+
+**外联服**（Logger / Global / Zone）不注册 SuperServer，可部署在任意机器；游戏区经根目录 `loginserverlist.xml` 出站连接。外联进程读各自目录 `extern_*.xml`（监听、LogPath/LogDir、可选 Database；Global 另含 HTTP 入站/出站）。
 
 ### 2.2 启动依赖与顺序
 
-`RunServer.sh` 严格按依赖顺序拉起进程：
+`RunServer.sh` 默认仅拉起**游戏区内**进程：
 
 ```mermaid
 flowchart LR
@@ -73,9 +71,9 @@ flowchart LR
     S2 --> S4[AOIServer]
     S2 --> S5[SceneServer]
     S5 --> S6[GatewayServer]
-    S2 --> S7[LoggerServer]
-    S8[GlobalServer] -.->|ENABLE_GLOBAL=1| opt1[可选]
-    S9[ZoneServer] -.->|ENABLE_ZONE=1| opt2[可选]
+    S7[LoggerServer] -.->|ENABLE_LOGGER=1| opt1[外联可选]
+    S8[GlobalServer] -.->|ENABLE_GLOBAL=1| opt2[外联可选]
+    S9[ZoneServer] -.->|ENABLE_ZONE=1| opt3[外联可选]
 ```
 
 | 服务器 | 端口（默认） | 进程数 | 依赖 | 必选 |

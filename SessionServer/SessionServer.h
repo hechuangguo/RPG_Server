@@ -9,6 +9,9 @@
 #include "../sdk/util/MsgDispatcher.h"
 #include "../sdk/util/ConfigLoader.h"
 #include "../sdk/util/WireStringUtil.h"
+#include "../sdk/util/ServerList.h"
+#include "../sdk/util/ExternalServerHub.h"
+#include "../sdk/util/LoginServerList.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
 #include "../protocal/InternalMsg.h"
@@ -32,12 +35,14 @@ public:
 
     /**
      * @brief 初始化网络、MySQL、Relation 预载与消息处理器
-     * @param ip   监听 IP
-     * @param port 监听端口
-     * @param cfg  服务器与数据库配置
+     * @param ip     监听 IP
+     * @param port   监听端口（取自 ServerList 自身条目）
+     * @param cfg    服务器与数据库配置（含 SuperServer 地址）
+     * @param list   集群拓扑（用于自身登记信息）
+     * @param selfId 本进程实例编号
      */
     bool Init(const std::string& ip, uint16_t port,
-              const ServerConfig& cfg);
+              const ServerConfig& cfg, const ServerList& list, uint32_t selfId);
 
     /**
      * @brief 启动主循环
@@ -45,6 +50,9 @@ public:
      * 轮询网络事件并驱动定时任务（心跳、自动存档）。
      */
     void Run();
+
+    /** @brief 连接外联 Logger + Zone（loginserverlist.xml） */
+    void setupExternalClients(const LoginServerList& list);
 
     /** @brief 内部连接建立（SceneServer 等） */
     void OnConnect(ConnID id) override;
@@ -106,4 +114,6 @@ private:
     TcpClient             m_superClient;  /**< 到 SuperServer 的控制连接 */
     MYSQL*                m_db;           /**< Session 服 DB 句柄 */
     uint32_t              m_hbSeq = 0;    /**< 心跳序列号 */
+    ServerEntry           m_self;         /**< 本进程在 ServerList 中的拓扑条目（注册上报用） */
+    ExternalServerHub     m_externHub;    /**< 外联 Logger / Zone */
 };

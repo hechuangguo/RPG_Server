@@ -10,7 +10,7 @@
  *
  * ## 依赖关系
  * - 依赖 SuperServer / SessionServer / RecordServer / AOIServer / GatewayServer
- * - 可选连接 GlobalServer / ZoneServer
+ * - 可选经 loginserverlist.xml 连接外联 GlobalServer / ZoneServer
  * - 支持多进程负载均衡（多 SceneServer 承载不同地图）
  *
  * ## Lua 集成
@@ -40,6 +40,9 @@
 #include "../sdk/util/UserWireUtil.h"
 #include "../sdk/util/WireStringUtil.h"
 #include "../sdk/util/Singleton.h"
+#include "../sdk/util/ServerList.h"
+#include "../sdk/util/ExternalServerHub.h"
+#include "../sdk/util/LoginServerList.h"
 #include "SceneUser.h"
 #include "SceneNpc.h"
 #include "Scene.h"
@@ -77,16 +80,22 @@ public:
     /**
      * @brief 初始化 SceneServer
      * @param ip        监听 IP
-     * @param port      监听端口
-     * @param cfg       全局配置
+     * @param port      监听端口（取自 ServerList 自身条目）
+     * @param cfg       全局配置（提供 SuperServer 地址）
      * @param sceneInfo 场景地图配置
+     * @param list      集群拓扑（用于解析对端地址与自身登记信息）
+     * @param selfId    本进程实例编号
      * @return 成功返回 true
      */
     bool Init(const std::string& ip, uint16_t port,
-              const ServerConfig& cfg, const SceneServerInfo& sceneInfo);
+              const ServerConfig& cfg, const SceneServerInfo& sceneInfo,
+              const ServerList& list, uint32_t selfId);
 
     /** @brief 主循环：轮询所有连接的 epoll + 驱动定时器 */
     void Run();
+
+    /** @brief 连接外联 Logger / Global / Zone（loginserverlist.xml） */
+    void setupExternalClients(const LoginServerList& list);
 
     /** @brief NPC 进入 AOI（创建/复活时由 SceneNpc 调用） */
     void notifyNpcEnterAoi(const SceneNpc& npc) { sendAoiEnter(npc, 1); }
@@ -275,9 +284,9 @@ private:
     TcpClient  m_recordClient;    /**< 到 RecordServer */
     TcpClient  m_aoiClient;       /**< 到 AOIServer */
     TcpClient  m_gatewayClient;   /**< 到 GatewayServer */
-    TcpClient  m_globalClient;    /**< 到 GlobalServer（可选） */
-    TcpClient  m_zoneClient;      /**< 到 ZoneServer（可选） */
     uint32_t   m_sceneID;         /**< 场景服务器编号 */
     uint32_t   m_hbSeq = 0;       /**< 心跳序列号 */
     uint16_t   m_listenPort = 9004;  /**< Scene 对内监听端口 */
+    ServerEntry m_self;           /**< 本进程在 ServerList 中的拓扑条目（注册上报用） */
+    ExternalServerHub m_externHub; /**< 外联 Logger / Global / Zone */
 };

@@ -112,6 +112,37 @@ CREATE TABLE IF NOT EXISTS MapInfo (
     UNIQUE KEY uk_user_map (user_id, map_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- -----------------------------------------------------------
+-- 表：ServerList（游戏区内集群拓扑表 —— SuperServer 启动只读加载）
+-- 设计意图：集中登记游戏区内服务器（Super/Session/Record/AOI/Scene/Gateway）的
+--           编号/类型/监听地址/名称。SuperServer 启动时直连 MySQL 只读此表并缓存，
+--           子服启动拉取后绑定自身端口、连接区内对端。
+--           Logger/Global/Zone 为可选外联服，不在此表登记，由 loginserverlist.xml 配置。
+-- 注意：server_type 仅登记 0=Super, 1=Session, 2=Record, 3=AOI, 4=Scene, 5=Gateway。
+-- 本脚本可重复执行：先 INSERT，再 ON DUPLICATE KEY UPDATE 保持幂等。
+-- -----------------------------------------------------------
+CREATE TABLE IF NOT EXISTS ServerList (
+    server_id    INT UNSIGNED NOT NULL COMMENT '服务器实例编号（同类型下唯一，从 1 起）',
+    server_type  TINYINT UNSIGNED NOT NULL COMMENT '服务器类型（区内：0 Super,1 Session,2 Record,3 AOI,4 Scene,5 Gateway）',
+    ip           VARCHAR(64) NOT NULL DEFAULT '127.0.0.1' COMMENT '监听 IP',
+    port         SMALLINT UNSIGNED NOT NULL COMMENT '监听端口',
+    name         VARCHAR(32) NOT NULL DEFAULT '' COMMENT '服务器名（便于日志/运维识别）',
+    PRIMARY KEY (server_type, server_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 游戏区默认拓扑（6 行）；幂等写入，可重复执行
+INSERT INTO ServerList (server_id, server_type, ip, port, name) VALUES
+    (1, 0, '127.0.0.1', 9000, 'SuperServer'),
+    (1, 1, '127.0.0.1', 9001, 'SessionServer'),
+    (1, 2, '127.0.0.1', 9002, 'RecordServer'),
+    (1, 3, '127.0.0.1', 9003, 'AOIServer'),
+    (1, 4, '127.0.0.1', 9004, 'SceneServer'),
+    (1, 5, '127.0.0.1', 9005, 'GatewayServer')
+ON DUPLICATE KEY UPDATE ip=VALUES(ip), port=VALUES(port), name=VALUES(name);
+
+-- 清理历史外联服条目（Logger/Global/Zone 已迁移至 loginserverlist.xml）
+DELETE FROM ServerList WHERE server_type IN (6, 7, 8);
+
 -- -------------------------------------------------------
 -- 测试种子数据已拆分至 seed_test_data.sql（开发环境按需执行）
 -- -------------------------------------------------------

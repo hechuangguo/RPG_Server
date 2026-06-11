@@ -25,6 +25,9 @@
 #include "../sdk/util/ConfigLoader.h"
 #include "../sdk/util/WireStringUtil.h"
 #include "../sdk/util/Singleton.h"
+#include "../sdk/util/ServerList.h"
+#include "../sdk/util/ExternalServerHub.h"
+#include "../sdk/util/LoginServerList.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
 #include "../common/ClientMsg.h"
@@ -57,16 +60,21 @@ public:
 
     /**
      * @brief 初始化 GatewayServer
-     * @param clientPort 面向客户端的监听端口
-     * @param innerPort  面向内部服务器的监听端口
-     * @param cfg        全局配置
+     * @param clientPort 面向客户端的监听端口（取自 ServerList 自身条目）
+     * @param innerPort  面向内部服务器的监听端口（约定 = clientPort + 10000）
+     * @param cfg        全局配置（提供 SuperServer 地址）
+     * @param list       集群拓扑（用于解析对端地址与自身登记信息）
+     * @param selfId     本进程实例编号
      * @return 成功返回 true
      */
     bool Init(uint16_t clientPort, uint16_t innerPort,
-              const ServerConfig& cfg);
+              const ServerConfig& cfg, const ServerList& list, uint32_t selfId);
 
     /** @brief 主循环 */
     void Run();
+
+    /** @brief 连接外联 Logger（loginserverlist.xml） */
+    void setupExternalClients(const LoginServerList& list);
 
     /**
      * @brief 连接建立回调
@@ -222,6 +230,8 @@ private:
     // --- 双端口配置 ---
     uint16_t  m_clientPort = 9005;   /**< 外网端口：客户端通过公网连接此端口进行登录和游戏数据交互 */
     uint16_t  m_innerPort  = 19005;  /**< 内网端口：内部服务器（SceneServer 等）通过内网连接此端口发送下行消息 */
+    ServerEntry m_self;              /**< 本进程在 ServerList 中的拓扑条目（注册上报用） */
+    ExternalServerHub m_externHub;   /**< 外联 Logger */
     // --- 客户端管理 ---
     GatewayUserManager m_userManager;  /**< 客户端会话表（connID -> GatewayUser） */
 };

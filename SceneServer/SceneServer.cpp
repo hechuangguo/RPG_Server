@@ -4,6 +4,7 @@
  */
 
 #include "SceneServer.h"
+#include "../sdk/util/ServerBootstrap.h"
 #include "SceneUserManager.h"
 #include "SceneNpcManager.h"
 #include "SceneManager.h"
@@ -16,24 +17,32 @@ SceneServer::SceneServer()
     , m_recordClient(this)
     , m_aoiClient(this)
     , m_gatewayClient(this)
-    , m_globalClient(this)
-    , m_zoneClient(this)
     , m_sceneID(0)
 {
 }
 
 bool SceneServer::Init(const std::string& ip, uint16_t port,
-                       const ServerConfig& cfg, const SceneServerInfo& sceneInfo)
+                       const ServerConfig& cfg, const SceneServerInfo& sceneInfo,
+                       const ServerList& list, uint32_t selfId)
 {
     Logger::Instance().SetServerName("SceneServer");
     m_sceneID = sceneInfo.sceneID;
+    if (const ServerEntry* self = list.find(SubServerType::SCENE, selfId))
+        m_self = *self;
+    else if (const ServerEntry* first = list.findFirst(SubServerType::SCENE))
+        m_self = *first;
     if (!m_server.Start(ip, port)) { LOG_FATAL("SceneServer start failed"); return false; }
 
     m_superClient.Connect(cfg.superIP, (uint16_t)cfg.superPort);
-    m_sessionClient.Connect("127.0.0.1", (uint16_t)cfg.sessionPort);
-    m_recordClient.Connect("127.0.0.1", (uint16_t)cfg.recordPort);
-    m_aoiClient.Connect("127.0.0.1", (uint16_t)cfg.aoiPort);
-    m_gatewayClient.Connect("127.0.0.1", (uint16_t)(cfg.gatewayPort + 10000));
+    if (const ServerEntry* ses = list.findFirst(SubServerType::SESSION))
+        m_sessionClient.Connect(ses->ip, ses->port);
+    if (const ServerEntry* rec = list.findFirst(SubServerType::RECORD))
+        m_recordClient.Connect(rec->ip, rec->port);
+    if (const ServerEntry* aoi = list.findFirst(SubServerType::AOI))
+        m_aoiClient.Connect(aoi->ip, aoi->port);
+    // Gateway 内网口约定：在 ServerList 登记的 gateway 端口基础上 +10000
+    if (const ServerEntry* gw = list.findFirst(SubServerType::GATEWAY))
+        m_gatewayClient.Connect(gw->ip, (uint16_t)(gw->port + 10000));
     m_listenPort = port;
 
     SceneManager::Instance().setStartedCallback([this](Scene& scene) { onSceneStarted(scene); });
@@ -65,9 +74,8 @@ void SceneServer::Run()
         m_recordClient.Poll(0);
         m_aoiClient.Poll(0);
         m_gatewayClient.Poll(0);
-        m_globalClient.Poll(0);
-        m_zoneClient.Poll(0);
         m_server.Poll(10);
+        ServerBootstrap::tickGameZoneExtern(m_externHub);
         TimerMgr::Instance().Update();
     }
 }
@@ -663,13 +671,20 @@ void SceneServer::sendAoiLeave(EntryID entityId)
                         reinterpret_cast<const char*>(&entityId), sizeof(entityId));
 }
 
+void SceneServer::setupExternalClients(const LoginServerList& list)
+{
+    ServerBootstrap::initGameZoneExtern(m_externHub, list, SubServerType::SCENE, true, true);
+}
+
 void SceneServer::RegisterToSuper()
 {
     Msg_S2S_Register reg{};
     reg.serverType = (uint8_t)SubServerType::SCENE;
     reg.serverID = m_sceneID;
-    copyToWire(reg.ip, sizeof(reg.ip), "127.0.0.1");
+    copyToWire(reg.ip, sizeof(reg.ip),
+               m_self.ip.empty() ? "127.0.0.1" : m_self.ip.c_str());
     reg.port = m_listenPort;
+    copyToWire(reg.name, sizeof(reg.name), m_self.name.c_str());
     m_superClient.SendMsg((uint16_t)InternalMsgID::S2S_REGISTER_REQ,
                           reinterpret_cast<char*>(&reg), sizeof(reg));
 }

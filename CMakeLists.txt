@@ -166,15 +166,15 @@ set(RECORD_SERVER_LIBS ${MYSQL_LIB} ${MYSQL_EXTRA_LIBS})
 # 每个服务器是一个独立的可执行程序，运行在各自的进程中
 # 通过 TCP Socket 相互通信形成分布式集群
 # -------------------------------------------------------
-add_server(SuperServer    "")                          # SuperServer：中心路由服务器，负责各子服务器的注册管理和消息转发
+add_server(SuperServer    "${RECORD_SERVER_LIBS}")     # SuperServer：中心路由服务器；启动期只读 MySQL 加载 ServerList 拓扑
 add_server(SessionServer  "${RECORD_SERVER_LIBS}")     # SessionServer 直连 MySQL t_relation
 add_server(RecordServer   "${RECORD_SERVER_LIBS}")     # RecordServer：数据记录服务器，唯一连接MySQL的节点，代理所有DB操作
 add_server(AOIServer      "")                          # AOIServer：兴趣范围（Area Of Interest）服务器，9宫格算法管理视野
 add_server(SceneServer    "${LUA_LIBRARIES}")          # SceneServer：场景逻辑服务器，Lua脚本驱动战斗/NPC/任务等游戏玩法
 add_server(GatewayServer  "")                          # GatewayServer：网关服务器，客户端TCP接入入口，消息分发和会话维持
 add_server(LoggerServer   "")                          # LoggerServer：日志服务器，集中收集各节点的远程日志并写入文件
-add_server(GlobalServer   "")                          # GlobalServer：全局数据服务器（可选），排行榜/全服公告/跨场景数据
-add_server(ZoneServer     "")                          # ZoneServer：分区转发服务器（可选），多区架构下的跨区消息路由
+add_server(GlobalServer   "${RECORD_SERVER_LIBS}")     # GlobalServer：全区数据 + 可选 MySQL/HTTP（extern_global.xml）
+add_server(ZoneServer     "${RECORD_SERVER_LIBS}")     # ZoneServer：跨区转发 + 可选 MySQL（extern_zone.xml）
 
 # -------------------------------------------------------
 # 安装目标（make install）

@@ -1,38 +1,42 @@
 /**
  * @file    GlobalServer/main.cpp
- * @brief   全局服务器启动入口
+ * @brief   全区数据服务器（外联可选）启动入口
  *
- * GlobalServer 管理跨场景的游戏全局数据，处理全服公告、排行榜、
- * 全局活动等需要跨场景协调的业务逻辑。
- *
- * 启动流程：
- *   1. 忽略 SIGPIPE 信号
- *   2. 通过 ConfigLoader 加载 XML 配置（默认 config/config.xml）
- *   3. 初始化日志（默认 logs/global.log）
- *   4. 创建 GlobalServer 实例，绑定 0.0.0.0:globalPort 开始监听
- *   5. 进入 Run() 主循环
- *
- * 监听端口: globalPort（配置文件指定）
+ * 读取 GlobalServer/extern_global.xml；游戏区经 loginserverlist.xml 连接本进程。
  */
 
 #include "GlobalServer.h"
 #include "../sdk/util/ServerBootstrap.h"
+#include "../sdk/util/ExternServerConfig.h"
 #include <csignal>
+#include <cstdio>
 
 int main(int argc, char* argv[])
 {
     signal(SIGPIPE, SIG_IGN);
 
-    ServerConfig cfg;
-    const char* cfgPath = nullptr;
-    if (!ServerBootstrap::loadGlobalConfig(argc, argv, cfg, cfgPath))
+    ExternServerConfig extCfg;
+    const char* extPath = ServerBootstrap::externConfigPath(
+        argc, argv, 1, XmlConfig::ENV_EXTERN_GLOBAL_CONFIG,
+        XmlConfig::EXTERN_GLOBAL_CONFIG_DEFAULT);
+    std::string err;
+    if (!ExternServerConfigLoader::Load(extPath, extCfg, &err))
+    {
+        std::fprintf(stderr, "Failed to load %s\n  %s\n", extPath, err.c_str());
         return 1;
+    }
+    if (extCfg.listenPort == 0)
+    {
+        std::fprintf(stderr, "extern_global.xml: Listen port is 0\n");
+        return 1;
+    }
 
-    Logger::Instance().SetPath(
-        ServerBootstrap::logPathFor(cfg, "GlobalServer", "logs/global.log"));
+    const char* logPath = extCfg.logPath.empty() ? "logs/global.log" : extCfg.logPath.c_str();
+    Logger::Instance().SetPath(logPath);
 
     auto* server = GlobalServer::Instance();
-    if (!server->Init("0.0.0.0", (uint16_t)cfg.globalPort)) return 1;
+    if (!server->Init(extCfg))
+        return 1;
     server->Run();
     return 0;
 }

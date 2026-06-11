@@ -29,6 +29,9 @@
 #include "../sdk/util/UserWireUtil.h"
 #include "../sdk/util/WireStringUtil.h"
 #include "../sdk/util/Singleton.h"
+#include "../sdk/util/ServerList.h"
+#include "../sdk/util/ExternalServerHub.h"
+#include "../sdk/util/LoginServerList.h"
 #include "../protocal/InternalMsg.h"
 #include "RecordUser.h"
 #include "RecordUserManager.h"
@@ -59,16 +62,21 @@ public:
 
     /**
      * @brief 初始化 RecordServer
-     * @param ip   监听 IP
-     * @param port 监听端口
-     * @param cfg  全局配置（含数据库连接参数）
+     * @param ip     监听 IP
+     * @param port   监听端口（取自 ServerList 自身条目）
+     * @param cfg    全局配置（含数据库连接参数、SuperServer 地址）
+     * @param list   集群拓扑（用于解析对端地址与自身登记信息）
+     * @param selfId 本进程实例编号
      * @return 成功返回 true
      */
     bool Init(const std::string& ip, uint16_t port,
-              const ServerConfig& cfg);
+              const ServerConfig& cfg, const ServerList& list, uint32_t selfId);
 
     /** @brief 主循环 */
     void Run();
+
+    /** @brief 连接外联 Logger（loginserverlist.xml） */
+    void setupExternalClients(const LoginServerList& list);
 
     /** @brief 内部连接建立 */
     void OnConnect(ConnID id) override;
@@ -171,5 +179,7 @@ private:
     TcpClient  m_sessionClient;   /**< 到 SessionServer 的连接（用于查询社会关系/好友数据） */
     MYSQL*     m_db;              /**< MySQL 连接句柄（全局共享，非线程安全） */
     uint32_t   m_hbSeq = 0;       /**< 心跳序列号（每次自增，SuperServer 用于检测丢包） */
+    ServerEntry m_self;           /**< 本进程在 ServerList 中的拓扑条目（注册上报用） */
     RecordUserManager m_userManager;  /**< Record 用户缓存（userID -> RecordUser） */
+    ExternalServerHub m_externHub;    /**< 外联 Logger */
 };

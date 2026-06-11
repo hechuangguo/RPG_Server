@@ -108,8 +108,14 @@ public:
         hdr.sub     = sub;
         if (!m_sendBuf.Write(reinterpret_cast<const char*>(&hdr), MSG_HEADER_SIZE))
             return false;
-        if (len > 0 && data)
-            return m_sendBuf.Write(data, len);
+        if (len > 0 && data && !m_sendBuf.Write(data, len))
+            return false;
+        // ET 模式下 EPOLLOUT 仅在“不可写→可写”的边沿触发一次；连接建立时的可写
+        // 边沿被消费后，之后缓冲的数据若不主动发送，会一直滞留到下一次边沿（例如
+        // 定时器驱动的注册/心跳因此永远发不出去）。故此处缓冲后立即尝试 flush，
+        // 未发尽的部分再由内核缓冲区满（EAGAIN）后的 EPOLLOUT 边沿继续驱动。
+        if (!m_closed)
+            OnWritable();
         return true;
     }
 

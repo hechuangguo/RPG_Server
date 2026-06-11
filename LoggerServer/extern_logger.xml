@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  extern_logger.xml — LoggerServer 独立部署监听配置
+  职责：外联 LoggerServer 进程在任意机器启动时读取本文件，绑定监听端口与日志目录。
+  游戏区连接地址在 loginserverlist.xml 中配置（客户端视角）。
+  修改后需重启 LoggerServer 生效。
+-->
+<ExternServer>
+    <!-- 监听地址：0.0.0.0 表示所有网卡 -->
+    <Listen ip="0.0.0.0" port="9006"/>
+    <!-- 各游戏区上报日志的落盘根目录（相对进程 cwd） -->
+    <LogDir>logs</LogDir>
+</ExternServer>

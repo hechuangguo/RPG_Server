@@ -6,13 +6,53 @@
 #pragma once
 
 #include "ConfigLoader.h"
+#include "ExternServerConfig.h"
+#include "ExternalServerHub.h"
+#include "LoginServerList.h"
 #include "SceneInfoLoader.h"
+#include "ServerList.h"
+#include "../log/RemoteLogClient.h"
 #include "XmlConfigUtil.h"
 
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 
 namespace ServerBootstrap {
+
+/** @brief 当前进程的服务器实例编号：环境变量 RPG_SERVER_ID（>0）覆盖，默认 1 */
+inline uint32_t resolveServerID()
+{
+    if (const char* env = std::getenv("RPG_SERVER_ID"))
+    {
+        long v = std::strtol(env, nullptr, 10);
+        if (v > 0)
+            return (uint32_t)v;
+    }
+    return 1;
+}
+
+/**
+ * @brief 启动期从 SuperServer 拉取集群拓扑 ServerList
+ * @param cfg       全局配置（提供 SuperServer 地址）
+ * @param selfType  本进程服务器类型
+ * @param selfId    本进程实例编号
+ * @param out       [out] 拉取到的 ServerList
+ * @return 成功返回 true；失败已打印 stderr
+ */
+inline bool fetchServerList(const ServerConfig& cfg, SubServerType selfType,
+                            uint32_t selfId, ServerList& out)
+{
+    if (!ServerListClient::fetch(cfg.superIP, (uint16_t)cfg.superPort,
+                                 selfType, selfId, out))
+    {
+        std::fprintf(stderr,
+                     "Failed to fetch ServerList from SuperServer %s:%d\n",
+                     cfg.superIP.c_str(), cfg.superPort);
+        return false;
+    }
+    return true;
+}
 
 /**
  * @brief 解析全局配置路径
@@ -80,6 +120,65 @@ inline bool loadSceneInfo(int argc, char* argv[], SceneServerInfo& info,
         return true;
     std::fprintf(stderr, "Failed to load scene info: %s\n  %s\n", outPath, err.c_str());
     return false;
+}
+
+/**
+ * @brief 解析 loginserverlist.xml 路径（argv 无专用位时用环境变量/默认根目录文件）
+ */
+inline const char* loginServerListPath(int /*argc*/, char* /*argv*/[])
+{
+    if (const char* env = std::getenv(XmlConfig::ENV_LOGIN_SERVER_LIST_PATH))
+    {
+        if (env[0] != '\0')
+            return env;
+    }
+    return XmlConfig::LOGIN_SERVER_LIST_DEFAULT;
+}
+
+/**
+ * @brief 加载 loginserverlist.xml（文件缺失视为未配置外联，仅 WARN）
+ */
+inline bool loadLoginServerList(int argc, char* argv[], LoginServerList& out)
+{
+    std::string err;
+    const char* path = loginServerListPath(argc, argv);
+    if (!LoginServerListLoader::Load(path, out, &err))
+    {
+        std::fprintf(stderr, "Failed to load loginserverlist: %s\n  %s\n",
+                     path, err.c_str());
+        return false;
+    }
+    if (out.size() == 0)
+        std::fprintf(stderr, "Note: no external servers in %s (optional)\n", path);
+    return true;
+}
+
+/**
+ * @brief 解析外联服独立部署配置路径
+ */
+inline const char* externConfigPath(int argc, char* argv[], int argIndex,
+                                    const char* envName, const char* defaultPath)
+{
+    return XmlConfig::resolvePath(argc, argv, argIndex, envName, defaultPath);
+}
+
+/**
+ * @brief 装配游戏区外联连接并绑定远程日志
+ */
+inline void initGameZoneExtern(ExternalServerHub& hub, const LoginServerList& list,
+                               SubServerType selfType, bool wantGlobal, bool wantZone)
+{
+    hub.configure(list, true, wantGlobal, wantZone);
+    hub.connectAll();
+    if (TcpClient* loggerClient = hub.client(SubServerType::LOGGER))
+        RemoteLogClient::bind(loggerClient, selfType);
+}
+
+/** @brief 游戏区主循环内外联 poll + 重连 */
+inline void tickGameZoneExtern(ExternalServerHub& hub)
+{
+    hub.poll();
+    hub.tickReconnect();
 }
 
 } // namespace ServerBootstrap

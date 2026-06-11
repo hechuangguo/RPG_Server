@@ -25,6 +25,20 @@ constexpr const char* SCENE_INFO_PATH_DEFAULT = "config/server_info.xml";
 constexpr const char* ENV_CONFIG_PATH = "RPG_CONFIG_PATH";
 /** @brief 环境变量：覆盖 server_info.xml 路径 */
 constexpr const char* ENV_SCENE_INFO_PATH = "RPG_SCENE_INFO_PATH";
+/** @brief 默认外联服客户端配置（游戏区连接 Logger/Global/Zone） */
+constexpr const char* LOGIN_SERVER_LIST_DEFAULT = "loginserverlist.xml";
+/** @brief 环境变量：覆盖 loginserverlist.xml 路径 */
+constexpr const char* ENV_LOGIN_SERVER_LIST_PATH = "RPG_LOGIN_SERVER_LIST_PATH";
+/** @brief 默认 LoggerServer 独立部署配置（各服目录，便于版本打包） */
+constexpr const char* EXTERN_LOGGER_CONFIG_DEFAULT = "LoggerServer/extern_logger.xml";
+/** @brief 环境变量：覆盖 extern_logger.xml 路径 */
+constexpr const char* ENV_EXTERN_LOGGER_CONFIG = "RPG_EXTERN_LOGGER_CONFIG";
+/** @brief 默认 GlobalServer 独立部署配置 */
+constexpr const char* EXTERN_GLOBAL_CONFIG_DEFAULT = "GlobalServer/extern_global.xml";
+constexpr const char* ENV_EXTERN_GLOBAL_CONFIG = "RPG_EXTERN_GLOBAL_CONFIG";
+/** @brief 默认 ZoneServer 独立部署配置 */
+constexpr const char* EXTERN_ZONE_CONFIG_DEFAULT = "ZoneServer/extern_zone.xml";
+constexpr const char* ENV_EXTERN_ZONE_CONFIG = "RPG_EXTERN_ZONE_CONFIG";
 
 /**
  * @brief 设置错误输出字符串

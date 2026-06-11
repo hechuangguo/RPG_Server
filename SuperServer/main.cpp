@@ -41,8 +41,12 @@ int main(int argc, char* argv[])
     Logger::Instance().SetPath(
         ServerBootstrap::logPathFor(cfg, "SuperServer", "logs/super.log"));
 
+    LoginServerList loginList;
+    ServerBootstrap::loadLoginServerList(argc, argv, loginList);
+
     auto* server = SuperServer::Instance();
-    if (!server->Init(cfg.superIP, (uint16_t)cfg.superPort)) return 1;
+    if (!server->Init(cfg.superIP, (uint16_t)cfg.superPort, cfg)) return 1;
+    server->setupExternalClients(loginList);
     server->Run();
     return 0;
 }

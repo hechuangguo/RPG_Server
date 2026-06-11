@@ -10,8 +10,8 @@
  *   <ServerConfig>
  *     <Database host=".." port=".." user=".." pass=".." name=".."/>
  *     <SuperServer ip=".." port=".."/>
- *     <SessionServer port="9001"/>
- *     ...
+ *     <!-- Session/Record/AOI/Scene/Gateway 端口已迁移至 DB 的 ServerList -->
+ *     <!-- Logger/Global/Zone 外联地址见根目录 loginserverlist.xml -->
  *     <LogPaths>
  *       <SuperServer>logs/super.log</SuperServer>
  *       ...
@@ -49,11 +49,8 @@ struct ServerConfig
     int sessionPort  = 9001;  /**< SessionServer 端口 */
     int recordPort   = 9002;  /**< RecordServer 端口 */
     int aoiPort      = 9003;  /**< AOIServer 端口 */
-    int scenePort    = 9004;  /**< SceneServer 端口 */
-    int gatewayPort  = 9005;  /**< GatewayServer 端口 */
-    int loggerPort   = 9006;  /**< LoggerServer 端口 */
-    int globalPort   = 9007;  /**< GlobalServer 端口 */
-    int zonePort     = 9008;  /**< ZoneServer 端口 */
+    int scenePort    = 9004;  /**< SceneServer 端口（区内 ServerList；保留默认值兜底） */
+    int gatewayPort  = 9005;  /**< GatewayServer 端口（区内 ServerList；保留默认值兜底） */
     /** @brief 日志输出路径映射：服务器名称 → 日志文件路径 */
     std::unordered_map<std::string, std::string> logPaths;
 };
@@ -93,18 +90,8 @@ public:
             XmlConfig::readStrAttr(ss, "ip", cfg.superIP);
             cfg.superPort = XmlConfig::readIntAttr(ss, "port", cfg.superPort);
         }
-        auto loadPort = [&](const char* tag, int& port) {
-            if (auto* e = root->FirstChildElement(tag))
-                port = XmlConfig::readIntAttr(e, "port", port);
-        };
-        loadPort("SessionServer", cfg.sessionPort);
-        loadPort("RecordServer",  cfg.recordPort);
-        loadPort("AOIServer",     cfg.aoiPort);
-        loadPort("SceneServer",   cfg.scenePort);
-        loadPort("GatewayServer", cfg.gatewayPort);
-        loadPort("LoggerServer",  cfg.loggerPort);
-        loadPort("GlobalServer",  cfg.globalPort);
-        loadPort("ZoneServer",    cfg.zonePort);
+        // Session/Record/AOI/Scene/Gateway 端口已迁移至 DB 的 ServerList。
+        // Logger/Global/Zone 外联地址见 loginserverlist.xml，不在此加载。
         if (auto* lp = root->FirstChildElement("LogPaths"))
         {
             for (auto* e = lp->FirstChildElement(); e; e = e->NextSiblingElement())

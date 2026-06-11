@@ -7,18 +7,62 @@
 
 ZoneServer::ZoneServer() : m_server(this) {}
 
-bool ZoneServer::Init(const std::string& ip, uint16_t port)
+ZoneServer::~ZoneServer()
+{
+    if (m_db)
+    {
+        mysql_close(m_db);
+        m_db = nullptr;
+    }
+}
+
+bool ZoneServer::initDatabase(const DatabaseConfig& dbCfg)
+{
+    if (!dbCfg.configured)
+        return true;
+    m_db = mysql_init(nullptr);
+    if (!m_db)
+    {
+        LOG_FATAL("ZoneServer mysql_init failed");
+        return false;
+    }
+    if (!mysql_real_connect(m_db, dbCfg.host.c_str(), dbCfg.user.c_str(), dbCfg.pass.c_str(),
+                            dbCfg.name.c_str(), static_cast<unsigned int>(dbCfg.port),
+                            nullptr, 0))
+    {
+        LOG_FATAL("ZoneServer MySQL connect failed: %s", mysql_error(m_db));
+        mysql_close(m_db);
+        m_db = nullptr;
+        return false;
+    }
+    mysql_set_character_set(m_db, "utf8mb4");
+    LOG_INFO("ZoneServer MySQL connected: %s:%d/%s",
+             dbCfg.host.c_str(), dbCfg.port, dbCfg.name.c_str());
+    return true;
+}
+
+bool ZoneServer::Init(const ExternServerConfig& cfg)
 {
     Logger::Instance().SetServerName("ZoneServer");
-    if (!m_server.Start(ip, port)) { LOG_FATAL("ZoneServer start failed"); return false; }
+    if (!m_server.Start(cfg.listenIP, cfg.listenPort))
+    {
+        LOG_FATAL("ZoneServer start failed");
+        return false;
+    }
+    if (!initDatabase(cfg.database))
+        return false;
     RegisterHandlers();
-    LOG_INFO("ZoneServer started on %s:%d", ip.c_str(), port);
+    LOG_INFO("ZoneServer started on %s:%u", cfg.listenIP.c_str(), cfg.listenPort);
     return true;
 }
 
 void ZoneServer::Run()
 {
-    while (true) { m_server.Poll(10); TimerMgr::Instance().Update(); }
+    while (true)
+    {
+        m_server.Poll(10);
+        TimerMgr::Instance().Update();
+    }
 }
 
 void ZoneServer::OnConnect(ConnID id) { LOG_INFO("Zone conn=%u", id); }
@@ -29,7 +73,8 @@ void ZoneServer::OnDisconnect(ConnID id)
     for (auto& [zid, route] : m_routes)
     {
         (void)zid;
-        if (route.connID == id) route.alive = false;
+        if (route.connID == id)
+            route.alive = false;
     }
 }
 
@@ -50,7 +95,8 @@ void ZoneServer::RegisterHandlers()
 
 void ZoneServer::OnCrossReq(ConnID fromConn, const char* data, uint16_t len)
 {
-    if (len < 12) return;
+    if (len < 12)
+        return;
     ZoneID dstZone = *reinterpret_cast<const ZoneID*>(data);
     LOG_INFO("CrossReq: dstZone=%u from conn=%u", dstZone, fromConn);
     auto it = m_routes.find(dstZone);

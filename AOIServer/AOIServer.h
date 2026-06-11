@@ -93,6 +93,10 @@
 #include "../sdk/util/MsgDispatcher.h"
 #include "../sdk/util/WireStringUtil.h"
 #include "../sdk/util/Singleton.h"
+#include "../sdk/util/ConfigLoader.h"
+#include "../sdk/util/ServerList.h"
+#include "../sdk/util/ExternalServerHub.h"
+#include "../sdk/util/LoginServerList.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
 #include "../protocal/InternalMsg.h"
@@ -154,20 +158,21 @@ public:
 
     /**
      * @brief 初始化 AOIServer
-     * @param ip         监听 IP
-     * @param port       监听端口
-     * @param superIP    SuperServer IP
-     * @param superPort  SuperServer 端口
-     * @param sessionIP  SessionServer IP
-     * @param sessionPort SessionServer 端口
+     * @param ip     监听 IP
+     * @param port   监听端口（取自 ServerList 自身条目）
+     * @param cfg    全局配置（提供 SuperServer 地址）
+     * @param list   集群拓扑（用于解析对端地址与自身登记信息）
+     * @param selfId 本进程实例编号
      * @return 成功返回 true
      */
     bool Init(const std::string& ip, uint16_t port,
-              const std::string& superIP, uint16_t superPort,
-              const std::string& sessionIP, uint16_t sessionPort);
+              const ServerConfig& cfg, const ServerList& list, uint32_t selfId);
 
     /** @brief 主循环：轮询网络并驱动 AOI 定时任务 */
     void Run();
+
+    /** @brief 连接外联 Logger（loginserverlist.xml） */
+    void setupExternalClients(const LoginServerList& list);
 
     void OnConnect(ConnID id) override;
 
@@ -267,6 +272,8 @@ private:
     TcpClient  m_superClient;    /**< 到 SuperServer 的连接 */
     TcpClient  m_sessionClient;  /**< 到 SessionServer 的连接 */
     uint32_t   m_hbSeq = 0;      /**< 心跳序列号 */
+    ServerEntry m_self;          /**< 本进程在 ServerList 中的拓扑条目（注册上报用） */
+    ExternalServerHub m_externHub; /**< 外联 Logger */
     /** @brief 实体索引：entityID → AOIEntity */
     std::unordered_map<uint64_t, AOIEntity>                    m_entities;
     /** @brief 已注册场景：sceneInstanceId → Msg_AOI_SceneRegister */

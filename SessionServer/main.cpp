@@ -32,8 +32,23 @@ int main(int argc, char* argv[])
     Logger::Instance().SetPath(
         ServerBootstrap::logPathFor(cfg, "SessionServer", "logs/session.log"));
 
+    uint32_t selfId = ServerBootstrap::resolveServerID();
+    ServerList list;
+    if (!ServerBootstrap::fetchServerList(cfg, SubServerType::SESSION, selfId, list))
+        return 1;
+    const ServerEntry* self = list.find(SubServerType::SESSION, selfId);
+    if (!self)
+    {
+        std::fprintf(stderr, "ServerList missing SESSION entry id=%u\n", selfId);
+        return 1;
+    }
+
+    LoginServerList loginList;
+    ServerBootstrap::loadLoginServerList(argc, argv, loginList);
+
     SessionServer server;
-    if (!server.Init("0.0.0.0", (uint16_t)cfg.sessionPort, cfg)) return 1;
+    if (!server.Init("0.0.0.0", self->port, cfg, list, selfId)) return 1;
+    server.setupExternalClients(loginList);
     server.Run();
     return 0;
 }
