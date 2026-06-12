@@ -24,5 +24,6 @@
 
   // Microsoft C/C++ 扩展：不用其内置格式化（若已安装）
   "C_Cpp.formatting": "disabled",
-  "C_Cpp.clang_format_fallbackStyle": "none"
+  "C_Cpp.clang_format_fallbackStyle": "none",
+  "svn.ignoreMissingSvnWarning": true
 }
