@@ -143,6 +143,29 @@ ON DUPLICATE KEY UPDATE ip=VALUES(ip), port=VALUES(port), name=VALUES(name);
 -- 清理历史外联服条目（Logger/Global/Zone 已迁移至 loginserverlist.xml）
 DELETE FROM ServerList WHERE server_type IN (6, 7, 8);
 
+-- -----------------------------------------------------------
+-- 表：ZoneInfo（LoginServer 游戏区入口表 —— 多游戏公用）
+-- 设计意图：登记各游戏类型下的可登录区服入口（IP/Super 端口/维护开关）。
+--           game_type 区分游戏产品；zone_id 区分同产品下的游戏区号。
+--           LoginServer 只读；Gateway gatewayServerId 建议与 zone_id 对齐（同 game_type 下）。
+-- -----------------------------------------------------------
+CREATE TABLE IF NOT EXISTS ZoneInfo (
+    zone_id      INT UNSIGNED NOT NULL COMMENT '游戏区号（同 game_type 下唯一，如 1=一区）',
+    game_type    TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '游戏类型（0=当前 RPG，其它值预留给未来游戏）',
+    name         VARCHAR(32) NOT NULL DEFAULT '' COMMENT '区服显示名',
+    ip           VARCHAR(64) NOT NULL DEFAULT '127.0.0.1' COMMENT '入口 IP（VIP 或对外地址）',
+    super_port   SMALLINT UNSIGNED NOT NULL DEFAULT 9000 COMMENT 'SuperServer 端口',
+    enabled      TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '是否可用：1=可登录 0=维护',
+    update_time  DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后更新时间',
+    PRIMARY KEY (game_type, zone_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT INTO ZoneInfo (zone_id, game_type, name, ip, super_port, enabled) VALUES
+    (1, 0, 'RPG一区', '127.0.0.1', 9000, 1)
+ON DUPLICATE KEY UPDATE
+    name=VALUES(name), ip=VALUES(ip),
+    super_port=VALUES(super_port), enabled=VALUES(enabled);
+
 -- -------------------------------------------------------
 -- 测试种子数据已拆分至 seed_test_data.sql（开发环境按需执行）
 -- -------------------------------------------------------

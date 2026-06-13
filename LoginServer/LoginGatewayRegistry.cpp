@@ -50,6 +50,15 @@ bool LoginGatewayRegistry::pickRoundRobin(LoginGatewayEntry& out)
     return true;
 }
 
+bool LoginGatewayRegistry::pickByServerId(uint32_t gatewayServerId, LoginGatewayEntry& out)
+{
+    auto it = m_entries.find(gatewayServerId);
+    if (it == m_entries.end())
+        return false;
+    out = it->second;
+    return true;
+}
+
 void LoginGatewayRegistry::rebuildOrder()
 {
     m_order.clear();

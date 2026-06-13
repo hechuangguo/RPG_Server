@@ -57,6 +57,14 @@ public:
      */
     bool pickRoundRobin(LoginGatewayEntry& out);
 
+    /**
+     * @brief 按 gatewayServerId 选取网关（与 ZoneInfo.zone_id 对齐）
+     * @param gatewayServerId 网关实例 ID
+     * @param out             [out] 选中的网关
+     * @return 存在且存活时 true
+     */
+    bool pickByServerId(uint32_t gatewayServerId, LoginGatewayEntry& out);
+
     /** @brief 当前存活网关数量 */
     size_t size() const { return m_entries.size(); }
 

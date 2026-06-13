@@ -18,6 +18,12 @@
 
 以上规则均为 **alwaysApply**，修改代码时默认生效。
 
+## 头文件注释（必遵）
+
+- **新建 `.h`**：必须有文件头 `@file` + `@brief`；所有对外类型、public 方法、非自解释成员均须注释。
+- **修改存量 `.h`**：本次新增的 class / struct / enum / 方法 / 成员变量 / 协议字段，**必须**按 [`docs/COMMENTS.md`](docs/COMMENTS.md) 同步补齐，不得只加裸声明。
+- **排版**：相邻方法声明之间空一行（范本 `SceneServer/SceneUserManager.h`；注释风格参考 `LoginServer/LoginGatewayRegistry.h`）。
+
 ## 架构要点（不可违反）
 
 - 单线程 `Poll()`，handler 内不阻塞、不加跨线程共享写
@@ -58,6 +64,7 @@ script/scene/init.lua
 
 - [ ] 未破坏单线程 / DB 唯一入口 / Session 调度边界
 - [ ] 新命名与注释符合 `.cursor/rules/*`（`.h` 文件头+API；XML 段/属性；SQL 表/字段 `COMMENT`）
+- [ ] 新建或改动的 `.h` 中，**本次新增**符号均有 Doxygen 注释
 - [ ] 新客户端消息：Validator 规则 + Router 目标 + `ClientMsg.h` 注释
 - [ ] 协议字段用 `WireStringUtil`；线上帧为 6 字节头（非旧 4 字节）
 - [ ] 改策划表已跑 `./gen_data.sh`，未手改 `AUTO-GENERATED` 的 lua

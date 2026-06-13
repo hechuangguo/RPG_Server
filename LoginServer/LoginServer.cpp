@@ -87,6 +87,18 @@ bool LoginServer::initDatabase(const DatabaseConfig& dbCfg)
     return true;
 }
 
+bool LoginServer::loadZoneInfo()
+{
+    if (!m_db)
+        return true;
+    if (!m_zoneInfoStore.loadFromDb(m_db))
+    {
+        LOG_FATAL("LoginServer ZoneInfo load failed");
+        return false;
+    }
+    return true;
+}
+
 bool LoginServer::Init(const LoginExternConfig& cfg)
 {
     Logger::Instance().SetServerName("LoginServer");
@@ -96,6 +108,8 @@ bool LoginServer::Init(const LoginExternConfig& cfg)
         return false;
     }
     if (!initDatabase(cfg.database))
+        return false;
+    if (m_dbRequired && !loadZoneInfo())
         return false;
 
     if (!m_clientServer.Start(cfg.clientListenIP, cfg.clientListenPort))
@@ -113,6 +127,13 @@ bool LoginServer::Init(const LoginExternConfig& cfg)
 
     registerHandlers();
     TimerMgr::Instance().Register(10000, 10000, [this] { pruneGatewayTable(); });
+    if (m_db)
+    {
+        TimerMgr::Instance().Register(60000, 60000, [this] {
+            if (m_db && !m_zoneInfoStore.loadFromDb(m_db))
+                LOG_ERR("LoginServer ZoneInfo reload failed");
+        });
+    }
     LOG_INFO("LoginServer started: client=%s:%u register=%s:%u",
              cfg.clientListenIP.c_str(), cfg.clientListenPort,
              cfg.registerListenIP.c_str(), cfg.registerListenPort);

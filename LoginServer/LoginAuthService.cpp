@@ -109,7 +109,27 @@ void LoginAuthService::sendGatewayInfo(ConnID connID, int32_t code, const char* 
     if (code == 0)
     {
         LoginGatewayEntry gw;
-        if (m_owner.gatewayRegistry().pickRoundRobin(gw))
+        ZoneInfoRow zone;
+        auto& zoneStore = m_owner.zoneInfoStore();
+        auto& registry = m_owner.gatewayRegistry();
+
+        if (zoneStore.size() > 0)
+        {
+            if (zoneStore.pickRoundRobin(zone) &&
+                registry.pickByServerId(zone.zoneId, gw))
+            {
+                copyToWire(info.gatewayIP, sizeof(info.gatewayIP), gw.ip.c_str());
+                info.gatewayPort = gw.port;
+                if (!zone.name.empty())
+                    copyToWire(info.msg, sizeof(info.msg), zone.name.c_str());
+            }
+            else
+            {
+                info.code = -1;
+                copyToWire(info.msg, sizeof(info.msg), "No gateway available");
+            }
+        }
+        else if (registry.pickRoundRobin(gw))
         {
             copyToWire(info.gatewayIP, sizeof(info.gatewayIP), gw.ip.c_str());
             info.gatewayPort = gw.port;

@@ -15,6 +15,7 @@
 
 #include "LoginExternConfig.h"
 #include "LoginGatewayRegistry.h"
+#include "ZoneInfoStore.h"
 #include "LoginAuthService.h"
 #include "LoginRechargeService.h"
 #include "LoginGmService.h"
@@ -62,6 +63,7 @@ public:
     TcpServer& clientServer() { return m_clientServer; }
     TcpServer& registerServer() { return m_registerServer; }
     LoginGatewayRegistry& gatewayRegistry() { return m_gatewayRegistry; }
+    ZoneInfoStore& zoneInfoStore() { return m_zoneInfoStore; }
     MYSQL* db() { return m_db; }
     bool dbRequired() const { return m_dbRequired; }
     LoginAuthService& authService() { return m_authService; }
@@ -91,6 +93,7 @@ public:
 private:
     void registerHandlers();
     bool initDatabase(const DatabaseConfig& dbCfg);
+    bool loadZoneInfo();
     void pruneGatewayTable();
 
     /** @brief 客户端口 INetCallback 桥接 */
@@ -104,6 +107,7 @@ private:
     TcpServer m_clientServer;    /**< 玩家登录监听 */
     TcpServer m_registerServer;  /**< 网关注册监听 */
     LoginGatewayRegistry m_gatewayRegistry; /**< 存活网关表 */
+    ZoneInfoStore        m_zoneInfoStore;     /**< ZoneInfo 表缓存 */
     LoginAuthService     m_authService;     /**< 客户端登录 */
     LoginRechargeService m_rechargeService; /**< 充值骨架 */
     LoginGmService       m_gmService;       /**< GM 骨架 */
