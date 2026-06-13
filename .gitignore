@@ -26,3 +26,4 @@ GatewayServer/GatewayServer
 LoggerServer/LoggerServer
 GlobalServer/GlobalServer
 ZoneServer/ZoneServer
+LoginServer/LoginServer
