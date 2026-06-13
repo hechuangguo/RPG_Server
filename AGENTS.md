@@ -5,7 +5,7 @@
 ## 项目是什么
 
 分布式 MMORPG 服务端：**10 个 C++ 可执行进程**（6 区内 + 4 外联可选）+ **SceneServer 内嵌 Lua**。  
-文档：[docs/INDEX.md](docs/INDEX.md) · [README.md](../README.md) · [ARCHITECTURE.md](ARCHITECTURE.md)
+文档：[docs/INDEX.md](docs/INDEX.md) · [README.md](./README.md) · [ARCHITECTURE.md](ARCHITECTURE.md)
 
 ## 必须遵守的 Cursor Rules
 
