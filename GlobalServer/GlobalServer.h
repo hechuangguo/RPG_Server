@@ -3,9 +3,13 @@
  * @brief  全局服务器 —— 全区数据管理（排行榜、全服公告等），可选启动
  *
  * ## 职责
- * - 排行榜维护（接收各 SceneServer 的排行更新，排序保留前 100 名）
- * - 全区数据同步（向所有连接的 SceneServer 广播全局数据）
+ * - 排行榜维护（接收经 Super SS_EXTERN_FWD 转发的 GLB_RANK_UPDATE，排序保留前 100 名）
+ * - 全区数据同步（GLB_DATA_SYNC 向已连接 inner 连接 fan-out；SyncGlobalData 定时器尚未推送 rank）
  * - HTTP 入站 JSON API（/health、/rank、/getUserList）与可选 HTTP 出站探测
+ *
+ * ## 连接
+ * - 生产路径：SuperServer ExternalServerHub 出站连接 Global；Scene 等经 SS_EXTERN_FWD 访问
+ * - 非 SceneServer 直连（历史注释已修正）
  *
  * ## 特性
  * - 可选服务（ENABLE_GLOBAL=1 或独立启动）

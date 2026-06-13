@@ -133,11 +133,16 @@ flowchart LR
 RPG/
 ├── CMakeLists.txt
 ├── Build.sh / autoinit.sh / RunServer.sh / StopServer.sh / log.sh
-├── sdk/                    # header-only 底层库
+├── sdk/                    # 公共底层库（头文件为主 + 部分 .cpp）
 │   ├── net/                # epoll TCP 栈
-│   ├── timer/TimerMgr.h
-│   ├── log/Logger.h
-│   └── util/               # ConfigLoader, MsgDispatcher, UserBase
+│   ├── timer/              # TimerMgr（相对间隔）
+│   ├── time/               # TimeUtil、AlarmClock（墙钟）
+│   ├── log/                # Logger、RemoteLog
+│   ├── http/               # GlobalServer HTTP
+│   ├── math/               # Vec、Random
+│   └── util/               # ConfigLoader、MsgDispatcher、Bootstrap、外联转发
+├── LoginServer/            # 外联登录（可选）
+├── docs/                   # 文档（见 INDEX.md）
 ├── common/ClientMsg.h      # 客户端协议
 ├── protocal/InternalMsg.h  # 服务器间协议
 ├── config/config.xml       # 全局配置
@@ -159,12 +164,13 @@ RPG/
 - 转发：`SuperExternRouter`（`SS_EXTERN_FWD`）、`SuperLoginMsg`（网关注册代理）
 - 入站：区内子进程注册（`S2S_REGISTER_REQ`）
 - 维护 `UserProxy`；协调登录：Gateway → Super → Record（加载）→ Scene
+- **登录选 Scene**：`FindSceneServer()` 取**第一个存活** SceneServer（非 Session 加权 LB；后者用于副本创建）
 
 ### SessionServer — 社会关系与离线数据
 
 - 出站：SuperServer、RecordServer（`REC_RELATION_*` 读写 Relation）
 - 入站：GatewayServer（`GW_CLIENT_MSG`）、SceneServer（场景/副本登记）
-- 好友、离线消息、社会关系内存管理；`SessionUser` + `SocialData`
+- 好友、离线消息、社会关系内存管理；`SessionUser` + `SocialData`（**社交/任务 GW 消息 handler 多为骨架**）
 - 全区场景/副本：`SessionSceneManager` 登记与负载均衡
 
 ### RecordServer — 数据库读写
@@ -175,8 +181,8 @@ RPG/
 
 ### AOIServer — 视野管理
 
-- 出站：SuperServer
-- 入站：SceneServer（enter/leave/move）
+- 出站：SuperServer（注册）；**不连 Session**
+- 入站：SceneServer（enter/leave/move、scene register）
 - 9 宫格 AOI；向 Scene 推送 `AOI_VIEW_NOTIFY`
 
 ### SceneServer — 核心游戏逻辑
@@ -196,7 +202,7 @@ RPG/
 ### LoginServer — 外联登录与网关列表
 
 - **ClientListen**（默认 9010）：`C2S_LOGIN_REQ` → 可选 MySQL 校验（同 Record `CharBase.name`）→ `S2C_LOGIN_RSP` + `S2C_GATEWAY_INFO`
-- **RegisterListen**（默认 19010）：Gateway `LOGIN_GATEWAY_REGISTER` / `LOGIN_GATEWAY_HEARTBEAT`；内存网关表轮询 LB
+- **RegisterListen**（默认 19010）：Super 代理 Gateway `LOGIN_GATEWAY_REGISTER` / `LOGIN_GATEWAY_HEARTBEAT`（Gateway **不直连** Login）
 - 不向 SuperServer 注册；配置见 `LoginServer/extern_login.xml`
 
 ### LoggerServer — 集中日志
@@ -206,6 +212,10 @@ RPG/
 ### GlobalServer / ZoneServer — 可选扩展
 
 - 通过 `ENABLE_GLOBAL=1` / `ENABLE_ZONE=1` 启动
+- **GlobalServer**：经 Super `ExternalServerHub` 接收 `GLB_RANK_UPDATE`；可选 HTTP API（`GlobalHttpServer`）；`SyncGlobalData()` 尚未向 Scene 广播 rank
+- **ZoneServer**：`ZONE_CROSS_REQ` 路由骨架；`ZONE_FORWARD` 当前 log-only
+
+详细说明见 [EXTERNAL.md](EXTERNAL.md)。
 
 ---
 
@@ -285,16 +295,20 @@ flowchart TB
 
 ### 客户端协议（common/ClientMsg.h）
 
-| module | 说明 |
-|--------|------|
-| 0x00 | 登录/注册 |
-| 0x01 | 场景/移动 |
-| 0x02 | 战斗 |
-| 0x05 | 聊天 |
-| 0x06 | 社交 |
-| 0x07 | 任务 |
-| 0x08 | NPC 交互 |
-| 0x0F | 系统/心跳/错误（含 `S2C_ERROR` sub=0x05） |
+| module | 说明 | Gateway 路由 |
+|--------|------|--------------|
+| 0x00 | 登录/注册 | LOCAL |
+| 0x01 | 场景/移动 | SCENE |
+| 0x02 | 战斗 | SCENE |
+| 0x03 | 背包/物品 | SCENE |
+| 0x04 | 技能 | SCENE |
+| 0x05 | 聊天 | SCENE（sub=0x03 私聊 → SESSION） |
+| 0x06 | 社交 | SESSION |
+| 0x07 | 任务 | SESSION |
+| 0x08 | NPC 交互 | SCENE |
+| 0x0F | 系统/心跳/错误（含 `S2C_ERROR` sub=0x05） | LOCAL |
+
+完整消息表见 [PROTOCOL.md](PROTOCOL.md)。
 
 常用 C2S 示例：`C2S_LOGIN_REQ` = module **0x00** sub **0x01**；`C2S_MOVE_REQ` = **0x01/0x01**；`C2S_HEARTBEAT` = **0x0F/0x01**。
 
@@ -309,13 +323,20 @@ flowchart TB
 
 | msgID 范围 | 归属 |
 |------------|------|
-| 0x1F01–0x1F04 | 注册/心跳 |
+| 0x1F01–0x1F06 | 注册/心跳/ServerList |
+| 0x1F10–0x1F15 | Super 外联转发 / 网关注册代理 |
 | 0x1001–0x1003 | SuperServer |
-| 0x1101–0x1105 | SessionServer |
-| 0x1201–0x1206 | RecordServer |
+| 0x1101–0x1111 | SessionServer（含场景/副本） |
+| 0x1201–0x120C | RecordServer（含 Relation） |
 | 0x1301–0x1306 | SceneServer |
 | 0x1401–0x1405 | GatewayServer |
-| 0x1501–0x1504 | AOIServer |
+| 0x1501–0x1506 | AOIServer |
+| 0x1601 | LoggerServer |
+| 0x1701–0x1702 | GlobalServer |
+| 0x1801–0x1803 | ZoneServer |
+| 0x1901–0x1905 | LoginServer |
+
+完整列表见 [PROTOCOL.md](PROTOCOL.md)。
 
 ### 登录流程
 
@@ -361,22 +382,13 @@ sequenceDiagram
 
 ## 8. 扩展开发指南
 
-### 新增客户端消息
+新增客户端消息、S2S 消息、副本类型、Scene 实例、策划表等步骤见 **[DEVELOPMENT.md](DEVELOPMENT.md)**。
 
-1. 在 `common/ClientMsg.h` 定义 `ClientModule`、sub、body 结构体（扁平 `ClientMsgID` 可选）
-2. 在 `GatewayServer/ClientMsgValidator.h` 增加白名单规则（长度、状态、payload）
-3. 在 `GatewayServer/ClientMsgRouter.h` 指定转发目标（Scene / Session / LOCAL）
-4. 在 SceneServer 或 SessionServer 处理 `GW_CLIENT_MSG`（或 Lua `OnMsg_{module}{sub}`）
+简要 checklist：
 
-### 新增 S2S 消息
-
-1. 在 `protocal/InternalMsg.h` 添加 module/sub（扁平 `InternalMsgID`）和结构体
-2. 在发送方/接收方 `RegisterHandlers()` 注册（支持 `Register(module, sub)` 或扁平 ID）
-
-### 水平扩展
-
-- **GatewayServer**：多实例 + L4 负载均衡
-- **SceneServer**：不同 `sceneID` + `server_info.xml`，SuperServer 按地图路由
+1. 客户端消息：`ClientMsg.h` → `ClientMsgValidator` → `ClientMsgRouter` → Scene/Session handler
+2. S2S 消息：`InternalMsg.h` → 双方 `RegisterHandlers()`
+3. 水平扩展：多 Gateway（L4 LB）；多 Scene（不同 `sceneID` + `server_info.xml`）
 
 ---
 
@@ -397,8 +409,8 @@ flowchart TB
         InternalProto[protocal/InternalMsg.h]
     end
 
-    subgraph services [服务层 9进程]
-        SVC[Super/Session/Record/AOI/Scene/Gateway/Logger/Global/Zone]
+    subgraph services [服务层 10进程]
+        SVC[Super/Session/Record/AOI/Scene/Gateway/Logger/Global/Zone/Login]
     end
 
     subgraph data [数据层]
@@ -418,4 +430,4 @@ flowchart TB
 - **SuperServer 中心化注册**：支持 Scene/Gateway 扩展
 - **职责单一**：DB 只在 RecordServer，AOI 独立，日志集中
 - **Lua 热逻辑**：C++ 管网络/调度，Lua 管玩法
-- **Header-only SDK**：逻辑集中在 `*Server.h`
+- **SDK 复用**：头文件为主，部分模块有 `.cpp` 实现；详见 [SDK.md](SDK.md)

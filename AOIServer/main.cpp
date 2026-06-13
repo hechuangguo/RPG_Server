@@ -9,11 +9,11 @@
  *   1. 忽略 SIGPIPE 信号
  *   2. 通过 ConfigLoader 加载 XML 配置（默认 config/config.xml）
  *   3. 初始化日志（默认 logs/aoi.log）
- *   4. 创建 AOIServer 实例，绑定 0.0.0.0:aoiPort 并连接 SuperServer 与 SessionServer
+ *   4. 创建 AOIServer 实例，绑定 0.0.0.0:aoiPort 并连接 SuperServer（注册）
  *   5. 进入 Run() 主循环
  *
  * 监听端口: aoiPort（配置文件指定）
- * 连接上游: SuperServer（superIP:superPort）+ SessionServer（127.0.0.1:sessionPort）
+ * 连接上游: SuperServer（superIP:superPort）— 不连接 SessionServer
  */
 
 #include "AOIServer.h"

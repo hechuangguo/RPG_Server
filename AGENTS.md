@@ -4,8 +4,8 @@
 
 ## 项目是什么
 
-分布式 MMORPG 服务端：**9 个 C++ 进程** + **SceneServer 内嵌 Lua**。  
-文档：`README.md` · `docs/PROJECT.md` · `docs/ARCHITECTURE.md`
+分布式 MMORPG 服务端：**10 个 C++ 可执行进程**（6 区内 + 4 外联可选）+ **SceneServer 内嵌 Lua**。  
+文档：[docs/INDEX.md](docs/INDEX.md) · [README.md](../README.md) · [ARCHITECTURE.md](ARCHITECTURE.md)
 
 ## 必须遵守的 Cursor Rules
 
@@ -47,8 +47,11 @@
 ## 常用路径
 
 ```
+docs/INDEX.md                    # 文档总索引
 sdk/net/NetDefine.h              # MsgHeader
 sdk/net/MsgId.h                  # module/sub 工具
+docs/PROTOCOL.md                 # 协议参考
+docs/SERVERS.md                  # 10 进程说明
 common/ClientMsg.h               # ClientModule、ClientMsgID
 protocal/InternalMsg.h           # Msg_GW_ClientMsg、Msg_GW_SendToClient
 GatewayServer/ClientMsgValidator.h
@@ -58,6 +61,7 @@ SceneServer/SceneServer.h
 SessionServer/SessionServer.h
 SessionServer/SessionSceneManager.*
 script/scene/init.lua
+docs/LUA.md                      # Lua 绑定与模块
 ```
 
 ## 提交前自检

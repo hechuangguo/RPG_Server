@@ -1,6 +1,6 @@
 ﻿# RPG Server
 
-Linux 平台下的分布式 MMORPG 游戏服务器，采用 **C++17 + Lua 5.4**，共 **9 个独立进程** 组成微服务集群。
+Linux 平台下的分布式 MMORPG 游戏服务器，采用 **C++17 + Lua 5.4**，共 **10 个可执行进程**：**6 个区内核心服**（必选）+ **4 个外联可选服**（Logger / Global / Zone / Login）。
 
 ## 架构概览
 
@@ -13,20 +13,21 @@ Client → GatewayServer ─┬→ SceneServer → AOIServer
     全区场景注册 · 副本调度 · 负载均衡（SessionSceneManager）
 ```
 
-| 服务器 | 端口 | 职责 |
-|--------|------|------|
-| SuperServer | 9000 | 注册中心、登录调度 |
-| SessionServer | 9001 | 社会关系、离线数据、**全区场景/副本调度** |
-| RecordServer | 9002 | MySQL 持久化 |
-| AOIServer | 9003 | 9 宫格视野管理 |
-| SceneServer | 9004 | 在线逻辑、Lua 脚本、**Scene / CopyScene 实例** |
-| GatewayServer | 9005 / 19005 | 客户端接入、**消息校验**、按模块转发 Scene/Session |
-| LoggerServer | 9006 | 集中日志 |
-| GlobalServer | 9007 | 全区数据（可选） |
-| ZoneServer | 9008 | 跨区转发（可选） |
+| 服务器 | 端口 | 职责 | 类别 |
+|--------|------|------|------|
+| SuperServer | 9000 | 注册中心、登录调度、外联转发枢纽 | 区内 |
+| SessionServer | 9001 | 社会关系、**全区场景/副本调度** | 区内 |
+| RecordServer | 9002 | MySQL 持久化（唯一写库） | 区内 |
+| AOIServer | 9003 | 9 宫格视野管理 | 区内 |
+| SceneServer | 9004 | 在线逻辑、Lua 脚本、**Scene / CopyScene 实例** | 区内 |
+| GatewayServer | 9005 / 19005 | 客户端接入、**消息校验**、按模块转发 Scene/Session | 区内 |
+| LoggerServer | 9006 | 集中日志 | 外联可选 |
+| GlobalServer | 9007 | 全区排行榜 / HTTP API | 外联可选 |
+| ZoneServer | 9008 | 跨区转发 | 外联可选 |
+| LoginServer | 9010 / 19010 | 两阶段登录、网关列表 LB | 外联可选 |
 
-完整架构说明见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。  
-项目说明与总结见 [docs/PROJECT.md](docs/PROJECT.md)。
+完整架构见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)；各进程细节见 [docs/SERVERS.md](docs/SERVERS.md)；外联服见 [docs/EXTERNAL.md](docs/EXTERNAL.md)。  
+文档总索引：[docs/INDEX.md](docs/INDEX.md) · 项目说明：[docs/PROJECT.md](docs/PROJECT.md)
 
 ## 协议帧格式
 
@@ -59,7 +60,7 @@ Client → GatewayServer ─┬→ SceneServer → AOIServer
 | module | 路由目标 |
 |--------|----------|
 | 0x00 Login、0x0F System | Gateway 本地（登录/心跳） |
-| 0x01 Scene、0x02 Battle、0x04 Skill、0x08 NPC、0x05 Chat（广播） | SceneServer |
+| 0x01 Scene、0x02 Battle、0x03 Bag、0x04 Skill、0x08 NPC、0x05 Chat（非私聊） | SceneServer |
 | 0x06 Social、0x07 Quest、0x05 Chat（sub=0x03 私聊） | SessionServer |
 
 服间转发客户端包：`Msg_GW_ClientMsg`（含 `clientConnID` + module + sub + body）。下行：`Msg_GW_SendToClient`。
@@ -106,8 +107,10 @@ RPG/
 ├── common/        # 客户端协议 ClientMsg.h
 ├── protocal/      # 服务器内部协议 InternalMsg.h
 ├── GatewayServer/ # 接入 + ClientMsgValidator/Router
+├── LoginServer/   # 外联登录 + 网关列表（可选）
 ├── SceneServer/   # Scene、CopyScene、SceneManager、SceneEntry/Npc/User
 ├── SessionServer/ # SessionScene、SessionCopyScene、SessionSceneManager
+├── docs/          # 架构、协议、各服、SDK、Lua 等文档（见 INDEX.md）
 ├── config/        # config.xml、server_info.xml
 ├── DataDoc/       # 策划 Excel 表（源数据）
 ├── database/      # 生成的 *_config.lua 策划配表
@@ -188,15 +191,14 @@ ENABLE_ZONE=1 ./RunServer.sh            # 含 ZoneServer
 
 ## 新人阅读顺序
 
+推荐从 [docs/INDEX.md](docs/INDEX.md) 按角色选路径。源码速览：
+
 1. `sdk/net/NetDefine.h` + `sdk/net/MsgId.h` — 消息帧与 module/sub
-2. `common/ClientMsg.h` — 客户端协议与 `ClientModule`
-3. `protocal/InternalMsg.h` — 服间协议与 `Msg_GW_*` 转发结构
-4. `GatewayServer/ClientMsgValidator.h` + `ClientMsgRouter.h` — 网关校验与路由
-5. `GatewayServer/GatewayServer.h` — 客户端接入与转发
-6. `sdk/util/UserBase.h` — 用户模型
-7. `SuperServer/SuperServer.h` — 注册与登录调度
-8. `SceneServer/SceneServer.h` — 核心游戏逻辑
-9. `SessionServer/SessionSceneManager.h` — 全区场景/副本调度
+2. [docs/PROTOCOL.md](docs/PROTOCOL.md) — 客户端与服间协议表
+3. `GatewayServer/ClientMsgValidator.h` + `ClientMsgRouter.h` — 网关校验与路由
+4. [docs/SERVERS.md](docs/SERVERS.md) — 10 进程职责与连接
+5. `SceneServer/SceneServer.h` + [docs/LUA.md](docs/LUA.md) — 核心玩法与脚本
+6. `SessionServer/SessionSceneManager.h` — 全区场景/副本调度
 
 ## 场景系统
 
@@ -277,13 +279,18 @@ SceneServer::Instance()->requestCreateCopy(
 
 ## 登录流程
 
+**区内直连（默认）**：
+
 ```
 Client ──[module=0x00 Login]──► Gateway（本地校验）
-         ──► Record（验证）──► Super ──► Record（加载）──► Scene ──► AOI
+         ──► Record（验证，按 CharBase.name，不校验 password）
+         ──► Super（选第一个存活 Scene）──► Record（加载）──► Scene ──► AOI
 Client ◄── Gateway ◄── Super ◄── Scene（S2C_LOGIN_RSP + S2C_ENTER_GAME）
+```
+
+**两阶段（可选）**：Client → LoginServer（9010）→ `S2C_GATEWAY_INFO` → Gateway。详见 [docs/EXTERNAL.md](docs/EXTERNAL.md)。
 
 登录后玩法包 ──► Gateway（Validator）──► Scene 或 Session（Router）
-```
 
 ## 时间库（sdk/time + sdk/timer）
 

@@ -28,7 +28,7 @@
 | 构建 | CMake 3.16+，产物默认输出到各服务器目录（如 `SuperServer/SuperServer`） |
 | 第三方库 | Lua、tinyxml2、MariaDB 客户端（`3Party/` 自包含） |
 
-### 1.3 系统架构（9 进程）
+### 1.3 系统架构（10 进程）
 
 ```
 Client → GatewayServer ─┬→ SceneServer / AOIServer
@@ -39,17 +39,20 @@ Client → GatewayServer ─┬→ SceneServer / AOIServer
     SessionServer（全区场景/副本调度）
 ```
 
-| 服务器 | 默认端口 | 职责概要 |
-|--------|----------|----------|
-| SuperServer | 9000 | 注册中心、登录调度、用户路由 |
-| SessionServer | 9001 | 社会关系、离线数据、全区场景/副本登记与负载均衡 |
-| RecordServer | 9002 | 唯一连库进程，账号验证、读写存档 |
-| AOIServer | 9003 | 9 宫格 AOI 视野 |
-| SceneServer | 9004 | 在线玩法、地图实例、Lua 脚本（可多台水平扩展） |
-| GatewayServer | 9005 / 19005 | 客户端接入、消息校验、按 module 转发 Scene/Session |
-| LoggerServer | 9006 | 集中写日志 |
-| GlobalServer | 9007 | 全区数据（可选，`ENABLE_GLOBAL=1`） |
-| ZoneServer | 9008 | 跨区转发（可选，`ENABLE_ZONE=1`） |
+**区内核心（6，必选）** + **外联可选（4）**：Logger、Global、Zone、Login。
+
+| 服务器 | 默认端口 | 职责概要 | 类别 |
+|--------|----------|----------|------|
+| SuperServer | 9000 | 注册中心、登录调度、外联转发枢纽 | 区内 |
+| SessionServer | 9001 | 社会关系、全区场景/副本登记与负载均衡 | 区内 |
+| RecordServer | 9002 | 唯一写库进程，账号验证、读写存档 | 区内 |
+| AOIServer | 9003 | 9 宫格 AOI 视野 | 区内 |
+| SceneServer | 9004 | 在线玩法、地图实例、Lua 脚本（可多台） | 区内 |
+| GatewayServer | 9005 / 19005 | 客户端接入、消息校验、按 module 转发 | 区内 |
+| LoggerServer | 9006 | 集中写日志 | 外联 |
+| GlobalServer | 9007 | 全区排行榜 / HTTP（骨架：Sync 未完成） | 外联 |
+| ZoneServer | 9008 | 跨区转发（骨架） | 外联 |
+| LoginServer | 9010 / 19010 | 两阶段登录、网关 LB | 外联 |
 
 **设计原则**：
 
@@ -74,6 +77,7 @@ RPG/
 ├── LoggerServer/
 ├── GlobalServer/
 ├── ZoneServer/
+├── LoginServer/
 ├── config/           # config.xml、server_info.xml
 ├── DataDoc/          # 策划 Excel 源表
 ├── database/         # 生成的 *_config.lua 策划配表
@@ -171,14 +175,14 @@ mysql -u root -p < tables/seed_test_data.sql  # 可选：开发测试账号
 
 ### 1.8 推荐阅读顺序
 
-1. `sdk/net/NetDefine.h` + `sdk/net/MsgId.h` — 6 字节消息帧
-2. `common/ClientMsg.h` — 客户端 module/sub 与结构体
-3. `GatewayServer/ClientMsgValidator.h` + `ClientMsgRouter.h` — 网关校验与路由
-4. `protocal/InternalMsg.h` — 服间协议与 `Msg_GW_*` 转发
-5. `GatewayServer/GatewayServer.h` — 接入与登录
-6. `SuperServer/SuperServer.h` — 注册与调度
-7. `SceneServer/SceneServer.h` — 核心玩法
-8. `SessionServer/SessionSceneManager.h` — 全区场景/副本调度
+从 [INDEX.md](INDEX.md) 按角色选路径。源码速览：
+
+1. [SDK.md](SDK.md) + `sdk/net/NetDefine.h` — 消息帧
+2. [PROTOCOL.md](PROTOCOL.md) — 客户端与服间协议
+3. `GatewayServer/ClientMsgValidator.h` + `ClientMsgRouter.h`
+4. [SERVERS.md](SERVERS.md) — 10 进程
+5. `SceneServer/SceneServer.h` + [LUA.md](LUA.md)
+6. `SessionServer/SessionSceneManager.h`
 
 ---
 
@@ -188,14 +192,15 @@ mysql -u root -p < tables/seed_test_data.sql  # 可选：开发测试账号
 
 | 维度 | 说明 |
 |------|------|
-| 分布式骨架 | 9 服拆分、注册心跳、统一启动/停止脚本 |
-| 登录与存档 | Gateway + Super + Record 链路，MySQL 表结构完整 |
+| 分布式骨架 | 10 服拆分（6 区内 + 4 外联）、注册心跳、统一启动/停止脚本 |
+| 登录与存档 | Gateway + Super + Record 链路；Record 按 CharBase.name 验证（password 未校验） |
 | 场景运行 | Scene/CopyScene、SceneManager、地图配置、AOI 登记 |
-| 全区调度 | SessionSceneManager：注册、副本复用、SceneServer 负载选择 |
+| 全区调度 | SessionSceneManager：注册、副本复用、SceneServer 负载选择（登录选服为 Super 取首个存活 Scene） |
 | 客户端接入 | Gateway 双端口、6 字节消息头、校验与按模块转发 Scene/Session |
 | 脚本层 | Lua VM、事件/NPC/技能/任务框架、C++↔Lua 绑定 |
 | 策划数据 | DataDoc → database Lua + basefile 加载，集成 autoinit/build |
-| 工程化 | CMake、3Party 自包含、架构文档与 README |
+| 外联服 | Login 两阶段登录；Logger 远程日志；Global rank 写入；Zone 转发骨架 |
+| 工程化 | CMake、3Party 自包含、完整 docs 体系 |
 
 当前状态：**可编译、可启动、可扩展的多进程 MMORPG 服务端框架**，而非单进程 Demo。
 
@@ -224,9 +229,11 @@ mysql -u root -p < tables/seed_test_data.sql  # 可选：开发测试账号
 
 | 领域 | 现状 | 可扩展方向 |
 |------|------|------------|
+| Session 社交/任务 | GW_CLIENT_MSG handler 多为 log-only 骨架 | 好友、队伍、任务业务 |
 | 地图资源 | `.map` 配置为主，解析较简 | 碰撞、传送点、完整资源加载 |
-| 战斗/技能 | 框架已有，逻辑较简 | 技能表、伤害公式、Buff 状态机 |
-| Global/Zone | 可选进程，业务较少 | 排行榜、跨服、合区 |
+| 战斗/技能 | 框架已有，Skill 配表硬编码在 Lua | 技能表、伤害公式、Buff 状态机 |
+| Global/Zone | Global Sync 未向 Scene 广播；Zone 转发骨架 | 排行榜同步、跨服、合区 |
+| Friend/Mail/MapInfo | MySQL 表已建，C++ 未读写 | 邮件、离线地图存档 |
 | 热更新 | 需重启或手动重载 Lua | 配表/Lua 热更流程 |
 | 监控运维 | 以文件日志为主 | 指标、链路追踪 |
 | 自动化测试 | 手工启动为主 | 协议单测、压测 |
@@ -235,15 +242,26 @@ mysql -u root -p < tables/seed_test_data.sql  # 可选：开发测试账号
 
 | 文档 | 内容 |
 |------|------|
+| [INDEX.md](INDEX.md) | **文档总导航** |
 | [AGENTS.md](../AGENTS.md) | AI/协作开发指南与自检清单 |
 | [.cursor/rules/project.mdc](../.cursor/rules/project.mdc) | Cursor 项目总则（架构红线） |
 | [README.md](../README.md) | 快速上手、场景流程、日志 |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | 架构图、协议、扩展指南 |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | 架构图、协议概要、扩展指南 |
+| [SDK.md](SDK.md) | `sdk/` 模块说明 |
+| [PROTOCOL.md](PROTOCOL.md) | 客户端与服间协议参考 |
+| [SERVERS.md](SERVERS.md) | 10 进程详细说明 |
+| [EXTERNAL.md](EXTERNAL.md) | 外联四服架构 |
+| [DATA.md](DATA.md) | MySQL + 策划 Lua 数据层 |
+| [LUA.md](LUA.md) | SceneServer Lua 脚本 |
+| [DEVELOPMENT.md](DEVELOPMENT.md) | 扩展开发指南 |
 | [DataDoc/README.md](../DataDoc/README.md) | Excel 配表规范 |
 | [database/README.md](../database/README.md) | Lua 策划配表说明 |
 | [tables/README.md](../tables/README.md) | MySQL 表结构脚本 |
 | [COMMENTS.md](COMMENTS.md) | 头文件 / XML / SQL / 源码注释规范 |
 | [3Party/README.md](../3Party/README.md) | 第三方库构建 |
+| [sdk/README.md](../sdk/README.md) | SDK 短索引 |
+| [script/README.md](../script/README.md) | Lua 脚本目录 |
+| [basefile/README.md](../basefile/README.md) | 配表加载 API |
 
 ### 2.6 一句话总结
 

@@ -85,10 +85,30 @@ mysql -h 127.0.0.1 -u rpg_table -prpg_table rpg_game < tables/examples_batch_upd
 
 ## 当前表一览（init.sql 内）
 
-角色基础：`CharBase`（含 `` `binary` `` 玩法序列化）  
-社交：`Relation`（`friends_json` / `blacklist_json` / `guild_id` / `team_id` / `` `binary` ``）、`Friend`  
-其它：`Mail`、`MapInfo`
+**玩家与社交**
 
-`Relation.binary`：SessionServer 直连读写，存社交扩展二进制（申请列表、缓存等）；好友列表仍用 JSON 文本字段。
+| 表 | 说明 | C++ 读写 |
+|----|------|----------|
+| `CharBase` | 账号+角色合并；`` `binary` `` 存 bag/skills/buffs/quests | RecordServer（完整） |
+| `Relation` | 好友/黑名单 JSON + 社交扩展 `` `binary` `` | RecordServer + SessionServer |
+
+**仅 DDL（C++ 尚未使用）**
+
+| 表 | 说明 |
+|----|------|
+| `Friend` | 双向好友/黑名单行（预留） |
+| `Mail` | 离线邮件 |
+| `MapInfo` | 每用户每地图 JSON 存档 |
+
+**集群与登录**
+
+| 表 | 说明 | 读写进程 |
+|----|------|----------|
+| `ServerList` | 区内拓扑（Super…Gateway 端口） | SuperServer 启动只读；`init.sql` 种子 |
+| `ZoneInfo` | 登录区列表（IP、super_port、enabled） | LoginServer `ZoneInfoStore` |
+
+`Relation.binary`：SessionServer 经 Record 读写，存社交扩展二进制；好友列表仍用 JSON 文本字段。
+
+详见 [DATA.md](../docs/DATA.md)。
 
 **代码与表名约定：** SQL 中的表名须与 `init.sql` 一致（PascalCase：`CharBase`、`Relation`、`Friend`、`Mail`、`MapInfo`），勿使用已废弃的 `t_` 前缀旧名（如 `t_charbase`）。
