@@ -108,7 +108,7 @@ Scene Lua 扩展：见 [LUA.md](LUA.md) § 扩展指南。
 ## 8. 构建与运行
 
 ```bash
-./autoinit.sh              # 首次：3Party + cmake
+./autoinit.sh              # 首次：从 vendor 离线编译 3Party + cmake（无需 curl）
 ./gen_data.sh              # 改 Excel 后
 ./build.sh SceneServer     # 或 ./Build.sh 编译全部
 mysql -u root -p < tables/init.sql
@@ -118,6 +118,15 @@ mysql -u root -p < tables/init.sql
 ```
 
 产物：各服目录下可执行文件（如 `SuperServer/SuperServer`）或 `.build/bin/`（视 CMake 配置）。
+
+### 8.1 升级 3Party 版本（维护者）
+
+1. 修改 [`3Party/versions.env`](../3Party/versions.env) 中的版本号与 URL
+2. `./3Party/fetch_vendor.sh --force`（需 curl 与网络）
+3. `git add 3Party/vendor/` 并提交
+4. 团队 `git pull` 后执行 `./3Party/download_and_build.sh --force`
+
+详见 [3Party/README.md](../3Party/README.md)。
 
 ---
 

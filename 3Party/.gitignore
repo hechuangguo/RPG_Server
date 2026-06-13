@@ -1,5 +1,4 @@
-# 3Party 构建产物与缓存（保留 README.md、versions.env、download_and_build.sh）
-/cache/
+# 构建临时目录与编译产物（vendor/ 源码 tar.gz 纳入 Git）
 /src/
 /lua/
 /tinyxml2/

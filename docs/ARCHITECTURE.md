@@ -150,6 +150,10 @@ RPG/
 ├── database/               # Lua 策划配表
 ├── tables/                 # MySQL DDL（入口 init.sql）
 ├── script/                 # Lua 脚本
+├── 3Party/                 # 第三方静态库
+│   ├── vendor/             # tar.gz 源码包（纳入 Git）
+│   ├── src/                # 解压临时目录（gitignore）
+│   └── lua|tinyxml2|mysql/ # 编译产物 .a（gitignore）
 └── *Server/                # 各服务器 *Server.h + main.cpp
 ```
 

@@ -117,6 +117,10 @@ RPG/
 ├── tables/        # MySQL DDL（入口 init.sql）
 ├── basefile/      # 配表加载工具（data_table.lua）
 ├── script/        # Lua 游戏脚本
+├── 3Party/        # 第三方静态库（vendor/ 源码入库，离线编译）
+│   ├── vendor/    # tar.gz 源码包（纳入 Git）
+│   ├── fetch_vendor.sh
+│   └── download_and_build.sh
 ├── tools/         # gen_datadoc.py（Excel→Lua）
 ├── gen_data.sh    # 配表生成入口
 ├── build          # 编译入口（等价 ./Build.sh）
@@ -131,20 +135,21 @@ RPG/
 
 ### 环境依赖
 
-- g++（C++17）、CMake 3.16+、make、curl
+- g++（C++17）、CMake 3.16+、make、tar
 - 构建 MariaDB Connector 时需 **openssl-devel**、**zlib-devel**（仅编译期）
+- **curl** 可选（仅维护者运行 `3Party/fetch_vendor.sh` 刷新 vendor 时需要）
 
 ```bash
 # CentOS/RHEL
-sudo dnf install -y gcc-c++ cmake make curl tar openssl-devel zlib-devel
+sudo dnf install -y gcc-c++ cmake make tar openssl-devel zlib-devel
 ```
 
-第三方库 **Lua 5.4 / tinyxml2 / MySQL client** 集成在 `3Party/`，无需安装 `libmysqlclient-dev` 等系统包。详见 [3Party/README.md](3Party/README.md)。
+第三方库 **Lua 5.4 / tinyxml2 / MySQL client** 源码 tar.gz 已纳入 `3Party/vendor/`，clone 后 `./autoinit.sh` **无需联网下载**，仅从 vendor 解压并编译。详见 [3Party/README.md](3Party/README.md)。
 
 ### 初始化与编译
 
 ```bash
-./autoinit.sh          # 下载编译 3Party + cmake configure
+./autoinit.sh          # 从 vendor 离线编译 3Party + cmake configure
 ./gen_data.sh          # DataDoc Excel → database/*.lua（可选 --init 生成示例表）
 ./build                # 或 ./Build.sh
 
@@ -161,7 +166,7 @@ sudo dnf install -y gcc-c++ cmake make curl tar openssl-devel zlib-devel
 
 详见 [DataDoc/README.md](DataDoc/README.md)。
 
-仅重建第三方库：`./3Party/download_and_build.sh`（加 `--force` 强制重编）
+仅重建第三方库：`./3Party/download_and_build.sh`（加 `--force` 强制重下载 vendor 并重编）
 
 ### 数据库
 

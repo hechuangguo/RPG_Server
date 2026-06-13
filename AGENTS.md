@@ -73,6 +73,7 @@ docs/LUA.md                      # Lua 绑定与模块
 - [ ] 协议字段用 `WireStringUtil`；线上帧为 6 字节头（非旧 4 字节）
 - [ ] 改策划表已跑 `./gen_data.sh`，未手改 `AUTO-GENERATED` 的 lua
 - [ ] 未提交 `.build/`、`logs/`、`run/`、`.cache/`
+- [ ] 未提交 `3Party/src/` 与 `3Party/lua|tinyxml2|mysql/` 编译产物；`3Party/vendor/*.tar.gz` 应已在库内
 
 ## 禁止
 

@@ -84,7 +84,10 @@ RPG/
 ├── tables/           # MySQL DDL（入口 init.sql）
 ├── basefile/         # 配表加载工具 data_table.lua
 ├── script/           # 游戏 Lua（scene/quest/npc 等）
-├── 3Party/           # 第三方静态库
+├── 3Party/           # 第三方静态库（vendor/ 源码入库，离线编译）
+│   ├── vendor/       # tar.gz 源码包（纳入 Git）
+│   ├── fetch_vendor.sh
+│   └── download_and_build.sh
 ├── tools/            # Excel→Lua 生成（gen_datadoc.py）
 ├── docs/             # 架构与项目文档
 ├── Build.sh          # 编译脚本
@@ -151,7 +154,7 @@ Client → Gateway（验证）→ Super → Record（加载）→ Scene → AOI
 ### 1.6 开发与运维流程
 
 ```bash
-./autoinit.sh          # 3Party + CMake 配置
+./autoinit.sh          # 从 vendor 离线编译 3Party + CMake 配置
 ./gen_data.sh          # Excel → Lua 配表（首次可加 --init）
 ./Build.sh             # 编译全部服务器
 mysql -u root -p < tables/init.sql          # 建库建表
@@ -200,7 +203,7 @@ mysql -u root -p < tables/seed_test_data.sql  # 可选：开发测试账号
 | 脚本层 | Lua VM、事件/NPC/技能/任务框架、C++↔Lua 绑定 |
 | 策划数据 | DataDoc → database Lua + basefile 加载，集成 autoinit/build |
 | 外联服 | Login 两阶段登录；Logger 远程日志；Global rank 写入；Zone 转发骨架 |
-| 工程化 | CMake、3Party 自包含、完整 docs 体系 |
+| 工程化 | CMake、3Party vendor 入库离线构建、完整 docs 体系 |
 
 当前状态：**可编译、可启动、可扩展的多进程 MMORPG 服务端框架**，而非单进程 Demo。
 

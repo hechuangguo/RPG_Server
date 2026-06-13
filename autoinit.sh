@@ -1,4 +1,4 @@
-﻿#!/bin/bash
+#!/usr/bin/env bash
 # ============================================================
 #  autoinit —— 服务器环境自动初始化脚本
 #
@@ -9,14 +9,14 @@
 #    - gcc/g++：C/C++ 编译器（编译 Lua、tinyxml2、MariaDB Connector）
 #    - cmake：项目构建系统（用于 3Party 库和主项目的 CMake 配置）
 #    - make：构建工具（编译 Lua 等 makefile 项目）
-#    - curl/tar：下载和解压第三方库源码包
+#    - tar：解压 vendor 源码包（3Party/vendor/ 已纳入 Git，无需 curl 下载）
 #    - OpenSSL/zlib 开发包：MariaDB Connector 编译依赖
 #      （Ubuntu: apt install libssl-dev zlib1g-dev）
 #      （CentOS: yum install openssl-devel zlib-devel）
 #
 #  初始化流程（6 步）：
 #    1. 创建必要目录（logs/、run/、.build/、3Party/、DataDoc/）
-#    2. 构建 3Party 第三方依赖（Lua / tinyxml2 / MariaDB Client）
+#    2. 从 vendor/ 离线编译 3Party 静态库（Lua / tinyxml2 / MariaDB Client）
 #    3. 检查配置文件完整性（config.xml、server_info.xml）
 #    4. 验证协议文件（头文件定义，无需代码生成）
 #    5. 设置脚本执行权限（RunServer/StopServer/log/build）
@@ -60,9 +60,10 @@ step "Creating directories..."
 mkdir -p "$LOG_DIR" "$RUN_DIR" "$BUILD_DIR" "$THIRD_DIR" "$SCRIPT_DIR/DataDoc"
 
 # -------------------------------------------------------
-#  第2步：构建 3Party 第三方依赖
+#  第2步：从 vendor/ 离线编译 3Party 静态库
 #
-#  依赖库及用途：
+#  vendor 源码 tar.gz 已纳入 Git（3Party/vendor/）；本步仅解压 + 编译，不联网下载。
+#  维护者升级依赖见 3Party/fetch_vendor.sh。
 #    • Lua 5.4：脚本语言引擎，用于游戏逻辑脚本和配置解析
 #      - 产物：3Party/lua/lib/liblua.a、include 头文件
 #    • tinyxml2：轻量 XML 解析器，解析 config.xml 等配置文件
@@ -87,8 +88,8 @@ if [[ ! -f "$MYSQL_LIB" ]]; then
 fi
 
 if [[ ! -f "$LUA_LIB" || ! -f "$TINYXML2_LIB" || ! -f "$MYSQL_LIB" ]]; then
-    step "Building 3Party dependencies..."
-    # 确保下载构建脚本有执行权限
+    step "Building 3Party from vendor (offline)..."
+    # 确保构建脚本有执行权限
     if [[ ! -x "$THIRD_DIR/download_and_build.sh" ]]; then
         chmod +x "$THIRD_DIR/download_and_build.sh"
     fi

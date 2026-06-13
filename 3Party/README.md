@@ -1,62 +1,89 @@
 # 3Party 第三方依赖
 
-本目录存放项目所需的 **Lua 5.4**、**tinyxml2**、**MySQL 客户端（MariaDB Connector/C）** 静态库，无需系统安装 `libmysqlclient-dev` / `lua5.4-dev` / `libtinyxml2-dev`。
+本目录提供 **Lua 5.4**、**tinyxml2**、**MariaDB Connector/C** 静态库，无需系统安装 `libmysqlclient-dev` 等包。
 
-## 目录结构（构建后）
+**源码 tar.gz 已纳入 Git**（`vendor/`），clone 后 `./autoinit.sh` **无需联网下载**，仅从 vendor 解压并编译。
+
+## 目录结构
 
 ```
 3Party/
-├── versions.env              # 版本与下载 URL
-├── download_and_build.sh     # 一键下载并编译
-├── cache/                    # 源码压缩包缓存（可删后重下）
-├── src/                      # 解压后的源码（可删）
-├── lua/
-│   ├── include/              # lua.h, lualib.h, ...
-│   └── lib/liblua.a
+├── versions.env              # 版本号与下载 URL（维护者用）
+├── download_and_build.sh     # 离线编译（默认）
+├── fetch_vendor.sh           # 维护者：从网络更新 vendor/
+├── vendor/                   # 源码 tar.gz（纳入 Git）
+│   ├── lua-5.4.7.tar.gz
+│   ├── tinyxml2-10.0.0.tar.gz
+│   └── mariadb-connector-c-3.3.10-src.tar.gz
+├── src/                      # 解压临时目录（gitignore）
+├── lua/                      # 编译产物 liblua.a（gitignore）
 ├── tinyxml2/
-│   ├── include/tinyxml2.h
-│   └── lib/libtinyxml2.a
 └── mysql/
-    ├── include/mysql/mysql.h # MariaDB Connector，兼容 libmysqlclient API
-    └── lib/libmariadb.a
 ```
+
+## Clone 后快速构建
+
+```bash
+./autoinit.sh    # 从 vendor 编译 3Party + cmake configure
+./Build.sh       # 编译全部服务器
+```
+
+- 首次 autoinit 会编译三个静态库（约 1–2 分钟）
+- 第二次 autoinit：`.a` 已存在则跳过 3Party 编译
+- **不需要 curl**（vendor 已在仓库内）
 
 ## 构建依赖
 
-**仅需构建工具**（CentOS/RHEL）：
+**编译必需**（CentOS/RHEL）：
 
 ```bash
-sudo dnf install -y gcc-c++ cmake make curl tar openssl-devel zlib-devel
+sudo dnf install -y gcc-c++ cmake make tar openssl-devel zlib-devel
 ```
 
-## 一键构建
+| 工具 | 用途 |
+|------|------|
+| gcc/g++/make/cmake/tar | 编译静态库 |
+| openssl-devel / zlib-devel | MariaDB Connector |
+| curl | **仅维护者**运行 `fetch_vendor.sh` 时需要 |
 
-```bash
-chmod +x 3Party/download_and_build.sh
-./3Party/download_and_build.sh
-```
+## 脚本用法
 
-强制重新下载编译：
+| 命令 | 说明 |
+|------|------|
+| `./3Party/download_and_build.sh` | 默认：离线编译（vendor 齐全） |
+| `./3Party/download_and_build.sh --build-only` | 同上 |
+| `./3Party/download_and_build.sh --force` | 重新下载 vendor + 重新编译 |
+| `./3Party/fetch_vendor.sh` | 仅下载/更新 vendor tar.gz |
 
-```bash
-./3Party/download_and_build.sh --force
-```
+## 维护者：升级 3Party 版本
+
+1. 修改 [`versions.env`](versions.env) 中的版本号与 URL
+2. `./3Party/fetch_vendor.sh --force`（需 curl 与网络）
+3. `git add 3Party/vendor/` 并提交
+4. 团队 `git pull` 后执行 `./3Party/download_and_build.sh --force`
+
+详见 [`vendor/README.md`](vendor/README.md)。
 
 ## 与项目集成
 
-`CMakeLists.txt` 会 **优先** 使用 `3Party/` 下的头文件与静态库；`autoinit.sh` 在配置前会自动调用本脚本（若库尚未构建）。
+`CMakeLists.txt` 优先使用 `3Party/lua`、`3Party/tinyxml2`、`3Party/mysql` 下的头文件与 `.a`。
 
-```bash
-./autoinit.sh    # 构建 3Party（如需要）+ cmake configure
-./build.sh       # 编译全部服务器
-```
+RecordServer 使用 `mysql/mysql.h` + `libmariadbclient.a`，与 `libmysqlclient` API 兼容。
 
 ## 版本
 
-| 组件 | 版本 | 说明 |
-|------|------|------|
-| Lua | 5.4.7 | 官方源码静态库 |
-| tinyxml2 | 10.0.0 | GitHub release |
-| MariaDB Connector/C | 3.3.10 | 提供 `mysql/mysql.h`，链接 `libmariadb.a` |
+| 组件 | 版本 |
+|------|------|
+| Lua | 5.4.7 |
+| tinyxml2 | 10.0.0 |
+| MariaDB Connector/C | 3.3.10 |
 
-RecordServer 使用 `mysql/mysql.h` + `libmariadb.a`，与 `libmysqlclient` API 兼容。
+## 附录：vendor 缺失或下载失败
+
+若 `3Party/vendor/` 缺少 tar.gz（不完整 clone）：
+
+```bash
+./3Party/fetch_vendor.sh   # 需网络
+```
+
+或手动将对应文件放入 `3Party/vendor/`（文件名见 `vendor/README.md`）。

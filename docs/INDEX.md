@@ -8,7 +8,7 @@
 
 ### 新人（服务端）
 
-1. [README.md](../README.md) — 环境、编译、启动
+1. [README.md](../README.md) — 环境、编译、启动（clone → `./autoinit.sh` 离线 3Party → Build）
 2. [PROJECT.md](PROJECT.md) — 项目定位与技术栈
 3. [ARCHITECTURE.md](ARCHITECTURE.md) — 进程拓扑与核心流程
 4. [SDK.md](SDK.md) — 网络、定时器、配置、Bootstrap
@@ -73,7 +73,8 @@
 | [database/README.md](../database/README.md) | 生成的 Lua 策划配表 |
 | [tables/README.md](../tables/README.md) | MySQL DDL 与初始化 |
 | [DataDoc/README.md](../DataDoc/README.md) | Excel 源表规范 |
-| [3Party/README.md](../3Party/README.md) | 第三方库构建 |
+| [3Party/README.md](../3Party/README.md) | 第三方库离线编译 |
+| [3Party/vendor/README.md](../3Party/vendor/README.md) | vendor 源码 tar.gz 清单 |
 
 ---
 
