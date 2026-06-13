@@ -167,8 +167,8 @@ RPG/
 - 出站：**独占** `loginserverlist.xml` 外联 Logger/Global/Zone/Login（`ExternalServerHub`）
 - 转发：`SuperExternRouter`（`SS_EXTERN_FWD`）、`SuperLoginMsg`（网关注册代理）
 - 入站：区内子进程注册（`S2S_REGISTER_REQ`）
-- 维护 `UserProxy`；协调登录：Gateway → Super → Record（加载）→ Scene
-- **登录选 Scene**：`FindSceneServer()` 取**第一个存活** SceneServer（非 Session 加权 LB；后者用于副本创建）
+- 维护 `UserProxy`；协调登录：Gateway → Super → Record（加载）→ Session（map 解析）→ Scene
+- **登录选 Scene**：`SES_RESOLVE_MAP_REQ/RSP`，Session 按用户 `mapId` 返回 `sceneServerId`
 
 ### SessionServer — 社会关系与离线数据
 
@@ -191,7 +191,7 @@ RPG/
 
 ### SceneServer — 核心游戏逻辑
 
-- 出站：Super / Record / Session / AOI
+- 出站：`SessionClient` / `RecordClient` / `AOIClient`（独立 INetCallback，与 Gateway 入站分离）；Super 注册
 - 入站：Gateway（`GW_CLIENT_MSG` 上行 + 同连接 `GW_SEND_TO_CLIENT` 下行）、Session（副本指令等）
 - 内嵌 Lua；唯一可水平扩展的进程
 
@@ -200,7 +200,7 @@ RPG/
 - 启动：仅监听客户端 + 连接 Super；收到 `S2S_REGISTER_RSP` 后再出站连接 Record / Session / **全部 Scene 实例**（`GatewayScenePool`）
 - 出站：Super / Record / Session / 多 Scene；**不直连 Login**，经 Super `SS_LOGIN_GATEWAY_WRAP` + `LOGIN_GATEWAY_HEARTBEAT` 上报
 - 入站：游戏客户端（clientPort）
-- 登录成功后按 `Msg_GW_UserLoginRsp.sceneServerId` 绑定用户并路由上行消息
+- 登录成功后按 `Msg_GW_UserLoginRsp.sceneServerId` 绑定用户；SCENE 上行经 `SceneClient` 严格路由（无 firstConnected 兜底）
 - `ClientMsgValidator` + `ClientMsgRouter`；60 秒心跳超时踢人
 
 ### LoginServer — 外联登录与网关列表

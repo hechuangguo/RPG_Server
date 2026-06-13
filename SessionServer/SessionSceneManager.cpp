@@ -131,6 +131,34 @@ SessionScene* SessionSceneManager::findNormalScene(uint64_t sceneInstanceId) con
         ? const_cast<SessionScene*>(&it->second) : nullptr;
 }
 
+uint32_t SessionSceneManager::resolveSceneServerByMapId(uint32_t mapId) const
+{
+    uint32_t bestServerId = 0;
+    uint32_t bestPlayers  = std::numeric_limits<uint32_t>::max();
+
+    for (const auto& [instanceId, scene] : m_normalScenes)
+    {
+        (void)instanceId;
+        if (scene.getMapId() != mapId)
+            continue;
+        if (scene.getState() != SceneState::RUNNING)
+            continue;
+
+        const uint32_t serverId = scene.getSceneServerId();
+        auto sit = m_sceneServers.find(serverId);
+        if (sit == m_sceneServers.end() || !sit->second.alive)
+            continue;
+
+        const uint32_t players = scene.getPlayerCount();
+        if (players < bestPlayers)
+        {
+            bestPlayers  = players;
+            bestServerId = serverId;
+        }
+    }
+    return bestServerId;
+}
+
 uint32_t SessionSceneManager::pickSceneServerId() const
 {
     uint32_t bestId   = 0;

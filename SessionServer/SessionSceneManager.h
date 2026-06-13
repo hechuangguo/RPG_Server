@@ -64,6 +64,9 @@ public:
     /** @brief 按场景实例 ID 查普通地图记录 */
     SessionScene* findNormalScene(uint64_t sceneInstanceId) const;
 
+    /** @brief 按 mapId 解析承载普通地图的 SceneServer（playerCount 最小优先） */
+    uint32_t resolveSceneServerByMapId(uint32_t mapId) const;
+
     /** @brief 按负载选择 SceneServer（场景数 + 玩家数加权） */
     uint32_t pickSceneServerId() const;
 

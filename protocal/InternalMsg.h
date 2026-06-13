@@ -106,6 +106,8 @@ enum class InternalMsgID : uint16_t
     SES_COPY_CREATE_REQ    = 0x1109, /**< SceneServer → Session: 请求创建副本 */
     SES_COPY_CREATE_RSP    = 0x1110, /**< Session → SceneServer: 副本分配结果 */
     SES_COPY_CREATE_CMD    = 0x1111, /**< Session → SceneServer: 在目标进程创建副本 */
+    SES_RESOLVE_MAP_REQ    = 0x1112, /**< Super → Session: 按 mapId 解析 sceneServerId */
+    SES_RESOLVE_MAP_RSP    = 0x1113, /**< Session → Super: mapId 解析结果 */
 
     // ============================================================
     //  RecordServer (0x1201 ~ 0x1206)
@@ -637,6 +639,22 @@ struct Msg_SES_SceneUnregister
 {
     uint64_t sceneInstanceId; /**< 待注销场景实例 ID */
     uint32_t sceneServerId;   /**< 发起注销的 SceneServer ID */
+};
+
+/** @brief SuperServer → SessionServer：按 mapId 解析承载该地图的 SceneServer */
+struct Msg_SES_ResolveMapReq
+{
+    uint64_t userID; /**< 登录用户 ID（回包关联 pending） */
+    uint32_t mapId;  /**< 地图模板 ID（分线固定默认，暂不扩展 lineId） */
+};
+
+/** @brief SessionServer → SuperServer：mapId 解析结果 */
+struct Msg_SES_ResolveMapRsp
+{
+    int32_t  code;           /**< 0=成功，非 0=未找到可用场景 */
+    uint64_t userID;         /**< 回显登录用户 ID */
+    uint32_t mapId;          /**< 回显 mapId */
+    uint32_t sceneServerId;  /**< 承载该 map 的 SceneServer 实例 ID */
 };
 
 /** @brief SceneServer → SessionServer：请求创建副本 */

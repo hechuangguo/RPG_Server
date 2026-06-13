@@ -72,7 +72,7 @@ flowchart TB
 
 ### 登录选 Scene
 
-`FindSceneServer()` 取**第一个存活** SceneServer（非 Session 加权 LB；后者仅用于副本）。
+Load 用户后 Super 向 Session 发 `SES_RESOLVE_MAP_REQ`（含 userId + mapId）；Session `SessionSceneManager.resolveSceneServerByMapId()` 返回承载该地图的 `sceneServerId`，Super 再向对应 Scene 发 `SCE_USER_ENTER_REQ`。
 
 ---
 
@@ -80,7 +80,7 @@ flowchart TB
 
 | 项 | 说明 |
 |----|------|
-| **核心类** | `GatewayServer`, `GatewayUserManager`, `GatewayScenePool`, `ClientMsgValidator`, `ClientMsgRouter` |
+| **核心类** | `GatewayServer`, `GatewayUserManager`, `GatewayScenePool`, `SceneClient`, `ClientMsgValidator`, `ClientMsgRouter` |
 | **入站** | 游戏客户端（clientPort） |
 | **出站** | 启动连 Super；`S2S_REGISTER_RSP` 后连 Record / Session / 全部 Scene |
 
@@ -99,7 +99,7 @@ flowchart TB
 
 - C2S_LOGIN_REQ → Record 验证 → Super 登录链
 - C2S_HEARTBEAT → S2C_HEARTBEAT
-- 其它经 Validator + Router 转发
+- 其它经 Validator + Router 转发；SCENE 目标按 `GatewayUser.sceneServerId` 选 `SceneClient`（失败回 S2C_ERROR，无兜底路由）
 
 ### 定时器
 
@@ -149,6 +149,7 @@ flowchart TB
 | REC_RELATION_PRELOAD/LOAD_RSP | Relation 同步 |
 | SES_LOAD/SAVE_USER | Session 用户数据 |
 | SES_SCENE_REGISTER/UNREGISTER | `SessionSceneManager` |
+| SES_RESOLVE_MAP_REQ | `resolveSceneServerByMapId()` → RSP |
 | SES_COPY_CREATE_REQ | 副本复用或 SES_COPY_CREATE_CMD |
 | GW_CLIENT_MSG | SOCIAL / QUEST（**多为 log-only 骨架**） |
 
@@ -170,9 +171,9 @@ flowchart TB
 
 | 项 | 说明 |
 |----|------|
-| **核心类** | `SceneServer`, `SceneManager`, `Scene`/`CopyScene`, `SceneUser`/`SceneNpc`, `LuaManager`, Bag/Spell/Buff/Task 等 |
+| **核心类** | `SceneServer`, `SessionClient`, `AOIClient`, `RecordClient`, `SceneManager`, `Scene`/`CopyScene`, `LuaManager` 等 |
 | **入站** | Gateway（GW_CLIENT_MSG）、Session（副本指令） |
-| **出站** | Super、Session、Record、AOI |
+| **出站** | Super、SessionClient、RecordClient、AOIClient |
 
 ### Handler
 
@@ -183,6 +184,7 @@ flowchart TB
 | GW_CLIENT_MSG | move/chat/skill/NPC/heartbeat；未知 → Lua OnMsg_XXXX |
 | AOI_VIEW_NOTIFY | 移动同步或 spawn/despawn |
 | SES_COPY_CREATE_RSP/CMD | 副本生命周期 |
+| SES_SCENE_REGISTER_RSP | SessionClient 注册应答 |
 
 ### 定时器
 

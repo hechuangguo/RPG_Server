@@ -288,10 +288,13 @@ SceneServer::Instance()->requestCreateCopy(
 
 ```
 Client ──[module=0x00 Login]──► Gateway（本地校验）
-         ──► Record（验证，按 CharBase.name，不校验 password）
-         ──► Super（选第一个存活 Scene）──► Record（加载）──► Scene ──► AOI
+         ──► Record（验证）──► Super
+         ──► Record（加载用户）──► Session（SES_RESOLVE_MAP 按 mapId 选 SceneServer）
+         ──► Scene（SCE_USER_ENTER）──► AOI
 Client ◄── Gateway ◄── Super ◄── Scene（S2C_LOGIN_RSP + S2C_ENTER_GAME）
 ```
+
+Gateway 登录成功后按 `sceneServerId` 绑定 `GatewayUser`，上行 SCENE 模块经 `SceneClient` 转发到对应 SceneServer（无 `firstConnected` 兜底）。
 
 **两阶段（可选）**：Client → LoginServer（9010）→ `S2C_GATEWAY_INFO` → Gateway。详见 [docs/EXTERNAL.md](docs/EXTERNAL.md)。
 

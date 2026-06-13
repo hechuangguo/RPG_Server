@@ -132,7 +132,7 @@
 | 0x1F01–0x1F06 | 全区 | S2S_REGISTER、HEARTBEAT、SERVERLIST |
 | 0x1F10–0x1F15 | Super 转发 | SS_EXTERN_FWD、EXT_GAMEZONE_FWD、SS_LOGIN_GATEWAY_WRAP |
 | 0x1001–0x1003 | SuperServer | SS_KICK_USER、SS_QUERY_ONLINE |
-| 0x1101–0x1111 | SessionServer | SES_LOAD/SAVE、SES_SCENE_*、SES_COPY_* |
+| 0x1101–0x1113 | SessionServer | SES_LOAD/SAVE、SES_SCENE_*、SES_COPY_*、SES_RESOLVE_MAP_* |
 | 0x1201–0x120C | RecordServer | REC_LOAD/SAVE、REC_LOGIN_VERIFY、REC_RELATION_* |
 | 0x1301–0x1306 | SceneServer | SCE_USER_ENTER/LEAVE、SCE_FORWARD_TO_CLIENT |
 | 0x1401–0x1405 | GatewayServer | GW_CLIENT_MSG、GW_SEND_TO_CLIENT、GW_USER_LOGIN_* |
@@ -175,6 +175,8 @@ sequenceDiagram
 | SES_COPY_CREATE_REQ | Scene → Session | 请求创建/分配副本 |
 | SES_COPY_CREATE_RSP | Session → Scene | 分配结果（含 reused 标志） |
 | SES_COPY_CREATE_CMD | Session → Scene | 指示目标 Scene 创建副本 |
+| SES_RESOLVE_MAP_REQ | Super → Session | 登录时按 mapId 解析 sceneServerId |
+| SES_RESOLVE_MAP_RSP | Session → Super | 解析结果（含 userId、sceneServerId） |
 | AOI_SCENE_REGISTER/UNREGISTER | Scene → AOI | AOI 侧场景实例登记 |
 
 ### 4.4 外联转发信封

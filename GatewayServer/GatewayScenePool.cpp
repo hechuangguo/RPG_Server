@@ -9,7 +9,7 @@
 
 bool GatewayScenePool::connectAll(const ServerList& list)
 {
-    m_links.clear();
+    m_clients.clear();
     std::vector<const ServerEntry*> scenes;
     list.findAll(SubServerType::SCENE, scenes);
     if (scenes.empty())
@@ -20,56 +20,54 @@ bool GatewayScenePool::connectAll(const ServerList& list)
 
     for (const ServerEntry* entry : scenes)
     {
-        SceneLink link;
-        link.serverId = entry->id;
-        link.client = std::make_unique<TcpClient>(m_cb);
-        if (!link.client->Connect(entry->ip, entry->port))
-        {
-            LOG_WARN("GatewayScenePool: connect failed sceneId=%u %s:%u",
-                     entry->id, entry->ip.c_str(), entry->port);
+        auto link = std::make_unique<SceneClient>(entry->id, m_cb);
+        if (!link->connect(entry->ip, entry->port))
             continue;
-        }
-        LOG_INFO("GatewayScenePool: connecting sceneId=%u %s:%u",
-                 entry->id, entry->ip.c_str(), entry->port);
-        m_links.push_back(std::move(link));
+        m_clients.push_back(std::move(link));
     }
-    return !m_links.empty();
+    return !m_clients.empty();
 }
 
 void GatewayScenePool::pollAll()
 {
-    for (auto& link : m_links)
+    for (auto& client : m_clients)
     {
-        if (link.client)
-            link.client->Poll(0);
+        if (client)
+            client->poll();
     }
 }
 
-TcpClient* GatewayScenePool::clientFor(uint32_t sceneServerId)
+SceneClient* GatewayScenePool::clientFor(uint32_t sceneServerId)
 {
-    for (auto& link : m_links)
+    for (auto& client : m_clients)
     {
-        if (link.serverId == sceneServerId && link.client && link.client->IsConnected())
-            return link.client.get();
+        if (client && client->sceneServerId() == sceneServerId && client->isConnected())
+            return client.get();
     }
     return nullptr;
 }
 
-TcpClient* GatewayScenePool::firstConnected()
+TcpClient* GatewayScenePool::clientTcpFor(uint32_t sceneServerId)
 {
-    for (auto& link : m_links)
+    SceneClient* sc = clientFor(sceneServerId);
+    return sc ? sc->tcpClient() : nullptr;
+}
+
+SceneClient* GatewayScenePool::firstConnected()
+{
+    for (auto& client : m_clients)
     {
-        if (link.client && link.client->IsConnected())
-            return link.client.get();
+        if (client && client->isConnected())
+            return client.get();
     }
     return nullptr;
 }
 
 bool GatewayScenePool::hasAnyConnected() const
 {
-    for (const auto& link : m_links)
+    for (const auto& client : m_clients)
     {
-        if (link.client && link.client->IsConnected())
+        if (client && client->isConnected())
             return true;
     }
     return false;

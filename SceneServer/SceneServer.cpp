@@ -4,6 +4,7 @@
  */
 
 #include "SceneServer.h"
+#include "ScenePeerClient.h"
 #include "../sdk/util/ServerBootstrap.h"
 #include "../sdk/util/GameZoneExternSender.h"
 #include "SceneLoginMsg.h"
@@ -14,10 +15,7 @@
 
 SceneServer::SceneServer()
     : m_server(this)
-    , m_superClient(this)
-    , m_sessionClient(this)
-    , m_recordClient(this)
-    , m_aoiClient(this)
+    , m_superClient(&m_superUpstreamCb)
     , m_sceneID(0)
     , m_externSender(m_superClient, SubServerType::SCENE, 0)
 {
@@ -39,11 +37,11 @@ bool SceneServer::Init(const std::string& ip, uint16_t port,
 
     m_superClient.Connect(cfg.superIP, (uint16_t)cfg.superPort);
     if (const ServerEntry* ses = list.findFirst(SubServerType::SESSION))
-        m_sessionClient.Connect(ses->ip, ses->port);
+        m_sessionClient.connect(ses->ip, ses->port);
     if (const ServerEntry* rec = list.findFirst(SubServerType::RECORD))
-        m_recordClient.Connect(rec->ip, rec->port);
+        m_recordClient.connect(rec->ip, rec->port);
     if (const ServerEntry* aoi = list.findFirst(SubServerType::AOI))
-        m_aoiClient.Connect(aoi->ip, aoi->port);
+        m_aoiClient.connect(aoi->ip, aoi->port);
     m_listenPort = port;
 
     SceneManager::Instance().setStartedCallback([this](Scene& scene) { onSceneStarted(scene); });
@@ -71,9 +69,9 @@ void SceneServer::Run()
     while (true)
     {
         m_superClient.Poll(0);
-        m_sessionClient.Poll(0);
-        m_recordClient.Poll(0);
-        m_aoiClient.Poll(0);
+        m_sessionClient.poll();
+        m_recordClient.poll();
+        m_aoiClient.poll();
         m_server.Poll(10);
         TimerMgr::Instance().Update();
     }
@@ -83,17 +81,9 @@ void SceneServer::requestCreateCopy(CopyType copyType, uint32_t mapId, uint64_t 
                                     const std::string& mapName, const std::string& mapFile,
                                     uint32_t maxPlayer)
 {
-    Msg_SES_CopyCreateReq req{};
-    req.reqSceneServerId = m_sceneID;
-    req.copyType = static_cast<uint32_t>(copyType);
-    req.mapId = mapId;
-    req.ownerId = ownerId;
-    req.maxPlayer = maxPlayer;
-    copyToWire(req.mapName, sizeof(req.mapName), mapName.c_str());
-    copyToWire(req.mapFile, sizeof(req.mapFile), mapFile.c_str());
-    m_sessionClient.SendMsg((uint16_t)InternalMsgID::SES_COPY_CREATE_REQ,
-                            reinterpret_cast<char*>(&req), sizeof(req));
-    LOG_INFO("CopyCreateReq sent: type=%u map=%u owner=%llu", req.copyType, mapId, ownerId);
+    m_sessionClient.requestCopyCreate(m_sceneID, copyType, mapId, ownerId, mapName, mapFile, maxPlayer);
+    LOG_INFO("CopyCreateReq sent: type=%u map=%u owner=%llu",
+             static_cast<uint32_t>(copyType), mapId, ownerId);
 }
 
 void SceneServer::OnConnect(ConnID id)
@@ -127,6 +117,10 @@ void SceneServer::RegisterHandlers()
                [this](uint32_t c, const char* data, uint16_t len) { OnClientMsg(c, data, len); });
     d.Register((uint16_t)InternalMsgID::AOI_VIEW_NOTIFY,
                [this](uint32_t c, const char* data, uint16_t len) { OnViewNotify(c, data, len); });
+    d.Register((uint16_t)InternalMsgID::SES_SCENE_REGISTER_RSP,
+               [this](uint32_t c, const char* data, uint16_t len) { OnSceneRegisterRsp(c, data, len); });
+    d.Register((uint16_t)InternalMsgID::REC_SAVE_USER_RSP,
+               [this](uint32_t c, const char* data, uint16_t len) { OnSaveUserRsp(c, data, len); });
     d.Register((uint16_t)InternalMsgID::SES_COPY_CREATE_RSP,
                [this](uint32_t c, const char* data, uint16_t len) { OnCopyCreateRsp(c, data, len); });
     d.Register((uint16_t)InternalMsgID::SES_COPY_CREATE_CMD,
@@ -174,15 +168,7 @@ void SceneServer::OnUserEnter(ConnID /*fromConn*/, const char* data, uint16_t le
     SceneUserManager::Instance().addUser(req->userID, user);
     scene->addPlayer(req->userID);
 
-    Msg_AOI_Move aoi{};
-    aoi.entityID = req->userID;
-    aoi.mapID = mapID;
-    aoi.x = req->x;
-    aoi.y = req->y;
-    aoi.z = req->z;
-    aoi.entityType = 0;
-    m_aoiClient.SendMsg((uint16_t)InternalMsgID::AOI_ENTER_REQ,
-                        reinterpret_cast<char*>(&aoi), sizeof(aoi));
+    m_aoiClient.enterEntity(*user, 0);
 
     NotifyExistingPlayersOnEnter(*user);
     SendUserEnterRsp(req, 0);
@@ -253,8 +239,7 @@ void SceneServer::OnUserLeave(ConnID /*fromConn*/, const char* data, uint16_t le
         user->save();
     }
 
-    m_aoiClient.SendMsg((uint16_t)InternalMsgID::AOI_LEAVE_REQ,
-                        reinterpret_cast<const char*>(&uid), sizeof(uid));
+    m_aoiClient.leaveEntity(uid);
     CallLuaOnLeave(uid);
     SceneUserManager::Instance().removeUser(uid);
     LOG_INFO("UserLeave: userID=%llu", uid);
@@ -262,11 +247,7 @@ void SceneServer::OnUserLeave(ConnID /*fromConn*/, const char* data, uint16_t le
 
 void SceneServer::sendCharBaseToRecord(const SceneUser& user)
 {
-    Msg_REC_SaveUserReq req{};
-    req.userID = user.GetID();
-    req.wire = toUserBaseWire(user.Base());
-    m_recordClient.SendMsg((uint16_t)InternalMsgID::REC_SAVE_USER_REQ,
-                           reinterpret_cast<char*>(&req), sizeof(req));
+    m_recordClient.saveUser(user);
 }
 
 void SceneServer::OnClientMsg(ConnID /*fromConn*/, const char* data, uint16_t len)
@@ -379,13 +360,8 @@ void SceneServer::OnMoveReq(uint32_t /*clientConnID*/, const char* data, uint16_
     user->Base().posZ = req->z;
     user->markDirty();
 
-    Msg_AOI_Move aoi{};
-    aoi.entityID = req->userID;
-    aoi.mapID = user->Base().mapID;
-    aoi.x = req->x; aoi.y = req->y; aoi.z = req->z; aoi.dir = req->dir;
-    aoi.entityType = 0;
-    m_aoiClient.SendMsg((uint16_t)InternalMsgID::AOI_MOVE_REQ,
-                        reinterpret_cast<char*>(&aoi), sizeof(aoi));
+    m_aoiClient.moveEntity(req->userID, user->Base().mapID, req->x, req->y, req->z,
+                             req->dir, 0);
 }
 
 void SceneServer::OnChatReq(uint32_t clientConnID, const char* data, uint16_t len)
@@ -587,26 +563,8 @@ void SceneServer::initMapNpcs()
 
 void SceneServer::onSceneStarted(Scene& scene)
 {
-    Msg_AOI_SceneRegister aoiReg{};
-    aoiReg.sceneServerId = m_sceneID;
-    aoiReg.sceneInstanceId = scene.getSceneInstanceId();
-    aoiReg.mapId = scene.getMapId();
-    aoiReg.sceneKind = static_cast<uint8_t>(scene.getSceneKind());
-    aoiReg.maxPlayer = scene.getMaxPlayer();
-    m_aoiClient.SendMsg((uint16_t)InternalMsgID::AOI_SCENE_REGISTER,
-                        reinterpret_cast<char*>(&aoiReg), sizeof(aoiReg));
-
-    Msg_SES_SceneRegisterReq sesReg{};
-    sesReg.sceneServerId = m_sceneID;
-    sesReg.sceneInstanceId = scene.getSceneInstanceId();
-    sesReg.mapId = scene.getMapId();
-    sesReg.sceneKind = static_cast<uint8_t>(scene.getSceneKind());
-    sesReg.maxPlayer = scene.getMaxPlayer();
-    copyToWire(sesReg.mapName, sizeof(sesReg.mapName), scene.getMapName().c_str());
-    copyToWire(sesReg.mapFile, sizeof(sesReg.mapFile), scene.getMapFile().c_str());
-    m_sessionClient.SendMsg((uint16_t)InternalMsgID::SES_SCENE_REGISTER_REQ,
-                            reinterpret_cast<char*>(&sesReg), sizeof(sesReg));
-
+    m_aoiClient.registerScene(m_sceneID, scene);
+    m_sessionClient.registerScene(m_sceneID, scene);
     LOG_INFO("Scene registered AOI+Session: instance=%llu map=%u kind=%u",
              scene.getSceneInstanceId(), scene.getMapId(),
              static_cast<unsigned>(scene.getSceneKind()));
@@ -614,16 +572,18 @@ void SceneServer::onSceneStarted(Scene& scene)
 
 void SceneServer::onSceneStopped(Scene& scene)
 {
-    Msg_AOI_SceneUnregister aoiUnreg{};
-    aoiUnreg.sceneInstanceId = scene.getSceneInstanceId();
-    m_aoiClient.SendMsg((uint16_t)InternalMsgID::AOI_SCENE_UNREGISTER,
-                        reinterpret_cast<char*>(&aoiUnreg), sizeof(aoiUnreg));
+    m_aoiClient.unregisterScene(scene);
+    m_sessionClient.unregisterScene(m_sceneID, scene);
+}
 
-    Msg_SES_SceneUnregister sesUnreg{};
-    sesUnreg.sceneInstanceId = scene.getSceneInstanceId();
-    sesUnreg.sceneServerId = m_sceneID;
-    m_sessionClient.SendMsg((uint16_t)InternalMsgID::SES_SCENE_UNREGISTER,
-                            reinterpret_cast<char*>(&sesUnreg), sizeof(sesUnreg));
+void SceneServer::OnSceneRegisterRsp(ConnID /*fromConn*/, const char* data, uint16_t len)
+{
+    m_sessionClient.onRegisterRsp(data, len);
+}
+
+void SceneServer::OnSaveUserRsp(ConnID /*fromConn*/, const char* data, uint16_t len)
+{
+    m_recordClient.onSaveRsp(data, len);
 }
 
 void SceneServer::OnCopyCreateRsp(ConnID /*fromConn*/, const char* data, uint16_t len)
@@ -669,22 +629,12 @@ void SceneServer::fillSpawnFromEntry(const SceneEntry& entry, uint8_t entityType
 
 void SceneServer::sendAoiEnter(const SceneEntry& entry, uint8_t entityType)
 {
-    Msg_AOI_Move aoi{};
-    aoi.entityID = entry.getEntryId();
-    aoi.mapID = entry.getMapId();
-    aoi.x = entry.getPosX();
-    aoi.y = entry.getPosY();
-    aoi.z = entry.getPosZ();
-    aoi.dir = 0.f;
-    aoi.entityType = entityType;
-    m_aoiClient.SendMsg((uint16_t)InternalMsgID::AOI_ENTER_REQ,
-                        reinterpret_cast<char*>(&aoi), sizeof(aoi));
+    m_aoiClient.enterEntity(entry, entityType);
 }
 
 void SceneServer::sendAoiLeave(EntryID entityId)
 {
-    m_aoiClient.SendMsg((uint16_t)InternalMsgID::AOI_LEAVE_REQ,
-                        reinterpret_cast<const char*>(&entityId), sizeof(entityId));
+    m_aoiClient.leaveEntity(entityId);
 }
 
 void SceneServer::RegisterToSuper()

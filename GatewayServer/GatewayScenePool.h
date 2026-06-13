@@ -2,22 +2,21 @@
  * @file    GatewayScenePool.h
  * @brief   Gateway 到多个 SceneServer 实例的出站连接池
  *
- * 按 ServerList 中全部 SCENE 条目各建一条 TcpClient；上行按用户绑定的 sceneServerId 选路。
+ * 按 ServerList 中全部 SCENE 条目各建一条 SceneClient；上行按用户绑定的 sceneServerId 选路。
  */
 
 #pragma once
 
+#include "SceneClient.h"
 #include "../sdk/net/TcpClient.h"
 #include "../sdk/util/ServerList.h"
-#include "../protocal/InternalMsg.h"
 
 #include <cstdint>
 #include <memory>
-#include <unordered_map>
 #include <vector>
 
 /**
- * @brief 管理 Gateway → 多 SceneServer 的 TcpClient 连接
+ * @brief 管理 Gateway → 多 SceneServer 的 SceneClient 连接池
  */
 class GatewayScenePool
 {
@@ -41,24 +40,25 @@ public:
     void pollAll();
 
     /**
-     * @brief 按 sceneServerId 查找连接
+     * @brief 按 sceneServerId 查找 SceneClient
      * @param sceneServerId ServerList 中的 server_id
-     * @return 对应 TcpClient；未找到时 nullptr
+     * @return 对应 SceneClient；未找到时 nullptr
      */
-    TcpClient* clientFor(uint32_t sceneServerId);
+    SceneClient* clientFor(uint32_t sceneServerId);
 
-    /** @brief 任意一条已连接 Scene（兜底路由） */
-    TcpClient* firstConnected();
+    /**
+     * @brief 按 sceneServerId 查找底层 TcpClient（兼容旧 API）
+     * @deprecated 优先使用 SceneClient::forwardClientMsg
+     */
+    TcpClient* clientTcpFor(uint32_t sceneServerId);
+
+    /** @deprecated 不再用于业务路由兜底；仅测试/诊断 */
+    SceneClient* firstConnected();
 
     /** @brief 是否至少有一条 Scene 连接存活 */
     bool hasAnyConnected() const;
 
 private:
-    INetCallback* m_cb; /**< 出站回调（非拥有） */
-    struct SceneLink
-    {
-        uint32_t serverId = 0;
-        std::unique_ptr<TcpClient> client;
-    };
-    std::vector<SceneLink> m_links; /**< 全部 Scene 出站连接 */
+    INetCallback* m_cb;                         /**< 出站回调（非拥有） */
+    std::vector<std::unique_ptr<SceneClient>> m_clients; /**< 全部 Scene 出站连接 */
 };

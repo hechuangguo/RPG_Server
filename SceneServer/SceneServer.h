@@ -46,6 +46,9 @@
 #include "SceneUser.h"
 #include "SceneNpc.h"
 #include "Scene.h"
+#include "SessionClient.h"
+#include "AOIClient.h"
+#include "RecordClient.h"
 #include <unordered_map>
 #include <vector>
 #include <string>
@@ -255,6 +258,12 @@ private:
     /** @brief 处理 SessionServer 的副本创建应答 */
     void OnCopyCreateRsp(ConnID fromConn, const char* data, uint16_t len);
 
+    /** @brief 处理 SessionServer 的场景注册应答 */
+    void OnSceneRegisterRsp(ConnID fromConn, const char* data, uint16_t len);
+
+    /** @brief 处理 RecordServer 的存档应答 */
+    void OnSaveUserRsp(ConnID fromConn, const char* data, uint16_t len);
+
     /** @brief 处理 SessionServer 下发的副本创建指令 */
     void OnCopyCreateCmd(ConnID fromConn, const char* data, uint16_t len);
 
@@ -273,11 +282,12 @@ private:
 
     /** @brief 定时发送 Scene 心跳 */
     void SendHeartbeat();
-    TcpServer  m_server;          /**< 入站监听（Gateway / Session） */
-    TcpClient  m_superClient;     /**< 出站 SuperServer */
-    TcpClient  m_sessionClient;   /**< 出站 SessionServer */
-    TcpClient  m_recordClient;    /**< 出站 RecordServer */
-    TcpClient  m_aoiClient;       /**< 出站 AOIServer */
+    TcpServer              m_server;          /**< 入站监听（Gateway / Session） */
+    SceneUpstreamCallback  m_superUpstreamCb; /**< Super 出站回调（与入站分离） */
+    TcpClient              m_superClient;     /**< 出站 SuperServer */
+    SessionClient m_sessionClient;   /**< 出站 SessionServer */
+    RecordClient  m_recordClient;    /**< 出站 RecordServer */
+    AOIClient     m_aoiClient;       /**< 出站 AOIServer */
     ConnID     m_gatewayInboundConn = INVALID_CONN_ID; /**< Gateway 入站连接（下行 GW_SEND_TO_CLIENT） */
     uint32_t   m_sceneID;         /**< 场景服务器编号 */
     uint32_t   m_hbSeq = 0;       /**< 心跳序列号 */

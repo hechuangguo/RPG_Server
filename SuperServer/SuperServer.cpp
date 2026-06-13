@@ -141,6 +141,8 @@ void SuperServer::RegisterHandlers()
                [this](uint32_t c, const char* d, uint16_t l) { OnUserLoginReq(c, d, l); });
     d.Register((uint16_t)InternalMsgID::REC_LOAD_USER_RSP,
                [this](uint32_t c, const char* d, uint16_t l) { OnLoadUserRsp(c, d, l); });
+    d.Register((uint16_t)InternalMsgID::SES_RESOLVE_MAP_RSP,
+               [this](uint32_t c, const char* d, uint16_t l) { OnResolveMapRsp(c, d, l); });
     d.Register((uint16_t)InternalMsgID::SCE_USER_ENTER_RSP,
                [this](uint32_t c, const char* d, uint16_t l) { OnUserEnterRsp(c, d, l); });
     d.Register((uint16_t)InternalMsgID::SS_KICK_USER,
@@ -226,32 +228,20 @@ void SuperServer::OnServerListReq(ConnID connID, const char* /*data*/, uint16_t 
 void SuperServer::OnUserLoginReq(ConnID connID, const char* data, uint16_t len)
 {
     if (len < sizeof(Msg_REC_LoginVerifyRsp))
-    {
         return;
-    }
+
     const auto* rsp = reinterpret_cast<const Msg_REC_LoginVerifyRsp*>(data);
     if (rsp->code != 0)
-    {
         return;
-    }
-
-    ConnID sceneConn = FindSceneServer();
-    if (sceneConn == INVALID_CONN_ID)
-    {
-        LOG_WARN("UserLogin: no SceneServer available userID=%llu", rsp->userID);
-        SendLoginFailToGateway(connID, rsp->gatewayConnID, -1);
-        return;
-    }
 
     PendingLogin pending{};
     pending.userID = rsp->userID;
     pending.gatewayConnID = connID;
     pending.gatewayClientConnID = rsp->gatewayConnID;
-    pending.sceneConnID = sceneConn;
     m_pendingLogins[rsp->userID] = pending;
 
-    LOG_INFO("UserLogin: userID=%llu gatewayConn=%u sceneConn=%u",
-             rsp->userID, connID, sceneConn);
+    LOG_INFO("UserLogin: userID=%llu gatewayConn=%u (await load+map resolve)",
+             rsp->userID, connID);
 
     ConnID recConn = FindSubServer(SubServerType::RECORD);
     if (recConn != INVALID_CONN_ID)
@@ -288,35 +278,92 @@ void SuperServer::OnLoadUserRsp(ConnID /*connID*/, const char* data, uint16_t le
     }
 
     const auto* wire = reinterpret_cast<const UserBaseWire*>(data + sizeof(Msg_REC_LoadUserRsp));
-
-    Msg_SCE_UserEnterReq enter{};
-    enter.userID = wire->userID;
-    enter.mapID = wire->mapID ? wire->mapID : 1001;
-    enter.x = wire->posX;
-    enter.y = wire->posY;
-    enter.z = wire->posZ;
-    enter.gatewayClientConnID = pit->second.gatewayClientConnID;
-    snprintf(enter.name, sizeof(enter.name), "%s", wire->name);
-    enter.level = wire->level;
-    enter.vocation = wire->vocation;
-    enter.sex = wire->sex;
-    enter.hp = wire->hp;
-    enter.maxHP = wire->maxHP;
-    enter.mp = wire->mp;
-    enter.maxMP = wire->maxMP;
-    enter.gold = wire->gold;
-
     pit->second.userData = *wire;
+    pit->second.mapId = wire->mapID ? wire->mapID : 1001;
+
+    ConnID sesConn = FindSubServer(SubServerType::SESSION);
+    if (sesConn == INVALID_CONN_ID)
+    {
+        LOG_WARN("UserLogin: no SessionServer for map resolve userID=%llu", hdr->userID);
+        SendLoginFailToGateway(pit->second.gatewayConnID, pit->second.gatewayClientConnID, -2);
+        m_pendingLogins.erase(pit);
+        return;
+    }
+
+    Msg_SES_ResolveMapReq req{};
+    req.userID = hdr->userID;
+    req.mapId = pit->second.mapId;
+    pit->second.awaitingMapResolve = true;
+    m_server.SendMsg(sesConn, (uint16_t)InternalMsgID::SES_RESOLVE_MAP_REQ,
+                     reinterpret_cast<char*>(&req), sizeof(req));
+    LOG_INFO("UserLogin: map resolve req map=%u userID=%llu", req.mapId, hdr->userID);
+}
+
+void SuperServer::OnResolveMapRsp(ConnID /*connID*/, const char* data, uint16_t len)
+{
+    if (len < sizeof(Msg_SES_ResolveMapRsp))
+        return;
+
+    const auto* rsp = reinterpret_cast<const Msg_SES_ResolveMapRsp*>(data);
+    auto pit = m_pendingLogins.find(rsp->userID);
+    if (pit == m_pendingLogins.end() || !pit->second.awaitingMapResolve)
+        return;
+
+    PendingLogin& pending = pit->second;
+    pending.awaitingMapResolve = false;
+
+    if (rsp->code != 0 || rsp->sceneServerId == 0)
+    {
+        LOG_WARN("UserLogin: map %u not registered userID=%llu", rsp->mapId, rsp->userID);
+        SendLoginFailToGateway(pending.gatewayConnID, pending.gatewayClientConnID, -3);
+        m_pendingLogins.erase(pit);
+        return;
+    }
+
+    pending.sceneConnID = FindSubServerByServerId(SubServerType::SCENE, rsp->sceneServerId);
+    if (pending.sceneConnID == INVALID_CONN_ID)
+    {
+        LOG_WARN("UserLogin: sceneServerId=%u not connected", rsp->sceneServerId);
+        SendLoginFailToGateway(pending.gatewayConnID, pending.gatewayClientConnID, -4);
+        m_pendingLogins.erase(pit);
+        return;
+    }
+
+    sendUserEnterToScene(pending);
+}
+
+void SuperServer::sendUserEnterToScene(PendingLogin& pending)
+{
+    const auto& wire = pending.userData;
 
     UserProxy proxy;
-    proxy.userID = wire->userID;
-    proxy.gatewayConnID = pit->second.gatewayConnID;
-    proxy.gatewayClientConnID = pit->second.gatewayClientConnID;
-    proxy.sceneConnID = pit->second.sceneConnID;
-    m_users[wire->userID] = proxy;
+    proxy.userID = wire.userID;
+    proxy.gatewayConnID = pending.gatewayConnID;
+    proxy.gatewayClientConnID = pending.gatewayClientConnID;
+    proxy.sceneConnID = pending.sceneConnID;
+    m_users[wire.userID] = proxy;
 
-    m_server.SendMsg(pit->second.sceneConnID, (uint16_t)InternalMsgID::SCE_USER_ENTER_REQ,
+    Msg_SCE_UserEnterReq enter{};
+    enter.userID = wire.userID;
+    enter.mapID = pending.mapId;
+    enter.x = wire.posX;
+    enter.y = wire.posY;
+    enter.z = wire.posZ;
+    enter.gatewayClientConnID = pending.gatewayClientConnID;
+    snprintf(enter.name, sizeof(enter.name), "%s", wire.name);
+    enter.level = wire.level;
+    enter.vocation = wire.vocation;
+    enter.sex = wire.sex;
+    enter.hp = wire.hp;
+    enter.maxHP = wire.maxHP;
+    enter.mp = wire.mp;
+    enter.maxMP = wire.maxMP;
+    enter.gold = wire.gold;
+
+    m_server.SendMsg(pending.sceneConnID, (uint16_t)InternalMsgID::SCE_USER_ENTER_REQ,
                      reinterpret_cast<char*>(&enter), sizeof(enter));
+    LOG_INFO("UserEnter sent: userID=%llu map=%u sceneConn=%u",
+             wire.userID, pending.mapId, pending.sceneConnID);
 }
 
 void SuperServer::OnUserEnterRsp(ConnID /*connID*/, const char* data, uint16_t len)
@@ -412,9 +459,17 @@ ConnID SuperServer::FindSubServer(SubServerType type)
     for (auto& [cid, info] : m_servers)
     {
         if (info.type == type && info.alive)
-        {
             return cid;
-        }
+    }
+    return INVALID_CONN_ID;
+}
+
+ConnID SuperServer::FindSubServerByServerId(SubServerType type, uint32_t serverId)
+{
+    for (auto& [cid, info] : m_servers)
+    {
+        if (info.type == type && info.serverID == serverId && info.alive)
+            return cid;
     }
     return INVALID_CONN_ID;
 }

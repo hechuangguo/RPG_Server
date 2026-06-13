@@ -84,7 +84,9 @@ struct PendingLogin
     UserID       userID;               /**< 用户 ID（作为 pending key） */
     ConnID       gatewayConnID;        /**< 发起登录的 Gateway 连接 */
     uint32_t     gatewayClientConnID;  /**< Gateway 内客户端连接 ID */
-    ConnID       sceneConnID;          /**< 预分配的 SceneServer 连接 */
+    ConnID       sceneConnID = INVALID_CONN_ID; /**< 解析 map 后分配的 Scene 连接 */
+    uint32_t     mapId = 0;            /**< 用户目标地图 ID */
+    bool         awaitingMapResolve = false; /**< 等待 Session 解析 sceneServerId */
     UserBaseWire userData{};           /**< Record 返回的用户基础数据 */
 };
 
@@ -204,8 +206,14 @@ private:
      */
     void OnUserLoginReq(ConnID connID, const char* data, uint16_t len);
 
-    /** @brief 处理 RecordServer 的用户加载返回，继续触发入场流程 */
+    /** @brief 处理 RecordServer 的用户加载返回，向 Session 解析 map 后触发入场 */
     void OnLoadUserRsp(ConnID connID, const char* data, uint16_t len);
+
+    /** @brief Session 返回 mapId 对应的 sceneServerId 后继续入场 */
+    void OnResolveMapRsp(ConnID connID, const char* data, uint16_t len);
+
+    /** @brief 加载与 map 解析完成后向 Scene 发送 SCE_USER_ENTER_REQ */
+    void sendUserEnterToScene(PendingLogin& pending);
 
     /** @brief 处理 SceneServer 入场返回，给 Gateway 回登录最终结果 */
     void OnUserEnterRsp(ConnID connID, const char* data, uint16_t len);
@@ -243,6 +251,13 @@ private:
      * @return 找到的连接 ID，未找到返回 INVALID_CONN_ID
      */
     ConnID FindSubServer(SubServerType type);
+
+    /**
+     * @brief 按 serverID 查找指定类型的子服务器连接
+     * @param type 服务器类型
+     * @param serverId ServerList 中的 server_id
+     */
+    ConnID FindSubServerByServerId(SubServerType type, uint32_t serverId);
 
     /**
      * @brief 选择 SceneServer（负载均衡策略）

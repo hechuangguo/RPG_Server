@@ -140,6 +140,9 @@ private:
     /** @brief 副本创建：复用已有或负载均衡分配新副本 */
     void OnCopyCreateReq(ConnID fromConn, const char* data, uint16_t len);
 
+    /** @brief Super 按 mapId 解析 sceneServerId */
+    void OnResolveMapReq(ConnID fromConn, const char* data, uint16_t len);
+
     /** @brief 自动保存在线用户的 Session 数据 */
     void AutoSaveAll();
 

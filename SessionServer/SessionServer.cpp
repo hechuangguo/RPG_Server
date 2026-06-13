@@ -187,6 +187,8 @@ void SessionServer::RegisterHandlers()
                [this](uint32_t c, const char* d, uint16_t l) { OnSceneUnregister(c, d, l); });
     d.Register((uint16_t)InternalMsgID::SES_COPY_CREATE_REQ,
                [this](uint32_t c, const char* d, uint16_t l) { OnCopyCreateReq(c, d, l); });
+    d.Register((uint16_t)InternalMsgID::SES_RESOLVE_MAP_REQ,
+               [this](uint32_t c, const char* d, uint16_t l) { OnResolveMapReq(c, d, l); });
     d.Register((uint16_t)InternalMsgID::GW_CLIENT_MSG,
                [this](uint32_t c, const char* d, uint16_t l) { OnGatewayClientMsg(c, d, l); });
     SessionLoginMsgRegister(*this);
@@ -356,6 +358,24 @@ void SessionServer::OnSceneUnregister(ConnID /*fromConn*/, const char* data, uin
         return;
     const auto* req = reinterpret_cast<const Msg_SES_SceneUnregister*>(data);
     SessionSceneManager::Instance().unregisterScene(req->sceneInstanceId, req->sceneServerId);
+}
+
+void SessionServer::OnResolveMapReq(ConnID fromConn, const char* data, uint16_t len)
+{
+    if (len < sizeof(Msg_SES_ResolveMapReq))
+        return;
+    const auto* req = reinterpret_cast<const Msg_SES_ResolveMapReq*>(data);
+
+    Msg_SES_ResolveMapRsp rsp{};
+    rsp.userID = req->userID;
+    rsp.mapId = req->mapId;
+    rsp.sceneServerId = SessionSceneManager::Instance().resolveSceneServerByMapId(req->mapId);
+    rsp.code = rsp.sceneServerId != 0 ? 0 : -1;
+
+    m_server.SendMsg(fromConn, static_cast<uint16_t>(InternalMsgID::SES_RESOLVE_MAP_RSP),
+                     reinterpret_cast<char*>(&rsp), sizeof(rsp));
+    LOG_INFO("ResolveMap user=%llu map=%u -> sceneServerId=%u code=%d",
+             req->userID, req->mapId, rsp.sceneServerId, rsp.code);
 }
 
 void SessionServer::OnCopyCreateReq(ConnID fromConn, const char* data, uint16_t len)

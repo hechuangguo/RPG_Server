@@ -98,14 +98,10 @@ void GatewayServer::OnDisconnect(ConnID id)
         if (user->GetID() != INVALID_USER_ID && m_upstreamReady)
         {
             UserID uid = user->GetID();
-            TcpClient* scene = m_scenePool.clientFor(user->getSceneServerId());
-            if (!scene)
-                scene = m_scenePool.firstConnected();
+            SceneClient* scene = m_scenePool.clientFor(user->getSceneServerId());
             if (scene)
-            {
-                scene->SendMsg((uint16_t)InternalMsgID::SCE_USER_LEAVE,
+                scene->sendMsg(static_cast<uint16_t>(InternalMsgID::SCE_USER_LEAVE),
                                reinterpret_cast<const char*>(&uid), sizeof(UserID));
-            }
         }
         m_userManager.removeUser(id);
     }
@@ -293,13 +289,10 @@ void GatewayServer::HandleClientMsg(ConnID connID, uint8_t module, uint8_t sub,
                 sendClientError(connID, ValidateResult::BAD_STATE);
                 break;
             }
-            TcpClient* scene = m_scenePool.clientFor(user->getSceneServerId());
-            if (!scene)
-                scene = m_scenePool.firstConnected();
-            if (scene)
-                forwardClientMsg(*scene, connID, module, sub, data, len);
-            else
-                sendClientError(connID, ValidateResult::BAD_STATE);
+            SceneClient* scene = m_scenePool.clientFor(user->getSceneServerId());
+            if (scene && scene->forwardClientMsg(connID, module, sub, data, len))
+                break;
+            sendClientError(connID, ValidateResult::BAD_STATE);
         }
         else
             sendClientError(connID, ValidateResult::BAD_STATE);
