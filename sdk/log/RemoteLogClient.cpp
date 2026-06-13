@@ -4,35 +4,36 @@
  */
 
 #include "RemoteLogClient.h"
+#include "../util/GameZoneExternSender.h"
 
 #include "../net/NetDefine.h"
 
 #include <cstring>
 #include <vector>
 
-TcpClient*    RemoteLogClient::s_client     = nullptr;
-SubServerType RemoteLogClient::s_serverType = SubServerType::UNKNOWN;
+GameZoneExternSender* RemoteLogClient::s_sender     = nullptr;
+SubServerType         RemoteLogClient::s_serverType = SubServerType::UNKNOWN;
 
-void RemoteLogClient::bind(TcpClient* client, SubServerType serverType)
+void RemoteLogClient::bind(GameZoneExternSender* sender, SubServerType serverType)
 {
-    s_client     = client;
+    s_sender     = sender;
     s_serverType = serverType;
 }
 
 void RemoteLogClient::trySend(int level, const char* line, size_t lineLen)
 {
-    if (!s_client || !s_client->IsConnected() || !line || lineLen == 0)
+    if (!s_sender || !line || lineLen == 0)
         return;
     if (lineLen > MAX_PACKET_SIZE)
         lineLen = MAX_PACKET_SIZE;
 
     std::vector<char> buf(sizeof(Msg_Log_WriteReq) + lineLen);
     auto* hdr = reinterpret_cast<Msg_Log_WriteReq*>(buf.data());
-    hdr->serverType = (uint8_t)s_serverType;
-    hdr->level      = (uint8_t)level;
-    hdr->logLen     = (uint32_t)lineLen;
+    hdr->serverType = static_cast<uint8_t>(s_serverType);
+    hdr->level      = static_cast<uint8_t>(level);
+    hdr->logLen     = static_cast<uint32_t>(lineLen);
     std::memcpy(buf.data() + sizeof(Msg_Log_WriteReq), line, lineLen);
 
-    s_client->SendMsg((uint16_t)InternalMsgID::LOG_WRITE_REQ,
-                      buf.data(), (uint16_t)buf.size());
+    s_sender->sendToLoggerServer(static_cast<uint16_t>(InternalMsgID::LOG_WRITE_REQ),
+                                 buf.data(), static_cast<uint16_t>(buf.size()));
 }

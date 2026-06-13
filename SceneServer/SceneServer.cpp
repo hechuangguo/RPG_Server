@@ -5,6 +5,8 @@
 
 #include "SceneServer.h"
 #include "../sdk/util/ServerBootstrap.h"
+#include "../sdk/util/GameZoneExternSender.h"
+#include "SceneLoginMsg.h"
 #include "SceneUserManager.h"
 #include "SceneNpcManager.h"
 #include "SceneManager.h"
@@ -17,6 +19,7 @@ SceneServer::SceneServer()
     , m_recordClient(this)
     , m_aoiClient(this)
     , m_sceneID(0)
+    , m_externSender(m_superClient, SubServerType::SCENE, 0)
 {
 }
 
@@ -30,6 +33,8 @@ bool SceneServer::Init(const std::string& ip, uint16_t port,
         m_self = *self;
     else if (const ServerEntry* first = list.findFirst(SubServerType::SCENE))
         m_self = *first;
+    m_externSender.setSelfId(m_self.id ? m_self.id : selfId);
+    ServerBootstrap::bindRemoteLog(m_externSender, SubServerType::SCENE);
     if (!m_server.Start(ip, port)) { LOG_FATAL("SceneServer start failed"); return false; }
 
     m_superClient.Connect(cfg.superIP, (uint16_t)cfg.superPort);
@@ -70,7 +75,6 @@ void SceneServer::Run()
         m_recordClient.Poll(0);
         m_aoiClient.Poll(0);
         m_server.Poll(10);
-        ServerBootstrap::tickGameZoneExtern(m_externHub);
         TimerMgr::Instance().Update();
     }
 }
@@ -127,6 +131,7 @@ void SceneServer::RegisterHandlers()
                [this](uint32_t c, const char* data, uint16_t len) { OnCopyCreateRsp(c, data, len); });
     d.Register((uint16_t)InternalMsgID::SES_COPY_CREATE_CMD,
                [this](uint32_t c, const char* data, uint16_t len) { OnCopyCreateCmd(c, data, len); });
+    SceneLoginMsgRegister(*this);
 }
 
 void SceneServer::OnUserEnter(ConnID /*fromConn*/, const char* data, uint16_t len)
@@ -680,11 +685,6 @@ void SceneServer::sendAoiLeave(EntryID entityId)
 {
     m_aoiClient.SendMsg((uint16_t)InternalMsgID::AOI_LEAVE_REQ,
                         reinterpret_cast<const char*>(&entityId), sizeof(entityId));
-}
-
-void SceneServer::setupExternalClients(const LoginServerList& list)
-{
-    ServerBootstrap::initGameZoneExtern(m_externHub, list, SubServerType::SCENE, true, true);
 }
 
 void SceneServer::RegisterToSuper()

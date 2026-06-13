@@ -71,6 +71,18 @@ public:
     /** @brief 主循环（游戏 TCP + HTTP 入站/出站 + 定时器） */
     void Run();
 
+    /** @brief 游戏区经 Super 转发的排行更新 */
+    void onRankUpdateFromGameZone(ConnID fromConn, const char* data, uint16_t len)
+    {
+        OnRankUpdate(fromConn, data, len);
+    }
+
+    /** @brief 游戏区经 Super 转发的全服同步 */
+    void onDataSyncFromGameZone(ConnID fromConn, const char* data, uint16_t len)
+    {
+        OnDataSync(fromConn, data, len);
+    }
+
     /** @brief SceneServer 等连接建立 */
     void OnConnect(ConnID id) override;
 

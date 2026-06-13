@@ -18,6 +18,8 @@
  * | 0x1601             | LoggerServer  |
  * | 0x1701 ~ 0x1702    | GlobalServer  |
  * | 0x1801 ~ 0x1803    | ZoneServer    |
+ * | 0x1901 ~ 0x1909    | LoginServer   |
+ * | 0x1F10 ~ 0x1F13    | SuperServer 外联转发 |
  *
  * 消息流示例（登录）：
  * @code
@@ -68,6 +70,20 @@ enum class InternalMsgID : uint16_t
     S2S_HEARTBEAT_ACK    = 0x1F04,  /**< SuperServer → 子服务器: 心跳确认 */
     S2S_SERVERLIST_REQ   = 0x1F05,  /**< 子服务器 → SuperServer: 启动期拉取集群拓扑 ServerList */
     S2S_SERVERLIST_RSP   = 0x1F06,  /**< SuperServer → 子服务器: 返回 ServerList 全量条目 */
+
+    /** @brief SuperServer 外联转发：区内服 → Super（信封 + inner body） */
+    SS_EXTERN_FWD_REQ    = 0x1F10,
+    /** @brief SuperServer 外联转发：Super → 区内服（响应） */
+    SS_EXTERN_FWD_RSP    = 0x1F11,
+    /** @brief SuperServer → 独立服：游戏区转发请求（信封 + inner body） */
+    EXT_GAMEZONE_FWD_REQ = 0x1F12,
+    /** @brief 独立服 → SuperServer：游戏区转发响应 */
+    EXT_GAMEZONE_FWD_RSP = 0x1F13,
+
+    /** @brief Gateway → Super：网关注册包装（含 gatewayConnID） */
+    SS_LOGIN_GATEWAY_WRAP_REQ = 0x1F14,
+    /** @brief Super → Gateway：网关注册响应包装 */
+    SS_LOGIN_GATEWAY_WRAP_RSP = 0x1F15,
 
     // ============================================================
     //  SuperServer (0x1001 ~ 0x1003)
@@ -157,9 +173,18 @@ enum class InternalMsgID : uint16_t
     // ============================================================
     //  LoginServer (0x1901 ~ 0x1903)
     // ============================================================
-    LOGIN_GATEWAY_REGISTER_REQ = 0x1901, /**< GatewayServer → LoginServer: 上报网关 */
-    LOGIN_GATEWAY_REGISTER_RSP = 0x1902, /**< LoginServer → GatewayServer: 注册确认 */
-    LOGIN_GATEWAY_HEARTBEAT    = 0x1903, /**< GatewayServer → LoginServer: 网关存活心跳 */
+    LOGIN_GATEWAY_REGISTER_REQ = 0x1901, /**< Super → LoginServer: 上报网关 */
+    LOGIN_GATEWAY_REGISTER_RSP = 0x1902, /**< LoginServer → Super: 注册确认 */
+    LOGIN_GATEWAY_HEARTBEAT    = 0x1903, /**< Super → LoginServer: 网关存活心跳 */
+    LOGIN_RECHARGE_REQ         = 0x1904, /**< 充值请求（骨架，经 SS_EXTERN_FWD） */
+    LOGIN_GM_CMD_REQ           = 0x1905, /**< GM 指令（骨架，经 SS_EXTERN_FWD） */
+};
+
+/** @brief LoginServer 业务大类（骨架） */
+enum class LoginBizType : uint16_t
+{
+    RECHARGE = 1, /**< 充值 */
+    GM_CMD   = 2, /**< GM 工具 */
 };
 
 // ============================================================
@@ -463,6 +488,51 @@ struct Msg_Login_GatewayRegisterRsp
 {
     int32_t  code;            /**< 0=成功 */
     uint32_t gatewayServerId; /**< 回显网关 ID */
+};
+
+/**
+ * @brief Gateway → Super：网关注册/心跳包装（Super 再转发 LoginServer）
+ */
+struct Msg_SS_LoginGatewayWrap
+{
+    uint32_t gatewayConnID;              /**< Super 侧 Gateway 连接 ID */
+    Msg_Login_GatewayRegister body;      /**< 网关信息 */
+};
+
+/**
+ * @brief Super → Gateway：网关注册结果包装
+ */
+struct Msg_SS_LoginGatewayWrapRsp
+{
+    uint32_t gatewayConnID;              /**< 回显 Gateway 连接 ID */
+    Msg_Login_GatewayRegisterRsp body;   /**< 注册结果 */
+};
+
+/**
+ * @brief 外联转发信封（SS_EXTERN_FWD / EXT_GAMEZONE_FWD 共用头，后跟 inner body）
+ */
+struct Msg_SS_ExternForward
+{
+    uint8_t  sourceServerType;  /**< 发起方 SubServerType */
+    uint32_t sourceServerId;    /**< 发起方 serverID */
+    uint8_t  targetServerType;  /**< 目标 SubServerType（LOGIN/LOGGER/GLOBAL/ZONE 或回包目标） */
+    uint16_t innerMsgId;        /**< 业务协议号 */
+    uint32_t seq;               /**< 请求序号（配对 RSP，0 表示无需响应） */
+    uint16_t dataLen;           /**< 后续 body 长度 */
+};
+
+/**
+ * @brief 外联转发响应头（SS_EXTERN_FWD_RSP / EXT_GAMEZONE_FWD_RSP）
+ */
+struct Msg_SS_ExternForwardRsp
+{
+    uint8_t  sourceServerType;  /**< 原请求发起方类型 */
+    uint32_t sourceServerId;    /**< 原请求发起方 ID */
+    uint8_t  targetServerType;  /**< 原请求目标类型 */
+    uint16_t innerMsgId;        /**< 原业务协议号 */
+    uint32_t seq;               /**< 原请求序号 */
+    int32_t  code;              /**< 0=成功 */
+    uint16_t dataLen;           /**< 后续 body 长度 */
 };
 
 /**

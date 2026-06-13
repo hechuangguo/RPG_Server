@@ -43,11 +43,8 @@ int main(int argc, char* argv[])
 
     auto* server = GatewayServer::Instance();
     uint16_t clientPort = self->port;
-    LoginServerList loginList;
-    ServerBootstrap::loadLoginServerList(argc, argv, loginList);
 
     if (!server->Init(clientPort, cfg, list, selfId)) return 1;
-    server->setupExternalClients(loginList);
     server->Run();
     return 0;
 }

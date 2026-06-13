@@ -6,8 +6,10 @@
 #include "SessionUser.h"
 #include "SessionServer.h"
 #include "../sdk/log/Logger.h"
+#include "../sdk/log/UserLog.h"
 #include "../sdk/time/TimeUtil.h"
 #include <cinttypes>
+#include <cstdarg>
 #include <sstream>
 #include <string>
 
@@ -175,4 +177,84 @@ void SessionUser::loop(uint64_t nowMs)
 void SessionUser::onMidnight()
 {
     LOG_INFO("SessionUser::onMidnight userID=%llu", GetID());
+}
+
+bool SessionUser::sendCmdToMe(uint8_t module, uint8_t sub, const char* data, uint16_t len)
+{
+    SessionServer* server = SessionServer::active();
+    if (!server || m_gatewayClientConn == 0)
+        return false;
+    server->SendToClient(m_gatewayClientConn, module, sub, data, len);
+    return true;
+}
+
+bool SessionUser::sendCmdToMe(uint16_t flatMsgId, const char* data, uint16_t len)
+{
+    return sendCmdToMe(static_cast<uint8_t>(flatMsgId >> 8),
+                       static_cast<uint8_t>(flatMsgId & 0xFF),
+                       data, len);
+}
+
+bool SessionUser::sendCmdToGlobal(uint16_t innerMsgId, const char* data, uint16_t len)
+{
+    SessionServer* server = SessionServer::active();
+    return server && server->externSender().sendToGlobalServer(innerMsgId, data, len);
+}
+
+bool SessionUser::sendCmdToZone(uint16_t innerMsgId, const char* data, uint16_t len)
+{
+    SessionServer* server = SessionServer::active();
+    return server && server->externSender().sendToZoneServer(innerMsgId, data, len);
+}
+
+bool SessionUser::sendCmdToLogger(uint16_t innerMsgId, const char* data, uint16_t len)
+{
+    SessionServer* server = SessionServer::active();
+    return server && server->externSender().sendToLoggerServer(innerMsgId, data, len);
+}
+
+bool SessionUser::sendCmdToLogin(uint16_t innerMsgId, const char* data, uint16_t len)
+{
+    SessionServer* server = SessionServer::active();
+    return server && server->externSender().sendToLoginServer(innerMsgId, data, len);
+}
+
+void SessionUser::info(const char* fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    char buf[2048];
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    UserLog::info(*this, "SessionUser", "%s", buf);
+}
+
+void SessionUser::debug(const char* fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    char buf[2048];
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    UserLog::debug(*this, "SessionUser", "%s", buf);
+}
+
+void SessionUser::warn(const char* fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    char buf[2048];
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    UserLog::warn(*this, "SessionUser", "%s", buf);
+}
+
+void SessionUser::error(const char* fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    char buf[2048];
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    UserLog::error(*this, "SessionUser", "%s", buf);
 }

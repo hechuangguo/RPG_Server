@@ -6,6 +6,7 @@
 #include "GlobalServer.h"
 
 #include "GlobalHttpApi.h"
+#include "GlobalGameZoneMsg.h"
 #include "../sdk/http/HttpCodec.h"
 
 #include <algorithm>
@@ -119,11 +120,7 @@ void GlobalServer::OnMessage(ConnID id, uint8_t module, uint8_t sub,
 
 void GlobalServer::RegisterHandlers()
 {
-    auto& d = MsgDispatcher::Instance();
-    d.Register((uint16_t)InternalMsgID::GLB_RANK_UPDATE,
-               [this](uint32_t c, const char* data, uint16_t len) { OnRankUpdate(c, data, len); });
-    d.Register((uint16_t)InternalMsgID::GLB_DATA_SYNC,
-               [this](uint32_t c, const char* data, uint16_t len) { OnDataSync(c, data, len); });
+    GlobalGameZoneMsgRegister(*this);
 }
 
 std::string GlobalServer::onHttpRequest(ConnID /*connId*/, const HttpRequest& req)

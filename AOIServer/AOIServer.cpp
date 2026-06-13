@@ -9,7 +9,9 @@
 #include <cstring>
 
 AOIServer::AOIServer()
-    : m_server(this), m_superClient(this)
+    : m_server(this)
+    , m_superClient(this)
+    , m_externSender(m_superClient, SubServerType::AOI, 0)
 {
 }
 
@@ -19,6 +21,8 @@ bool AOIServer::Init(const std::string& ip, uint16_t port,
     Logger::Instance().SetServerName("AOIServer");
     if (const ServerEntry* self = list.find(SubServerType::AOI, selfId))
         m_self = *self;
+    m_externSender.setSelfId(m_self.id ? m_self.id : selfId);
+    ServerBootstrap::bindRemoteLog(m_externSender, SubServerType::AOI);
     if (!m_server.Start(ip, port)) { LOG_FATAL("AOIServer start failed"); return false; }
     m_superClient.Connect(cfg.superIP, (uint16_t)cfg.superPort);
     RegisterHandlers();
@@ -34,14 +38,8 @@ void AOIServer::Run()
     {
         m_superClient.Poll(0);
         m_server.Poll(10);
-        ServerBootstrap::tickGameZoneExtern(m_externHub);
         TimerMgr::Instance().Update();
     }
-}
-
-void AOIServer::setupExternalClients(const LoginServerList& list)
-{
-    ServerBootstrap::initGameZoneExtern(m_externHub, list, SubServerType::AOI, false, false);
 }
 
 void AOIServer::OnConnect(ConnID id)

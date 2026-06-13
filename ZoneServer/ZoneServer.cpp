@@ -4,6 +4,7 @@
  */
 
 #include "ZoneServer.h"
+#include "ZoneGameZoneMsg.h"
 
 ZoneServer::ZoneServer() : m_server(this) {}
 
@@ -86,11 +87,7 @@ void ZoneServer::OnMessage(ConnID id, uint8_t module, uint8_t sub,
 
 void ZoneServer::RegisterHandlers()
 {
-    auto& d = MsgDispatcher::Instance();
-    d.Register((uint16_t)InternalMsgID::ZONE_CROSS_REQ,
-               [this](uint32_t c, const char* data, uint16_t len) { OnCrossReq(c, data, len); });
-    d.Register((uint16_t)InternalMsgID::ZONE_FORWARD,
-               [this](uint32_t c, const char* data, uint16_t len) { OnForward(c, data, len); });
+    ZoneGameZoneMsgRegister(*this);
 }
 
 void ZoneServer::OnCrossReq(ConnID fromConn, const char* data, uint16_t len)

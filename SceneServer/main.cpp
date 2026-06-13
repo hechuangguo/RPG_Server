@@ -57,12 +57,8 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    LoginServerList loginList;
-    ServerBootstrap::loadLoginServerList(argc, argv, loginList);
-
     auto* server = SceneServer::Instance();
     if (!server->Init("0.0.0.0", self->port, cfg, sceneInfo, list, selfId)) return 1;
-    server->setupExternalClients(loginList);
     server->Run();
     return 0;
 }

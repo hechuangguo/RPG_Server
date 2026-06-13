@@ -44,12 +44,8 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    LoginServerList loginList;
-    ServerBootstrap::loadLoginServerList(argc, argv, loginList);
-
     SessionServer server;
     if (!server.Init("0.0.0.0", self->port, cfg, list, selfId)) return 1;
-    server.setupExternalClients(loginList);
     server.Run();
     return 0;
 }

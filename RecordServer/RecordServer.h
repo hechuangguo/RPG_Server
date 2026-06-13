@@ -31,8 +31,7 @@
 #include "../sdk/util/WireStringUtil.h"
 #include "../sdk/util/Singleton.h"
 #include "../sdk/util/ServerList.h"
-#include "../sdk/util/ExternalServerHub.h"
-#include "../sdk/util/LoginServerList.h"
+#include "../sdk/util/GameZoneExternSender.h"
 #include "../protocal/InternalMsg.h"
 #include "RecordUser.h"
 #include "RecordUserManager.h"
@@ -76,9 +75,6 @@ public:
 
     /** @brief 主循环 */
     void Run();
-
-    /** @brief 连接外联 Logger（loginserverlist.xml） */
-    void setupExternalClients(const LoginServerList& list);
 
     /** @brief 内部连接建立 */
     void OnConnect(ConnID id) override;
@@ -191,5 +187,5 @@ private:
     uint32_t   m_hbSeq = 0;       /**< 心跳序列号（每次自增，SuperServer 用于检测丢包） */
     ServerEntry m_self;           /**< 本进程在 ServerList 中的拓扑条目（注册上报用） */
     RecordUserManager m_userManager;  /**< Record 用户缓存（userID -> RecordUser） */
-    ExternalServerHub m_externHub;    /**< 外联 Logger */
+    GameZoneExternSender m_externSender; /**< 经 Super 转发 Logger */
 };

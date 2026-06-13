@@ -42,8 +42,7 @@
 #include "../sdk/util/WireStringUtil.h"
 #include "../sdk/util/Singleton.h"
 #include "../sdk/util/ServerList.h"
-#include "../sdk/util/ExternalServerHub.h"
-#include "../sdk/util/LoginServerList.h"
+#include "../sdk/util/GameZoneExternSender.h"
 #include "SceneUser.h"
 #include "SceneNpc.h"
 #include "Scene.h"
@@ -95,8 +94,14 @@ public:
     /** @brief 主循环：轮询所有连接的 epoll + 驱动定时器 */
     void Run();
 
-    /** @brief 连接外联 Logger / Global / Zone（loginserverlist.xml） */
-    void setupExternalClients(const LoginServerList& list);
+    /** @brief 经 Super 转发到独立外联服 */
+    GameZoneExternSender& externSender() { return m_externSender; }
+
+    void SendToClient(uint32_t clientConnID, uint8_t module, uint8_t sub,
+                      const char* data, uint16_t len);
+
+    void SendToClient(uint32_t clientConnID, uint16_t flatMsgId,
+                      const char* data, uint16_t len);
 
     /** @brief NPC 进入 AOI（创建/复活时由 SceneNpc 调用） */
     void notifyNpcEnterAoi(const SceneNpc& npc) { sendAoiEnter(npc, 1); }
@@ -200,17 +205,6 @@ private:
     void OnHeartbeatReq(uint32_t clientConnID, const char* data, uint16_t len);
 
     /**
-     * @brief 向客户端发送消息（通过 GatewayServer 转发）
-     *
-     * 包格式：Msg_GW_SendToClient + body
-     */
-    void SendToClient(uint32_t clientConnID, uint8_t module, uint8_t sub,
-                      const char* data, uint16_t len);
-
-    void SendToClient(uint32_t clientConnID, uint16_t flatMsgId,
-                      const char* data, uint16_t len);
-
-    /**
      * @brief 广播消息给指定地图内的所有用户（可排除指定用户）
      *
      * 广播排除逻辑：
@@ -289,5 +283,5 @@ private:
     uint32_t   m_hbSeq = 0;       /**< 心跳序列号 */
     uint16_t   m_listenPort = 9004;  /**< Scene 对内监听端口 */
     ServerEntry m_self;           /**< 本进程在 ServerList 中的拓扑条目（注册上报用） */
-    ExternalServerHub m_externHub; /**< 外联 Logger / Global / Zone */
+    GameZoneExternSender m_externSender; /**< 经 Super 转发外联服 */
 };

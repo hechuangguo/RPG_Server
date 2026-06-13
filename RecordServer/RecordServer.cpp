@@ -10,6 +10,7 @@ RecordServer::RecordServer()
     : m_server(this)
     , m_superClient(this)
     , m_db(nullptr)
+    , m_externSender(m_superClient, SubServerType::RECORD, 0)
 {
 }
 
@@ -28,6 +29,8 @@ bool RecordServer::Init(const std::string& ip, uint16_t port,
     LOG_INFO("RecordServer starting on %s:%d", ip.c_str(), port);
     if (const ServerEntry* self = list.find(SubServerType::RECORD, selfId))
         m_self = *self;
+    m_externSender.setSelfId(m_self.id ? m_self.id : selfId);
+    ServerBootstrap::bindRemoteLog(m_externSender, SubServerType::RECORD);
     if (!m_server.Start(ip, port))
     {
         LOG_FATAL("Start failed");
@@ -57,14 +60,8 @@ void RecordServer::Run()
     {
         m_superClient.Poll(0);
         m_server.Poll(10);
-        ServerBootstrap::tickGameZoneExtern(m_externHub);
         TimerMgr::Instance().Update();
     }
-}
-
-void RecordServer::setupExternalClients(const LoginServerList& list)
-{
-    ServerBootstrap::initGameZoneExtern(m_externHub, list, SubServerType::RECORD, false, false);
 }
 
 void RecordServer::OnConnect(ConnID id)

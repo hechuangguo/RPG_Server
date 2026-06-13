@@ -4,6 +4,11 @@
  */
 
 #include "SuperServer.h"
+#include "SuperExternRouter.h"
+#include "SuperLoginMsg.h"
+#include "SuperLoggerMsg.h"
+#include "SuperGlobalMsg.h"
+#include "SuperZoneMsg.h"
 #include "../sdk/util/ServerBootstrap.h"
 
 #include <cstring>
@@ -103,7 +108,8 @@ void SuperServer::Run()
 
 void SuperServer::setupExternalClients(const LoginServerList& list)
 {
-    ServerBootstrap::initGameZoneExtern(m_externHub, list, SubServerType::UNKNOWN, false, false);
+    ServerBootstrap::initGameZoneExtern(m_externHub, list, SubServerType::UNKNOWN,
+                                        true, true, true);
 }
 
 void SuperServer::OnConnect(ConnID id)
@@ -139,6 +145,12 @@ void SuperServer::RegisterHandlers()
                [this](uint32_t c, const char* d, uint16_t l) { OnUserEnterRsp(c, d, l); });
     d.Register((uint16_t)InternalMsgID::SS_KICK_USER,
                [this](uint32_t c, const char* d, uint16_t l) { OnKickUser(c, d, l); });
+
+    SuperExternMsgRegister(*this);
+    SuperLoginMsgRegister(*this);
+    SuperLoggerMsgRegister(*this);
+    SuperGlobalMsgRegister(*this);
+    SuperZoneMsgRegister(*this);
 }
 
 void SuperServer::OnRegister(ConnID connID, const char* data, uint16_t len)

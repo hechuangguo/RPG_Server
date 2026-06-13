@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  extern_login.xml — LoginServer 独立部署配置
+  extern_login.xml — LoginServer 独立部署配置（与 ZoneServer/extern_zone.xml 同级）
 
   职责：
-    - ClientListen：玩家客户端登录（C2S_LOGIN_REQ）
-    - RegisterListen：游戏区 Gateway 上报网关（LOGIN_GATEWAY_REGISTER）
+    - ClientListen：玩家登录（C2S_LOGIN_REQ，默认 9010）
+    - GameZoneListen（RegisterListen）：SuperServer 游戏区转发入口（默认 19010）
     - 可选 Database：与 RecordServer 同库做账号校验
 
-  loginserverlist.xml 中 <LoginServer port="..."/> 须与 RegisterListen 一致。
+  独立进程，不向 Super 注册；仅 SuperServer 经 loginserverlist.xml 连接 GameZoneListen。
   修改后需重启 LoginServer 生效。
 -->
 <ExternServer>

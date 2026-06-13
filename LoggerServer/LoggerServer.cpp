@@ -4,6 +4,7 @@
  */
 
 #include "LoggerServer.h"
+#include "LoggerGameZoneLogMsg.h"
 
 LoggerServer::LoggerServer()
     : m_server(this)
@@ -51,6 +52,7 @@ void LoggerServer::RegisterHandlers()
     auto& d = MsgDispatcher::Instance();
     d.Register((uint16_t)InternalMsgID::LOG_WRITE_REQ,
                [this](uint32_t c, const char* d, uint16_t l) { OnWriteLog(c, d, l); });
+    LoggerGameZoneMsgRegister(*this);
 }
 
 void LoggerServer::OnWriteLog(ConnID /*fromConn*/, const char* data, uint16_t len)

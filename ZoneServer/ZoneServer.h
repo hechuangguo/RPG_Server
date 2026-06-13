@@ -55,6 +55,16 @@ public:
 
     void Run();
 
+    void onCrossReqFromGameZone(ConnID fromConn, const char* data, uint16_t len)
+    {
+        OnCrossReq(fromConn, data, len);
+    }
+
+    void onForwardFromGameZone(ConnID fromConn, const char* data, uint16_t len)
+    {
+        OnForward(fromConn, data, len);
+    }
+
     void OnConnect(ConnID id) override;
 
     void OnDisconnect(ConnID id) override;

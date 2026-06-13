@@ -87,6 +87,18 @@ public:
     /** @brief 任务子系统 */
     TaskManager&  getTaskManager()  { return taskManager; }
 
+    bool sendCmdToMe(uint8_t module, uint8_t sub, const char* data, uint16_t len);
+    bool sendCmdToMe(uint16_t flatMsgId, const char* data, uint16_t len);
+    bool sendCmdToGlobal(uint16_t innerMsgId, const char* data, uint16_t len);
+    bool sendCmdToZone(uint16_t innerMsgId, const char* data, uint16_t len);
+    bool sendCmdToLogger(uint16_t innerMsgId, const char* data, uint16_t len);
+    bool sendCmdToLogin(uint16_t innerMsgId, const char* data, uint16_t len);
+
+    void info(const char* fmt, ...);
+    void debug(const char* fmt, ...);
+    void warn(const char* fmt, ...);
+    void error(const char* fmt, ...);
+
 private:
     /** @brief 仅允许工厂构造，确保初始化路径统一 */
     explicit SceneUser(const UserBase& base);

@@ -74,16 +74,21 @@ flowchart TB
     REC --> DB
     SS --> DB
 
-    SCE -.->|loginserverlist.xml| GLB
-    SCE -.->|loginserverlist.xml| ZON
-    SES -.->|loginserverlist.xml| ZON
-    GW -.->|LOGIN_GATEWAY_REGISTER| LS
-    gameZone[区内进程] -.->|loginserverlist.xml| LOG
-    GW -.->|loginserverlist.xml RegisterListen| LS
+    SS -->|ExternalServerHub loginserverlist.xml| LOG
+    SS -->|ExternalServerHub| GLB
+    SS -->|ExternalServerHub| ZON
+    SS -->|ExternalServerHub GameZoneListen| LS
+
+    SCE -->|SS_EXTERN_FWD| SS
+    SES -->|SS_EXTERN_FWD| SS
+    REC -->|SS_EXTERN_FWD| SS
+    AOI -->|SS_EXTERN_FWD| SS
+    GW -->|SS_LOGIN_GATEWAY_WRAP| SS
+
     LS --> DB
 ```
 
-**外联服**（Logger / Global / Zone / **Login**）不注册 SuperServer，可部署在任意机器。Super 主要经 `loginserverlist.xml` 外联；区内其它进程按需读取同一文件连接 Logger/Global/Zone。**Gateway** 另经 `loginserverlist.xml` 的 `LoginServer` 条目连接 **RegisterListen**（默认 19010）上报网关。外联进程读各自目录 `extern_*.xml`。
+**外联服**（Logger / Global / Zone / **Login**）不注册 SuperServer，可部署在任意机器。**仅 SuperServer** 经 `loginserverlist.xml` 维护四条外联出站；区内 Gateway/Session/Scene/Record/AOI 只连 Super，经 `SS_EXTERN_FWD_REQ` / `SS_LOGIN_GATEWAY_WRAP_REQ` 转发。RemoteLog 与 `GameZoneExternSender` 绑定 Super 路径。外联进程读各自 `extern_*.xml`；RegisterListen（GameZoneListen，默认 19010）供 Super 连接 Login。
 
 **客户端两阶段连接（可选）**：`LoginServer` ClientListen（默认 9010）校验账号 → `S2C_GATEWAY_INFO` 下发网关地址 → 客户端再连区内 `GatewayServer`（9005）。存量客户端仍可直连 Gateway。
 
@@ -150,7 +155,8 @@ RPG/
 ### SuperServer — 注册中心与登录调度
 
 - 自举：启动读 MySQL `ServerList`；子进程经 `S2S_SERVERLIST_REQ` 拉拓扑
-- 出站：`loginserverlist.xml` 外联 Logger/Global/Zone（可选）
+- 出站：**独占** `loginserverlist.xml` 外联 Logger/Global/Zone/Login（`ExternalServerHub`）
+- 转发：`SuperExternRouter`（`SS_EXTERN_FWD`）、`SuperLoginMsg`（网关注册代理）
 - 入站：区内子进程注册（`S2S_REGISTER_REQ`）
 - 维护 `UserProxy`；协调登录：Gateway → Super → Record（加载）→ Scene
 
@@ -182,7 +188,7 @@ RPG/
 ### GatewayServer — 客户端接入
 
 - 启动：仅监听客户端 + 连接 Super；收到 `S2S_REGISTER_RSP` 后再出站连接 Record / Session / **全部 Scene 实例**（`GatewayScenePool`）
-- 出站：Super / Record / Session / 多 Scene；`loginserverlist.xml` → LoginServer RegisterListen（`LOGIN_GATEWAY_REGISTER` + 心跳）
+- 出站：Super / Record / Session / 多 Scene；**不直连 Login**，经 Super `SS_LOGIN_GATEWAY_WRAP` + `LOGIN_GATEWAY_HEARTBEAT` 上报
 - 入站：游戏客户端（clientPort）
 - 登录成功后按 `Msg_GW_UserLoginRsp.sceneServerId` 绑定用户并路由上行消息
 - `ClientMsgValidator` + `ClientMsgRouter`；60 秒心跳超时踢人

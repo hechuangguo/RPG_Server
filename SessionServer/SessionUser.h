@@ -78,6 +78,23 @@ public:
     /** @brief 标记社交数据待落库 */
     void markDirty() { m_dirty = true; }
 
+    /** @brief Gateway 侧客户端连接 ID（GW_CLIENT_MSG 写入） */
+    uint32_t getGatewayClientConn() const { return m_gatewayClientConn; }
+
+    void setGatewayClientConn(uint32_t clientConn) { m_gatewayClientConn = clientConn; }
+
+    bool sendCmdToMe(uint8_t module, uint8_t sub, const char* data, uint16_t len);
+    bool sendCmdToMe(uint16_t flatMsgId, const char* data, uint16_t len);
+    bool sendCmdToGlobal(uint16_t innerMsgId, const char* data, uint16_t len);
+    bool sendCmdToZone(uint16_t innerMsgId, const char* data, uint16_t len);
+    bool sendCmdToLogger(uint16_t innerMsgId, const char* data, uint16_t len);
+    bool sendCmdToLogin(uint16_t innerMsgId, const char* data, uint16_t len);
+
+    void info(const char* fmt, ...);
+    void debug(const char* fmt, ...);
+    void warn(const char* fmt, ...);
+    void error(const char* fmt, ...);
+
 private:
     /** @brief 仅允许通过 create 构造，确保初始化流程一致 */
     explicit SessionUser(const UserBase& base);
@@ -85,4 +102,5 @@ private:
     bool       m_initialized    = false;               /**< 是否已初始化 */
     bool       m_dirty          = false;               /**< 是否需要保存 */
     int64_t    m_lastDayStartMs = -1;                  /**< 上次跨日基准时间戳（ms） */
+    uint32_t   m_gatewayClientConn = 0;                /**< Gateway 客户端连接 ID */
 };

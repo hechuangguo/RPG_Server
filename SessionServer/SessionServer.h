@@ -14,8 +14,7 @@
 #include "../sdk/util/ConfigLoader.h"
 #include "../sdk/util/WireStringUtil.h"
 #include "../sdk/util/ServerList.h"
-#include "../sdk/util/ExternalServerHub.h"
-#include "../sdk/util/LoginServerList.h"
+#include "../sdk/util/GameZoneExternSender.h"
 #include "../sdk/util/RelationWireUtil.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
@@ -48,15 +47,19 @@ public:
     bool Init(const std::string& ip, uint16_t port,
               const ServerConfig& cfg, const ServerList& list, uint32_t selfId);
 
-    /**
-     * @brief 启动主循环
-     *
-     * 轮询网络事件并驱动定时任务（心跳、自动存档）。
-     */
+    /** @brief 主循环所在进程内的 SessionServer 实例（main 栈对象） */
+    static SessionServer* active() { return s_active; }
+
     void Run();
 
-    /** @brief 连接外联 Logger + Zone（loginserverlist.xml） */
-    void setupExternalClients(const LoginServerList& list);
+    /** @brief 经 Super 转发到独立外联服 */
+    GameZoneExternSender& externSender() { return m_externSender; }
+
+    void SendToClient(uint32_t clientConnID, uint8_t module, uint8_t sub,
+                      const char* data, uint16_t len);
+
+    void SendToClient(uint32_t clientConnID, uint16_t flatMsgId,
+                      const char* data, uint16_t len);
 
     /** @brief 内部连接建立（SceneServer 等） */
     void OnConnect(ConnID id) override;
@@ -93,6 +96,7 @@ private:
     /**
      * @brief Gateway 转发的客户端消息（社交/任务等）
      */
+    /** @brief Gateway 入站连接（下行 GW_SEND_TO_CLIENT） */
     void OnGatewayClientMsg(ConnID fromConn, const char* data, uint16_t len);
 
     /** @brief 处理社交类客户端协议（好友/黑名单等） */
@@ -144,10 +148,13 @@ private:
     TcpClient             m_recordClient; /**< 出站 RecordServer（Relation） */
     uint32_t              m_hbSeq = 0;    /**< 心跳序列号 */
     ServerEntry           m_self;         /**< 本进程在 ServerList 中的拓扑条目（注册上报用） */
-    ExternalServerHub     m_externHub;    /**< 外联 Logger / Zone */
+    GameZoneExternSender  m_externSender; /**< 经 Super 转发外联服 */
+    ConnID                m_gatewayInboundConn = INVALID_CONN_ID;
     bool                  m_relationPreloadDone = false; /**< 启动预载是否完成 */
     bool                  m_relationPreloadOk   = false; /**< 启动预载是否成功 */
     bool                  m_relationLoadDone = false;    /**< 同步单用户加载完成 */
     bool                  m_relationLoadOk   = false;    /**< 同步单用户加载成功 */
     RelationRowData       m_relationLoadRow;             /**< 同步加载结果缓存 */
+
+    static SessionServer* s_active;
 };

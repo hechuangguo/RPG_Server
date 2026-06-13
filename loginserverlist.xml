@@ -1,20 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   ============================================================================
-  loginserverlist.xml — 游戏区连接可选外联服务器（客户端配置）
+  loginserverlist.xml — 外联服地址（仅 SuperServer 消费）
   ============================================================================
 
   职责：
     - 登记 LoggerServer / GlobalServer / ZoneServer / LoginServer 的远端地址
-    - 游戏区内各进程启动时读取本文件，作为 TcpClient 连接目标
-    - 外联服可部署在任意机器，与本文件所在游戏区解耦
+    - 仅 SuperServer 启动时读取并建立 ExternalServerHub 出站连接
+    - 游戏区内 Gateway/Session/Scene 等进程不再直连外联服，一律经 Super 转发
 
   属性说明：
     - ip/port：外联服监听地址（须与对应 {Server}/extern_*.xml 中 Listen 一致）
     - reconnect：1/true 断线后指数退避重连；0/false 仅启动时连接一次
-    - 省略节点或 port="0"：不连接该外联服（可选）
+    - LoginServer port 为 GameZoneListen（RegisterListen），非玩家 ClientListen 9010
 
-  修改后需重启游戏区进程生效；外联服进程读各自目录 extern_*.xml，不读本文件。
+  修改后需重启 SuperServer 生效；外联服进程读各自目录 extern_*.xml。
   ============================================================================
 -->
 <LoginServerList>

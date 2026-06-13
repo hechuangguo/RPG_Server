@@ -10,6 +10,7 @@
 #include "ExternServerConfig.h"
 #include "ExternalServerHub.h"
 #include "LoginServerList.h"
+#include "GameZoneExternSender.h"
 #include "SceneInfoLoader.h"
 #include "ServerList.h"
 #include "../log/RemoteLogClient.h"
@@ -174,7 +175,7 @@ inline const char* externConfigPath(int argc, char* argv[], int argIndex,
 }
 
 /**
- * @brief 装配游戏区外联连接并绑定远程日志
+ * @brief 装配游戏区外联连接（仅 SuperServer 应开启全部外联）
  */
 inline void initGameZoneExtern(ExternalServerHub& hub, const LoginServerList& list,
                                SubServerType selfType, bool wantGlobal, bool wantZone,
@@ -182,8 +183,13 @@ inline void initGameZoneExtern(ExternalServerHub& hub, const LoginServerList& li
 {
     hub.configure(list, true, wantGlobal, wantZone, wantLogin);
     hub.connectAll();
-    if (TcpClient* loggerClient = hub.client(SubServerType::LOGGER))
-        RemoteLogClient::bind(loggerClient, selfType);
+    (void)selfType;
+}
+
+/** @brief 绑定 RemoteLog 到 GameZoneExternSender（区内服经 Super 转发） */
+inline void bindRemoteLog(GameZoneExternSender& sender, SubServerType selfType)
+{
+    RemoteLogClient::bind(&sender, selfType);
 }
 
 /** @brief 游戏区主循环内外联 poll + 重连 */

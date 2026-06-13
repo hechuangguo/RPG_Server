@@ -124,8 +124,17 @@ public:
     /** @brief 主循环：轮询网络事件 + 驱动定时器 */
     void Run();
 
-    /** @brief 按 loginserverlist.xml 连接可选外联 Logger */
+    /** @brief 按 loginserverlist.xml 连接外联 Logger/Global/Zone/Login（仅 Super 使用） */
     void setupExternalClients(const LoginServerList& list);
+
+    /** @brief 外联 Hub（SuperExternRouter 使用） */
+    ExternalServerHub& externHub() { return m_externHub; }
+
+    /** @brief 区内服入站 TcpServer */
+    TcpServer& tcpServer() { return m_server; }
+
+    /** @brief 查找存活区内服连接 */
+    ConnID findSubServerConn(SubServerType type) { return FindSubServer(type); }
 
     // ============================================================
     //  INetCallback 实现

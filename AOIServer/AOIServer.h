@@ -95,8 +95,7 @@
 #include "../sdk/util/Singleton.h"
 #include "../sdk/util/ConfigLoader.h"
 #include "../sdk/util/ServerList.h"
-#include "../sdk/util/ExternalServerHub.h"
-#include "../sdk/util/LoginServerList.h"
+#include "../sdk/util/GameZoneExternSender.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
 #include "../protocal/InternalMsg.h"
@@ -170,9 +169,6 @@ public:
 
     /** @brief 主循环：轮询网络并驱动 AOI 定时任务 */
     void Run();
-
-    /** @brief 连接外联 Logger（loginserverlist.xml） */
-    void setupExternalClients(const LoginServerList& list);
 
     void OnConnect(ConnID id) override;
 
@@ -272,7 +268,7 @@ private:
     TcpClient  m_superClient;    /**< 出站 SuperServer（注册、心跳） */
     uint32_t   m_hbSeq = 0;      /**< 心跳序列号 */
     ServerEntry m_self;          /**< 本进程在 ServerList 中的拓扑条目（注册上报用） */
-    ExternalServerHub m_externHub; /**< 外联 Logger */
+    GameZoneExternSender m_externSender; /**< 经 Super 转发 Logger */
     /** @brief 实体索引：entityID → AOIEntity */
     std::unordered_map<uint64_t, AOIEntity>                    m_entities;
     /** @brief 已注册场景：sceneInstanceId → Msg_AOI_SceneRegister */

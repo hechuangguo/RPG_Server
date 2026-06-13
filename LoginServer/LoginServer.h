@@ -15,6 +15,9 @@
 
 #include "LoginExternConfig.h"
 #include "LoginGatewayRegistry.h"
+#include "LoginAuthService.h"
+#include "LoginRechargeService.h"
+#include "LoginGmService.h"
 #include "../sdk/net/TcpServer.h"
 #include "../sdk/util/MsgDispatcher.h"
 #include "../sdk/util/Singleton.h"
@@ -56,6 +59,15 @@ public:
     /** @brief 主循环 */
     void Run();
 
+    TcpServer& clientServer() { return m_clientServer; }
+    TcpServer& registerServer() { return m_registerServer; }
+    LoginGatewayRegistry& gatewayRegistry() { return m_gatewayRegistry; }
+    MYSQL* db() { return m_db; }
+    bool dbRequired() const { return m_dbRequired; }
+    LoginAuthService& authService() { return m_authService; }
+    LoginRechargeService& rechargeService() { return m_rechargeService; }
+    LoginGmService& gmService() { return m_gmService; }
+
     /** @brief 客户端口：新连接 */
     void onClientConnect(ConnID id);
 
@@ -79,10 +91,6 @@ public:
 private:
     void registerHandlers();
     bool initDatabase(const DatabaseConfig& dbCfg);
-    void onGatewayRegister(ConnID fromConn, const char* data, uint16_t len);
-    void onGatewayHeartbeat(ConnID fromConn, const char* data, uint16_t len);
-    void onClientLogin(ConnID connID, const char* data, uint16_t len);
-    void sendGatewayInfo(ConnID connID, int32_t code, const char* msg);
     void pruneGatewayTable();
 
     /** @brief 客户端口 INetCallback 桥接 */
@@ -96,6 +104,9 @@ private:
     TcpServer m_clientServer;    /**< 玩家登录监听 */
     TcpServer m_registerServer;  /**< 网关注册监听 */
     LoginGatewayRegistry m_gatewayRegistry; /**< 存活网关表 */
+    LoginAuthService     m_authService;     /**< 客户端登录 */
+    LoginRechargeService m_rechargeService; /**< 充值骨架 */
+    LoginGmService       m_gmService;       /**< GM 骨架 */
     MYSQL* m_db = nullptr;       /**< 可选 MySQL（与 Record 同库） */
     bool m_dbRequired = false;   /**< 配置了 Database 则须连库成功 */
 };

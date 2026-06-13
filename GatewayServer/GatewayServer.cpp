@@ -80,7 +80,6 @@ void GatewayServer::Run()
             m_scenePool.pollAll();
         }
         m_clientServer.Poll(5);
-        ServerBootstrap::tickGameZoneExtern(m_externHub);
         TimerMgr::Instance().Update();
     }
 }
@@ -134,8 +133,8 @@ void GatewayServer::RegisterHandlers()
         [this](uint32_t c, const char* d, uint16_t l){ OnUserLoginRsp(c, d, l); });
     d.Register((uint16_t)InternalMsgID::S2S_REGISTER_RSP,
         [this](uint32_t c, const char* d, uint16_t l){ onSuperRegisterRsp(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::LOGIN_GATEWAY_REGISTER_RSP,
-        [this](uint32_t c, const char* d, uint16_t l){ onLoginGatewayRegisterRsp(c, d, l); });
+    d.Register(static_cast<uint16_t>(InternalMsgID::SS_LOGIN_GATEWAY_WRAP_RSP),
+        [this](uint32_t c, const char* d, uint16_t l){ onLoginGatewayWrapRsp(c, d, l); });
 }
 
 void GatewayServer::onSuperRegisterRsp(ConnID /*fromConn*/, const char* /*data*/, uint16_t /*len*/)
@@ -172,7 +171,7 @@ void GatewayServer::setupUpstreamClients()
              m_sessionClient.IsConnected() ? 1 : 0,
              m_scenePool.hasAnyConnected() ? 1 : 0);
 
-    reportGatewayToLoginServer();
+    reportGatewayToSuper();
 }
 
 void GatewayServer::pollUpstreamUntilReady()
@@ -185,7 +184,6 @@ void GatewayServer::pollUpstreamUntilReady()
         m_scenePool.pollAll();
         m_superClient.Poll(0);
         m_clientServer.Poll(0);
-        ServerBootstrap::tickGameZoneExtern(m_externHub);
         if (m_recordClient.IsConnected() && m_sessionClient.IsConnected() &&
             m_scenePool.hasAnyConnected())
         {
@@ -195,42 +193,39 @@ void GatewayServer::pollUpstreamUntilReady()
     LOG_WARN("Gateway upstream connect timeout (partial connections may exist)");
 }
 
-void GatewayServer::reportGatewayToLoginServer()
+void GatewayServer::reportGatewayToSuper()
 {
-    TcpClient* loginClient = m_externHub.client(SubServerType::LOGIN);
-    if (!loginClient || !loginClient->IsConnected())
+    if (!m_superClient.IsConnected())
     {
-        LOG_WARN("LoginServer not configured or not connected; skip gateway register");
+        LOG_WARN("SuperServer not connected; skip gateway register");
         return;
     }
 
-    Msg_Login_GatewayRegister req{};
-    req.gatewayServerId = m_self.id;
-    req.port = m_clientPort;
-    copyToWire(req.ip, sizeof(req.ip),
+    Msg_SS_LoginGatewayWrap wrap{};
+    wrap.gatewayConnID = 0;
+    wrap.body.gatewayServerId = m_self.id;
+    wrap.body.port = m_clientPort;
+    copyToWire(wrap.body.ip, sizeof(wrap.body.ip),
                m_self.ip.empty() ? "127.0.0.1" : m_self.ip.c_str());
-    copyToWire(req.name, sizeof(req.name), m_self.name.c_str());
-    copyToWire(req.zoneName, sizeof(req.zoneName), "game-zone");
+    copyToWire(wrap.body.name, sizeof(wrap.body.name), m_self.name.c_str());
+    copyToWire(wrap.body.zoneName, sizeof(wrap.body.zoneName), "game-zone");
 
-    loginClient->SendMsg((uint16_t)InternalMsgID::LOGIN_GATEWAY_REGISTER_REQ,
-                         reinterpret_cast<char*>(&req), sizeof(req));
-    LOG_INFO("LOGIN_GATEWAY_REGISTER sent: id=%u %s:%u",
-             req.gatewayServerId, req.ip, req.port);
+    m_superClient.SendMsg(static_cast<uint16_t>(InternalMsgID::SS_LOGIN_GATEWAY_WRAP_REQ),
+                          reinterpret_cast<char*>(&wrap), sizeof(wrap));
+    LOG_INFO("SS_LOGIN_GATEWAY_WRAP sent: id=%u %s:%u",
+             wrap.body.gatewayServerId, wrap.body.ip, wrap.body.port);
 }
 
 void GatewayServer::sendLoginGatewayHeartbeat()
 {
-    if (!m_upstreamReady)
+    if (!m_upstreamReady || !m_superClient.IsConnected())
         return;
     if (!m_reportedToLogin)
     {
-        reportGatewayToLoginServer();
+        reportGatewayToSuper();
         if (!m_reportedToLogin)
             return;
     }
-    TcpClient* loginClient = m_externHub.client(SubServerType::LOGIN);
-    if (!loginClient || !loginClient->IsConnected())
-        return;
 
     Msg_Login_GatewayRegister hb{};
     hb.gatewayServerId = m_self.id;
@@ -238,24 +233,24 @@ void GatewayServer::sendLoginGatewayHeartbeat()
     copyToWire(hb.ip, sizeof(hb.ip),
                m_self.ip.empty() ? "127.0.0.1" : m_self.ip.c_str());
     copyToWire(hb.name, sizeof(hb.name), m_self.name.c_str());
-    loginClient->SendMsg((uint16_t)InternalMsgID::LOGIN_GATEWAY_HEARTBEAT,
-                         reinterpret_cast<char*>(&hb), sizeof(hb));
+    m_superClient.SendMsg(static_cast<uint16_t>(InternalMsgID::LOGIN_GATEWAY_HEARTBEAT),
+                          reinterpret_cast<char*>(&hb), sizeof(hb));
 }
 
-void GatewayServer::onLoginGatewayRegisterRsp(ConnID /*fromConn*/, const char* data, uint16_t len)
+void GatewayServer::onLoginGatewayWrapRsp(ConnID /*fromConn*/, const char* data, uint16_t len)
 {
-    if (len < sizeof(Msg_Login_GatewayRegisterRsp))
+    if (len < sizeof(Msg_SS_LoginGatewayWrapRsp))
         return;
-    const auto* rsp = reinterpret_cast<const Msg_Login_GatewayRegisterRsp*>(data);
-    if (rsp->code == 0)
+    const auto* rsp = reinterpret_cast<const Msg_SS_LoginGatewayWrapRsp*>(data);
+    if (rsp->body.code == 0)
     {
         m_reportedToLogin = true;
-        LOG_INFO("LOGIN_GATEWAY_REGISTER_RSP ok: gatewayId=%u", rsp->gatewayServerId);
+        LOG_INFO("SS_LOGIN_GATEWAY_WRAP_RSP ok: gatewayId=%u", rsp->body.gatewayServerId);
     }
     else
     {
-        LOG_WARN("LOGIN_GATEWAY_REGISTER_RSP failed: code=%d gatewayId=%u",
-                 rsp->code, rsp->gatewayServerId);
+        LOG_WARN("SS_LOGIN_GATEWAY_WRAP_RSP failed: code=%d gatewayId=%u",
+                 rsp->body.code, rsp->body.gatewayServerId);
     }
 }
 
@@ -496,10 +491,10 @@ void GatewayServer::CheckTimeout()
     }
 }
 
-void GatewayServer::setupExternalClients(const LoginServerList& list)
+bool GatewayServer::sendToClient(ConnID connId, uint8_t module, uint8_t sub,
+                                 const char* data, uint16_t len)
 {
-    ServerBootstrap::initGameZoneExtern(m_externHub, list, SubServerType::GATEWAY,
-                                        false, false, true);
+    return m_clientServer.SendMsg(connId, module, sub, data, len);
 }
 
 void GatewayServer::RegisterToSuper()

@@ -7,6 +7,9 @@
 #include "../sdk/util/ServerBootstrap.h"
 #include "SessionUserManager.h"
 #include "SessionSceneManager.h"
+#include "SessionLoginMsg.h"
+
+#include <vector>
 
 namespace {
 
@@ -14,10 +17,13 @@ constexpr uint64_t RELATION_SYNC_TIMEOUT_MS = 30000;
 
 } // namespace
 
+SessionServer* SessionServer::s_active = nullptr;
+
 SessionServer::SessionServer()
     : m_server(this)
     , m_superClient(this)
     , m_recordClient(this)
+    , m_externSender(m_superClient, SubServerType::SESSION, 0)
 {
 }
 
@@ -30,6 +36,8 @@ bool SessionServer::Init(const std::string& ip, uint16_t port,
     LOG_INFO("SessionServer starting on %s:%d", ip.c_str(), port);
     if (const ServerEntry* self = list.find(SubServerType::SESSION, selfId))
         m_self = *self;
+    m_externSender.setSelfId(m_self.id ? m_self.id : selfId);
+    ServerBootstrap::bindRemoteLog(m_externSender, SubServerType::SESSION);
     if (!m_server.Start(ip, port))
     {
         LOG_FATAL("Start failed");
@@ -71,6 +79,7 @@ bool SessionServer::Init(const std::string& ip, uint16_t port,
     TimerMgr::Instance().Register(500, 0, [this] { RegisterToSuper(); });
     TimerMgr::Instance().Register(10000, 10000, [this] { SendHeartbeat(); });
     TimerMgr::Instance().Register(60000, 60000, [this] { AutoSaveAll(); });
+    s_active = this;
     LOG_INFO("SessionServer started (Record + SceneManager).");
     return true;
 }
@@ -82,19 +91,15 @@ void SessionServer::Run()
         m_superClient.Poll(0);
         m_recordClient.Poll(0);
         m_server.Poll(10);
-        ServerBootstrap::tickGameZoneExtern(m_externHub);
         TimerMgr::Instance().Update();
     }
 }
 
-void SessionServer::setupExternalClients(const LoginServerList& list)
-{
-    ServerBootstrap::initGameZoneExtern(m_externHub, list, SubServerType::SESSION, false, true);
-}
-
 void SessionServer::OnConnect(ConnID id)
 {
-    LOG_INFO("InnerConn connected=%u", id);
+    if (m_gatewayInboundConn == INVALID_CONN_ID)
+        m_gatewayInboundConn = id;
+    LOG_INFO("InnerConn connected=%u (gateway=%u)", id, m_gatewayInboundConn);
 }
 
 void SessionServer::OnDisconnect(ConnID id)
@@ -184,6 +189,7 @@ void SessionServer::RegisterHandlers()
                [this](uint32_t c, const char* d, uint16_t l) { OnCopyCreateReq(c, d, l); });
     d.Register((uint16_t)InternalMsgID::GW_CLIENT_MSG,
                [this](uint32_t c, const char* d, uint16_t l) { OnGatewayClientMsg(c, d, l); });
+    SessionLoginMsgRegister(*this);
 }
 
 void SessionServer::OnRelationPreloadRsp(ConnID /*fromConn*/, const char* data, uint16_t len)
@@ -247,8 +253,10 @@ void SessionServer::OnRelationLoadRsp(ConnID /*fromConn*/, const char* data, uin
     m_relationLoadDone = true;
 }
 
-void SessionServer::OnGatewayClientMsg(ConnID /*fromConn*/, const char* data, uint16_t len)
+void SessionServer::OnGatewayClientMsg(ConnID fromConn, const char* data, uint16_t len)
 {
+    if (fromConn != INVALID_CONN_ID)
+        m_gatewayInboundConn = fromConn;
     if (len < sizeof(Msg_GW_ClientMsg))
         return;
     const auto* hdr = reinterpret_cast<const Msg_GW_ClientMsg*>(data);
@@ -429,4 +437,34 @@ void SessionServer::AutoSaveAll()
         if (user->needSave())
             user->save(*this);
     });
+}
+
+void SessionServer::SendToClient(uint32_t clientConnID, uint8_t module, uint8_t sub,
+                                 const char* data, uint16_t len)
+{
+    std::vector<char> buf(sizeof(Msg_GW_SendToClient) + len);
+    auto* hdr = reinterpret_cast<Msg_GW_SendToClient*>(buf.data());
+    hdr->clientConnID = clientConnID;
+    hdr->module = module;
+    hdr->sub = sub;
+    hdr->dataLen = len;
+    if (len > 0)
+        memcpy(buf.data() + sizeof(Msg_GW_SendToClient), data, len);
+    if (m_gatewayInboundConn == INVALID_CONN_ID)
+    {
+        LOG_WARN("SendToClient: no Gateway inbound conn clientConn=%u", clientConnID);
+        return;
+    }
+    m_server.SendMsg(m_gatewayInboundConn,
+                     static_cast<uint16_t>(InternalMsgID::GW_SEND_TO_CLIENT),
+                     buf.data(), static_cast<uint16_t>(buf.size()));
+}
+
+void SessionServer::SendToClient(uint32_t clientConnID, uint16_t flatMsgId,
+                                 const char* data, uint16_t len)
+{
+    SendToClient(clientConnID,
+                 static_cast<uint8_t>(flatMsgId >> 8),
+                 static_cast<uint8_t>(flatMsgId & 0xFF),
+                 data, len);
 }

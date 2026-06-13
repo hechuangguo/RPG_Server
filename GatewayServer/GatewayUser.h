@@ -59,6 +59,14 @@ public:
     /** @brief 登录调度成功后绑定 Scene 实例 */
     void setSceneServerId(uint32_t serverId) { sceneServerId = serverId; }
 
+    bool sendCmdToMe(uint8_t module, uint8_t sub, const char* data, uint16_t len);
+    bool sendCmdToMe(uint16_t flatMsgId, const char* data, uint16_t len);
+
+    void info(const char* fmt, ...);
+    void debug(const char* fmt, ...);
+    void warn(const char* fmt, ...);
+    void error(const char* fmt, ...);
+
 private:
     /** @brief 为 GatewayUser 构造最小 UserBase（仅 connID） */
     static UserBase makeBase(ConnID connId)

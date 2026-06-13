@@ -4,6 +4,7 @@
  */
 
 #include "LoginServer.h"
+#include "LoginGameZoneMsg.h"
 #include "../sdk/timer/TimerMgr.h"
 
 #include <cstdio>
@@ -52,6 +53,9 @@ LoginServer::LoginServer()
     , m_registerBridge(std::make_unique<RegisterPortBridge>(this))
     , m_clientServer(m_clientBridge.get())
     , m_registerServer(m_registerBridge.get())
+    , m_authService(*this)
+    , m_rechargeService(*this)
+    , m_gmService(*this)
 {
 }
 
@@ -139,7 +143,7 @@ void LoginServer::onClientMessage(ConnID id, uint8_t module, uint8_t sub,
                                    const char* data, uint16_t len)
 {
     if (module == static_cast<uint8_t>(ClientModule::LOGIN) && sub == 0x01)
-        onClientLogin(id, data, len);
+        m_authService.onClientLogin(id, data, len);
 }
 
 void LoginServer::onRegisterConnect(ConnID id)
@@ -160,158 +164,7 @@ void LoginServer::onRegisterMessage(ConnID id, uint8_t module, uint8_t sub,
 
 void LoginServer::registerHandlers()
 {
-    auto& d = MsgDispatcher::Instance();
-    d.Register((uint16_t)InternalMsgID::LOGIN_GATEWAY_REGISTER_REQ,
-               [this](uint32_t c, const char* d, uint16_t l) { onGatewayRegister(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::LOGIN_GATEWAY_HEARTBEAT,
-               [this](uint32_t c, const char* d, uint16_t l) { onGatewayHeartbeat(c, d, l); });
-}
-
-void LoginServer::onGatewayRegister(ConnID fromConn, const char* data, uint16_t len)
-{
-    if (len < sizeof(Msg_Login_GatewayRegister))
-        return;
-    const auto* req = reinterpret_cast<const Msg_Login_GatewayRegister*>(data);
-
-    LoginGatewayEntry entry;
-    entry.gatewayServerId = req->gatewayServerId;
-    entry.ip = req->ip;
-    entry.port = req->port;
-    entry.name = req->name;
-    entry.zoneName = req->zoneName;
-    entry.lastHeartbeatMs = TimerMgr::NowMs();
-    m_gatewayRegistry.upsert(entry);
-
-    Msg_Login_GatewayRegisterRsp rsp{};
-    rsp.code = 0;
-    rsp.gatewayServerId = req->gatewayServerId;
-    m_registerServer.SendMsg(fromConn,
-                             (uint16_t)InternalMsgID::LOGIN_GATEWAY_REGISTER_RSP,
-                             reinterpret_cast<char*>(&rsp), sizeof(rsp));
-    LOG_INFO("Gateway registered: id=%u %s:%u name=%s (total=%zu)",
-             req->gatewayServerId, req->ip, req->port, req->name, m_gatewayRegistry.size());
-}
-
-void LoginServer::onGatewayHeartbeat(ConnID fromConn, const char* data, uint16_t len)
-{
-    if (len < sizeof(Msg_Login_GatewayRegister))
-        return;
-    const auto* req = reinterpret_cast<const Msg_Login_GatewayRegister*>(data);
-    if (!m_gatewayRegistry.touch(req->gatewayServerId))
-    {
-        onGatewayRegister(fromConn, data, len);
-        return;
-    }
-    LOG_DEBUG("Gateway heartbeat: id=%u", req->gatewayServerId);
-}
-
-void LoginServer::onClientLogin(ConnID connID, const char* data, uint16_t len)
-{
-    if (len < sizeof(Msg_C2S_LoginReq))
-        return;
-    const auto* req = reinterpret_cast<const Msg_C2S_LoginReq*>(data);
-
-    Msg_S2C_LoginRsp loginRsp{};
-    loginRsp.userID = 0;
-
-    if (m_dbRequired && !m_db)
-    {
-        loginRsp.code = -1;
-        copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "Login service unavailable");
-        m_clientServer.SendMsg(connID, (uint16_t)ClientMsgID::S2C_LOGIN_RSP,
-                               reinterpret_cast<char*>(&loginRsp), sizeof(loginRsp));
-        sendGatewayInfo(connID, -1, "No gateway");
-        return;
-    }
-
-    char accName[sizeof(req->account)];
-    copyToWire(accName, sizeof(accName), req->account);
-
-    if (m_db)
-    {
-        char escName[sizeof(accName) * 2 + 1];
-        mysql_real_escape_string(m_db, escName, accName, strlen(accName));
-        char sql[256];
-        snprintf(sql, sizeof(sql),
-                 "SELECT user_id FROM CharBase WHERE name='%s' LIMIT 1", escName);
-
-        if (mysql_query(m_db, sql) != 0)
-        {
-            LOG_ERR("LoginServer MySQL query failed: %s", mysql_error(m_db));
-            loginRsp.code = -1;
-            copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "Database error");
-        }
-        else
-        {
-            MYSQL_RES* res = mysql_store_result(m_db);
-            MYSQL_ROW row = res ? mysql_fetch_row(res) : nullptr;
-            if (row)
-            {
-                loginRsp.code = 0;
-                loginRsp.userID = static_cast<uint64_t>(strtoull(row[0], nullptr, 10));
-                copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "Login OK");
-            }
-            else
-            {
-                snprintf(sql, sizeof(sql),
-                         "INSERT INTO CharBase (name) VALUES ('%s')", escName);
-                if (mysql_query(m_db, sql) != 0)
-                {
-                    LOG_ERR("LoginServer auto-create failed: %s", mysql_error(m_db));
-                    loginRsp.code = -1;
-                    copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "Create account failed");
-                }
-                else
-                {
-                    loginRsp.code = 0;
-                    loginRsp.userID = static_cast<uint64_t>(mysql_insert_id(m_db));
-                    copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "Login OK");
-                    LOG_INFO("LoginServer auto-create: name=%s userID=%llu",
-                             accName, static_cast<unsigned long long>(loginRsp.userID));
-                }
-            }
-            if (res)
-                mysql_free_result(res);
-        }
-    }
-    else
-    {
-        loginRsp.code = 0;
-        copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "Login OK (no DB)");
-    }
-
-    m_clientServer.SendMsg(connID, (uint16_t)ClientMsgID::S2C_LOGIN_RSP,
-                           reinterpret_cast<char*>(&loginRsp), sizeof(loginRsp));
-
-    if (loginRsp.code == 0)
-        sendGatewayInfo(connID, 0, "OK");
-    else
-        sendGatewayInfo(connID, -1, "Login failed");
-}
-
-void LoginServer::sendGatewayInfo(ConnID connID, int32_t code, const char* msg)
-{
-    Msg_S2C_GatewayInfo info{};
-    info.code = code;
-    copyToWire(info.msg, sizeof(info.msg), msg);
-    if (code == 0)
-    {
-        LoginGatewayEntry gw;
-        if (m_gatewayRegistry.pickRoundRobin(gw))
-        {
-            copyToWire(info.gatewayIP, sizeof(info.gatewayIP), gw.ip.c_str());
-            info.gatewayPort = gw.port;
-        }
-        else
-        {
-            info.code = -1;
-            copyToWire(info.msg, sizeof(info.msg), "No gateway available");
-        }
-    }
-    m_clientServer.SendMsg(connID, (uint16_t)ClientMsgID::S2C_GATEWAY_INFO,
-                           reinterpret_cast<char*>(&info), sizeof(info));
-    LOG_INFO("Sent gateway info: conn=%u code=%d ip=%s port=%u",
-             connID, info.code, info.gatewayIP, info.gatewayPort);
+    LoginGameZoneMsgRegister(*this);
 }
 
 void LoginServer::pruneGatewayTable()

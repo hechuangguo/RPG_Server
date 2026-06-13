@@ -6,8 +6,12 @@
  */
 
 #include "SceneUser.h"
+#include "SceneServer.h"
 #include "../sdk/log/Logger.h"
+#include "../sdk/log/UserLog.h"
 #include "../sdk/time/TimeUtil.h"
+
+#include <cstdarg>
 
 std::shared_ptr<SceneUser> SceneUser::create(const UserBase& base)
 {
@@ -176,4 +180,79 @@ void SceneUser::loop(uint64_t nowMs)
 void SceneUser::onMidnight()
 {
     LOG_INFO("SceneUser::onMidnight userID=%llu", GetID());
+}
+
+bool SceneUser::sendCmdToMe(uint8_t module, uint8_t sub, const char* data, uint16_t len)
+{
+    if (gatewayClientConn == 0)
+        return false;
+    SceneServer::Instance()->SendToClient(gatewayClientConn, module, sub, data, len);
+    return true;
+}
+
+bool SceneUser::sendCmdToMe(uint16_t flatMsgId, const char* data, uint16_t len)
+{
+    return sendCmdToMe(static_cast<uint8_t>(flatMsgId >> 8),
+                       static_cast<uint8_t>(flatMsgId & 0xFF),
+                       data, len);
+}
+
+bool SceneUser::sendCmdToGlobal(uint16_t innerMsgId, const char* data, uint16_t len)
+{
+    return SceneServer::Instance()->externSender().sendToGlobalServer(innerMsgId, data, len);
+}
+
+bool SceneUser::sendCmdToZone(uint16_t innerMsgId, const char* data, uint16_t len)
+{
+    return SceneServer::Instance()->externSender().sendToZoneServer(innerMsgId, data, len);
+}
+
+bool SceneUser::sendCmdToLogger(uint16_t innerMsgId, const char* data, uint16_t len)
+{
+    return SceneServer::Instance()->externSender().sendToLoggerServer(innerMsgId, data, len);
+}
+
+bool SceneUser::sendCmdToLogin(uint16_t innerMsgId, const char* data, uint16_t len)
+{
+    return SceneServer::Instance()->externSender().sendToLoginServer(innerMsgId, data, len);
+}
+
+void SceneUser::info(const char* fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    char buf[2048];
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    UserLog::info(*this, "SceneUser", "%s", buf);
+}
+
+void SceneUser::debug(const char* fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    char buf[2048];
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    UserLog::debug(*this, "SceneUser", "%s", buf);
+}
+
+void SceneUser::warn(const char* fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    char buf[2048];
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    UserLog::warn(*this, "SceneUser", "%s", buf);
+}
+
+void SceneUser::error(const char* fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    char buf[2048];
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    UserLog::error(*this, "SceneUser", "%s", buf);
 }

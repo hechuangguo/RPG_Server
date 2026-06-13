@@ -1,0 +1,95 @@
+/**
+ * @file    SuperLoginMsg.cpp
+ * @brief  SuperServer Login 网关代理实现
+ */
+
+#include "SuperLoginMsg.h"
+#include "SuperServer.h"
+#include "../sdk/util/ExternalServerHub.h"
+#include "../sdk/log/Logger.h"
+
+#include <unordered_map>
+
+namespace
+{
+std::unordered_map<uint32_t, ConnID> g_gatewayConnByServerId;
+} // namespace
+
+void SuperLoginMsgRegister(SuperServer& super)
+{
+    auto& d = MsgDispatcher::Instance();
+    d.Register(static_cast<uint16_t>(InternalMsgID::SS_LOGIN_GATEWAY_WRAP_REQ),
+               [&super](uint32_t c, const char* data, uint16_t len) {
+                   SuperLoginOnGatewayWrapReq(super, c, data, len);
+               });
+    d.Register(static_cast<uint16_t>(InternalMsgID::LOGIN_GATEWAY_HEARTBEAT),
+               [&super](uint32_t c, const char* data, uint16_t len) {
+                   SuperLoginOnGatewayHeartbeat(super, c, data, len);
+               });
+    d.Register(static_cast<uint16_t>(InternalMsgID::LOGIN_GATEWAY_REGISTER_RSP),
+               [&super](uint32_t c, const char* data, uint16_t len) {
+                   SuperLoginOnGatewayRegisterRsp(super, c, data, len);
+               });
+}
+
+void SuperLoginOnGatewayWrapReq(SuperServer& super, ConnID fromConn,
+                                const char* data, uint16_t len)
+{
+    if (len < sizeof(Msg_SS_LoginGatewayWrap))
+        return;
+
+    const auto* wrap = reinterpret_cast<const Msg_SS_LoginGatewayWrap*>(data);
+    g_gatewayConnByServerId[wrap->body.gatewayServerId] = fromConn;
+
+    TcpClient* login = super.externHub().client(SubServerType::LOGIN);
+    if (!login || !login->IsConnected())
+    {
+        LOG_WARN("SuperLogin: LoginServer not connected");
+        Msg_SS_LoginGatewayWrapRsp rsp{};
+        rsp.gatewayConnID = fromConn;
+        rsp.body.code = -1;
+        rsp.body.gatewayServerId = wrap->body.gatewayServerId;
+        super.tcpServer().SendMsg(fromConn,
+            static_cast<uint16_t>(InternalMsgID::SS_LOGIN_GATEWAY_WRAP_RSP),
+            reinterpret_cast<char*>(&rsp), sizeof(rsp));
+        return;
+    }
+
+    login->SendMsg(static_cast<uint16_t>(InternalMsgID::LOGIN_GATEWAY_REGISTER_REQ),
+                   reinterpret_cast<const char*>(&wrap->body), sizeof(wrap->body));
+    LOG_INFO("SuperLogin: gateway wrap fwd id=%u conn=%u",
+             wrap->body.gatewayServerId, wrap->gatewayConnID);
+}
+
+void SuperLoginOnGatewayRegisterRsp(SuperServer& super, ConnID /*fromLoginConn*/,
+                                    const char* data, uint16_t len)
+{
+    if (len < sizeof(Msg_Login_GatewayRegisterRsp))
+        return;
+
+    const auto* body = reinterpret_cast<const Msg_Login_GatewayRegisterRsp*>(data);
+    auto it = g_gatewayConnByServerId.find(body->gatewayServerId);
+    if (it == g_gatewayConnByServerId.end())
+    {
+        LOG_WARN("SuperLogin: no gateway route for id=%u", body->gatewayServerId);
+        return;
+    }
+
+    Msg_SS_LoginGatewayWrapRsp rsp{};
+    rsp.gatewayConnID = it->second;
+    rsp.body = *body;
+    super.tcpServer().SendMsg(it->second,
+        static_cast<uint16_t>(InternalMsgID::SS_LOGIN_GATEWAY_WRAP_RSP),
+        reinterpret_cast<char*>(&rsp), sizeof(rsp));
+}
+
+void SuperLoginOnGatewayHeartbeat(SuperServer& super, ConnID /*fromConn*/,
+                                  const char* data, uint16_t len)
+{
+    TcpClient* login = super.externHub().client(SubServerType::LOGIN);
+    if (!login || !login->IsConnected())
+        return;
+
+    login->SendMsg(static_cast<uint16_t>(InternalMsgID::LOGIN_GATEWAY_HEARTBEAT),
+                   data, len);
+}
