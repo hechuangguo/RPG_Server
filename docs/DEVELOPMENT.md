@@ -117,14 +117,17 @@ Scene Lua 扩展：见 [LUA.md](LUA.md) § 扩展指南。
 ```bash
 ./autoinit.sh              # 首次：从 vendor 离线编译 3Party + cmake（无需 curl）
 ./gen_data.sh              # 改 Excel 后
-./build.sh SceneServer     # 或 ./Build.sh 编译全部
+./Build.sh                 # 编译全部 10 个服务器
+./Build.sh LoginServer     # 或只编译指定服（支持多个目标）
+./Build.sh clean           # 清除 .build/ 与各服目录下可执行文件
+./Build.sh rebuild         # clean 后全量重编
 mysql -u root -p < tables/init.sql
 ./RunServer.sh             # 从项目根启动（影响 Lua 路径）
 ./log.sh                   # 跟踪 logs/*.log
 ./StopServer.sh
 ```
 
-产物：各服目录下可执行文件（如 `SuperServer/SuperServer`）或 `.build/bin/`（视 CMake 配置）。
+产物：各服目录下可执行文件（如 `SuperServer/SuperServer`、`LoginServer/LoginServer`）。
 
 ### 8.1 升级 3Party 版本（维护者）
 

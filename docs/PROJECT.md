@@ -156,7 +156,9 @@ Client → Gateway（验证）→ Super → Record（加载）→ Scene → AOI
 ```bash
 ./autoinit.sh          # 从 vendor 离线编译 3Party + CMake 配置
 ./gen_data.sh          # Excel → Lua 配表（首次可加 --init）
-./Build.sh             # 编译全部服务器
+./Build.sh             # 编译全部 10 个服务器
+./Build.sh LoginServer # 单服编译示例（外联登录服）
+./Build.sh clean       # 清除 .build/ 与各服可执行文件
 mysql -u root -p < tables/init.sql          # 建库建表
 mysql -u root -p < tables/seed_test_data.sql  # 可选：开发测试账号
 ./RunServer.sh         # 按依赖顺序启动

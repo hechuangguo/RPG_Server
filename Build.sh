@@ -9,9 +9,10 @@
 #    ./Build.sh               # 默认 Release 编译，并发数 = CPU 核数
 #    ./Build.sh -j10          # 指定 10 并发编译
 #    ./Build.sh debug         # Debug 模式（不优化，ASAN 开启）
-#    ./Build.sh clean         # 清除构建目录
+#    ./Build.sh clean         # 清除 .build/ 与各服目录下可执行文件
 #    ./Build.sh rebuild       # 先 clean 再全量编译
 #    ./Build.sh SuperServer   # 只编译指定服务器（支持多个，空格分隔）
+#    ./Build.sh LoginServer   # 只编译外联登录服
 #    ./Build.sh -j8 debug     # 8 并发 Debug 模式
 #    ./Build.sh -j8 SceneServer RecordServer  # 8 并发编译指定服务器
 #
@@ -19,7 +20,7 @@
 #    -j<N>              make 并发编译线程数，默认自动检测 CPU 核数（nproc/hw.ncpu）
 #    debug              编译类型切换为 Debug（无优化，带调试符号，可启用 ASAN）
 #    release            编译类型切换为 Release（最高优化 -O3，不含调试符号）
-#    clean              删除 .build/ 构建目录，清除所有编译产物和 CMake 缓存
+#    clean              删除 .build/ 及各服目录下可执行文件（ALL_SERVERS），清除 CMake 缓存
 #    rebuild            等价于 clean + 全量重新编译（用于解决依赖更新导致的编译问题）
 #    <ServerName>...    只构建指定的服务器目标（空格分隔多个名称），跳过其他目标
 #
@@ -57,6 +58,7 @@ BUILD_DIR="${SCRIPT_DIR}/.build"
 ALL_SERVERS=(
     SuperServer SessionServer RecordServer AOIServer
     SceneServer GatewayServer LoggerServer GlobalServer ZoneServer
+    LoginServer
 )
 
 # ──────────────────────────────────────────────
@@ -169,16 +171,28 @@ print_env() {
 }
 
 # ──────────────────────────────────────────────
-# 清理构建目录
-# 删除整个 build/ 目录及其内容（含 CMake 缓存、中间 .o 文件、可执行文件等）
+# 清理构建目录与各服可执行文件
+# 删除 ALL_SERVERS 中各服目录下的可执行文件，以及 .build/（含 CMake 缓存、中间 .o 等）
 # ──────────────────────────────────────────────
 do_clean() {
+    local server binary removed=0
+    for server in "${ALL_SERVERS[@]}"; do
+        binary="${SCRIPT_DIR}/${server}/${server}"
+        if [[ -f "${binary}" ]]; then
+            info "清除可执行文件：${binary}"
+            rm -f "${binary}"
+            (( removed++ )) || true
+        fi
+    done
+    if [[ "${removed}" -gt 0 ]]; then
+        success "已清除 ${removed} 个服务器可执行文件"
+    fi
     if [[ -d "${BUILD_DIR}" ]]; then
         info "清除构建目录：${BUILD_DIR}"
         rm -rf "${BUILD_DIR}"
         success "清除完成"
-    else
-        warn "构建目录不存在，无需清除"
+    elif [[ "${removed}" -eq 0 ]]; then
+        warn "构建目录不存在，且无服务器可执行文件需清除"
     fi
 }
 

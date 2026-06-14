@@ -163,9 +163,17 @@ sudo dnf install -y gcc-c++ cmake make tar openssl-devel zlib-devel
 ```bash
 ./autoinit.sh          # 从 vendor 离线编译 3Party + cmake configure
 ./gen_data.sh          # DataDoc Excel → database/*.lua（可选 --init 生成示例表）
-./build                # 或 ./Build.sh
+./build                # 或 ./Build.sh（编译全部 10 个服务器）
 
-# 编译后可执行文件位于各服务器目录（如 SuperServer/SuperServer）
+# 单服编译示例
+./Build.sh LoginServer
+./Build.sh SceneServer SuperServer
+
+# 清除 .build/ 与各服目录下可执行文件后全量重编
+./Build.sh clean
+./Build.sh rebuild
+
+# 编译后可执行文件位于各服务器目录（如 SuperServer/SuperServer、LoginServer/LoginServer）
 ```
 
 ### 策划配表（DataDoc）

@@ -25,7 +25,7 @@
 
 ```bash
 ./autoinit.sh    # 从 vendor 编译 3Party + cmake configure
-./Build.sh       # 编译全部服务器
+./Build.sh       # 编译全部 10 个服务器（含 LoginServer 外联登录服）
 ```
 
 - 首次 autoinit 会编译三个静态库（约 1–2 分钟）
