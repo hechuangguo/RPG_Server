@@ -17,7 +17,7 @@
 #include "SceneServer.h"
 #include "SceneUserManager.h"
 #include "SceneEntry.h"
-#include "../common/ClientMsg.h"
+#include "../Common/ClientMsg.h"
 #include "../sdk/log/Logger.h"
 
 extern "C"

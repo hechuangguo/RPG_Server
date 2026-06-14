@@ -1,4 +1,4 @@
-[submodule "common"]
+[submodule "Common"]
 	path = Common
 	url = https://github.com/hechuangguo/RPG_Common.git
 	branch = main

@@ -37,7 +37,7 @@
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
 #include "../protocal/InternalMsg.h"
-#include "../common/ClientMsg.h"
+#include "../Common/ClientMsg.h"
 #include "../sdk/util/UserWireUtil.h"
 #include "../sdk/util/WireStringUtil.h"
 #include "../sdk/util/Singleton.h"

@@ -14,7 +14,8 @@
 #      （Ubuntu: apt install libssl-dev zlib1g-dev）
 #      （CentOS: yum install openssl-devel zlib-devel）
 #
-#  初始化流程（6 步）：
+#  初始化流程（8 步）：
+#    0. 初始化 Git Submodule（Common/ → RPG_Common）
 #    1. 创建必要目录（logs/、run/、.build/、3Party/、DataDoc/）
 #    2. 从 vendor/ 离线编译 3Party 静态库（Lua / tinyxml2 / MariaDB Client）
 #    3. 检查配置文件完整性（config.xml、server_info.xml）
@@ -48,6 +49,15 @@ warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 fail() { echo -e "${RED}[FAIL]${NC} $1"; exit 1; }  # 失败时打印错误并立即退出
 
 step "===== RPG Server AutoInit ====="
+
+# -------------------------------------------------------
+#  第0步：初始化 Git Submodule（Common/）
+#  Common/ 为 RPG_Common 子模块，含 ClientMsg.h 等共享协议头。
+# -------------------------------------------------------
+step "Initialize Git submodules (Common/)..."
+git submodule update --init --recursive
+[ -f "$SCRIPT_DIR/Common/ClientMsg.h" ] \
+    || fail "Common/ClientMsg.h missing — run: git submodule update --init --recursive"
 
 # -------------------------------------------------------
 #  第1步：创建必要目录
@@ -129,9 +139,11 @@ fi
 
 # -------------------------------------------------------
 #  第5步：协议文件检查
-#  当前协议采用 header-only struct 定义方式，无需 proto 编译步骤。
+#  Common/ClientMsg.h 为客户端 wire 协议权威定义（header-only，无需 proto 编译）。
 # -------------------------------------------------------
-step "Protocol files OK (using header-only structs)."
+[ -f "$SCRIPT_DIR/Common/ClientMsg.h" ] \
+    || fail "Common/ClientMsg.h missing after submodule init"
+step "Protocol files OK (Common/ClientMsg.h present)."
 
 # -------------------------------------------------------
 #  第6步：设置脚本执行权限

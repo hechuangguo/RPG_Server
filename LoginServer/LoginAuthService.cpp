@@ -5,7 +5,7 @@
 
 #include "LoginAuthService.h"
 #include "LoginServer.h"
-#include "../common/ClientMsg.h"
+#include "../Common/ClientMsg.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/util/WireStringUtil.h"
 

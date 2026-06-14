@@ -23,7 +23,7 @@
 #include "../sdk/util/ServerList.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
-#include "../common/ClientMsg.h"
+#include "../Common/ClientMsg.h"
 #include "../protocal/InternalMsg.h"
 #include "GatewayUser.h"
 #include "GatewayUserManager.h"

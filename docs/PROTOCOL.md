@@ -1,7 +1,7 @@
 # 协议参考
 
 客户端与服间 TCP **共用** 6 字节消息头，定义于 [`sdk/net/NetDefine.h`](../sdk/net/NetDefine.h)。  
-权威源码：[`common/ClientMsg.h`](../common/ClientMsg.h)、[`protocal/InternalMsg.h`](../protocal/InternalMsg.h)。
+权威源码：[`Common/ClientMsg.h`](../Common/ClientMsg.h)、[`protocal/InternalMsg.h`](../protocal/InternalMsg.h)。共享层维护见 [COMMON.md](COMMON.md)。
 
 ---
 
@@ -20,7 +20,7 @@
 
 ## 2. 客户端协议（ClientModule）
 
-定义于 [`common/ClientMsg.h`](../common/ClientMsg.h)。
+定义于 [`Common/ClientMsg.h`](../Common/ClientMsg.h)。
 
 ### 2.1 模块枚举
 
@@ -200,7 +200,7 @@ sequenceDiagram
 
 ### 客户端消息
 
-1. [`common/ClientMsg.h`](../common/ClientMsg.h) — `ClientModule`、sub、`ClientMsgID`、wire struct
+1. [`Common/ClientMsg.h`](../Common/ClientMsg.h) — `ClientModule`、sub、`ClientMsgID`、wire struct
 2. [`GatewayServer/ClientMsgValidator.h`](../GatewayServer/ClientMsgValidator.h) — 白名单、长度、状态
 3. [`GatewayServer/ClientMsgRouter.h`](../GatewayServer/ClientMsgRouter.h) — LOCAL / SCENE / SESSION
 4. Scene 或 Session — 处理 `GW_CLIENT_MSG`；或 Scene Lua `OnMsg_{MMSS}`

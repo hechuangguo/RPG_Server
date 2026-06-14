@@ -4,7 +4,7 @@
  */
 
 #pragma once
-#include "../common/ClientMsg.h"
+#include "../Common/ClientMsg.h"
 #include <cstdint>
 
 /** @brief 转发目标 */

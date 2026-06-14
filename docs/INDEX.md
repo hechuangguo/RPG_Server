@@ -19,9 +19,10 @@
 ### 客户端 / 协议对接
 
 1. [PROTOCOL.md](PROTOCOL.md) — 6 字节帧、ClientModule、消息表
-2. [common/ClientMsg.h](../common/ClientMsg.h) — 结构体定义
-3. [GatewayServer/ClientMsgValidator.h](../GatewayServer/ClientMsgValidator.h) — 校验规则
-4. [GatewayServer/ClientMsgRouter.h](../GatewayServer/ClientMsgRouter.h) — 路由目标
+2. [COMMON.md](COMMON.md) — RPG_Common submodule 克隆与双端同步
+3. [Common/ClientMsg.h](../Common/ClientMsg.h) — 结构体定义
+4. [GatewayServer/ClientMsgValidator.h](../GatewayServer/ClientMsgValidator.h) — 校验规则
+5. [GatewayServer/ClientMsgRouter.h](../GatewayServer/ClientMsgRouter.h) — 路由目标
 
 ### Lua / 玩法
 
@@ -60,6 +61,7 @@
 | [DATA.md](DATA.md) | MySQL + 策划 Lua 双轨数据 |
 | [LUA.md](LUA.md) | SceneServer Lua 脚本体系 |
 | [DEVELOPMENT.md](DEVELOPMENT.md) | 扩展开发指南（消息、副本、配表、构建） |
+| [COMMON.md](COMMON.md) | RPG_Common submodule 双端共享协议流程 |
 | [COMMENTS.md](COMMENTS.md) | 头文件 / XML / SQL 注释规范 |
 
 ### 子目录 README
@@ -92,7 +94,7 @@
 | 主题 | 路径 |
 |------|------|
 | 消息帧 | `sdk/net/NetDefine.h`、`sdk/net/MsgId.h` |
-| 客户端协议 | `common/ClientMsg.h` |
+| 客户端协议 | `Common/ClientMsg.h`（RPG_Common submodule） |
 | 服间协议 | `protocal/InternalMsg.h` |
 | 网关校验/路由 | `GatewayServer/ClientMsgValidator.h`、`ClientMsgRouter.h` |
 | 全区场景调度 | `SessionServer/SessionSceneManager.*` |

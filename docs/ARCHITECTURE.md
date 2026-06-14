@@ -143,7 +143,7 @@ RPG/
 │   └── util/               # ConfigLoader、MsgDispatcher、Bootstrap、外联转发
 ├── LoginServer/            # 外联登录（可选）
 ├── docs/                   # 文档（见 INDEX.md）
-├── common/ClientMsg.h      # 客户端协议
+├── Common/ClientMsg.h      # 客户端协议（RPG_Common submodule）
 ├── protocal/InternalMsg.h  # 服务器间协议
 ├── config/config.xml       # 全局配置
 ├── config/server_info.xml  # SceneServer 地图配置
@@ -297,7 +297,7 @@ flowchart TB
 | 转发 | `Msg_GW_ClientMsg` + body |
 | 下行 | `Msg_GW_SendToClient` + body |
 
-### 客户端协议（common/ClientMsg.h）
+### 客户端协议（Common/ClientMsg.h）
 
 | module | 说明 | Gateway 路由 |
 |--------|------|--------------|
@@ -409,7 +409,7 @@ flowchart TB
     end
 
     subgraph proto [协议层]
-        ClientProto[common/ClientMsg.h]
+        ClientProto[Common/ClientMsg.h]
         InternalProto[protocal/InternalMsg.h]
     end
 

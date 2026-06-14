@@ -8,7 +8,7 @@
 
 ### 1.1 定义协议
 
-[`common/ClientMsg.h`](../common/ClientMsg.h) 来自 Git Submodule [RPG_Common](https://github.com/hechuangguo/RPG_Common)（Client 侧路径为 `Client/Common/`）。**在本仓库内编辑 `common/` 下的文件，在 submodule 内 commit 并 push 到 RPG_Common**，再在 RPG / RPG_Client 主仓库更新 submodule 指针。
+[`Common/ClientMsg.h`](../Common/ClientMsg.h) 来自 Git Submodule [RPG_Common](https://github.com/hechuangguo/RPG_Common)（Client 独立仓库 RPG_Client 侧路径同为 `Common/`）。**在本仓库内编辑 `Common/` 下的文件，在 submodule 内 commit 并 push 到 RPG_Common**，再在 RPG / RPG_Client 主仓库更新 submodule 指针。完整流程见 [COMMON.md](COMMON.md)。
 
 1. 确认 `ClientModule`（或新增 module 值）
 2. 添加 `ClientMsgID` 枚举项
@@ -17,8 +17,8 @@
 对方拉取更新：
 
 ```bash
-git pull
-git submodule update --init --recursive
+git pull --recurse-submodules
+# 等价于：git pull && git submodule update --init --recursive
 ```
 
 ### 1.2 网关登记（必须）

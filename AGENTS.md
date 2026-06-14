@@ -41,7 +41,7 @@
 
 - 定义：`sdk/net/NetDefine.h`
 - 工具：`sdk/net/MsgId.h`（`makeMsgId` / `msgModule` / `msgSub`）
-- 客户端模块：`ClientModule` in `common/ClientMsg.h`
+- 客户端模块：`ClientModule` in `Common/ClientMsg.h`
 - 新客户端消息须在 `ClientMsgValidator` 白名单与 `ClientMsgRouter` 中登记路由
 
 ## 常用路径
@@ -52,7 +52,8 @@ sdk/net/NetDefine.h              # MsgHeader
 sdk/net/MsgId.h                  # module/sub 工具
 docs/PROTOCOL.md                 # 协议参考
 docs/SERVERS.md                  # 10 进程说明
-common/ClientMsg.h               # ClientModule、ClientMsgID
+docs/COMMON.md                   # RPG_Common submodule 双端同步
+Common/ClientMsg.h               # ClientModule、ClientMsgID（submodule）
 protocal/InternalMsg.h           # Msg_GW_ClientMsg、Msg_GW_SendToClient
 GatewayServer/ClientMsgValidator.h
 GatewayServer/ClientMsgRouter.h

@@ -66,7 +66,7 @@ Client → GatewayServer ─┬→ SceneServer / AOIServer
 ```
 RPG/
 ├── sdk/              # 网络、日志、定时器、配置、消息分发
-├── common/           # 客户端协议 ClientMsg.h
+├── Common/           # Git Submodule → RPG_Common（ClientMsg.h 等）
 ├── protocal/         # 服间协议 InternalMsg.h
 ├── SuperServer/      # 各进程实现（每服一目录）
 ├── SessionServer/
@@ -104,7 +104,7 @@ RPG/
 - 帧格式：`MsgHeader { bodyLen, module, sub }`（6 字节）+ body，见 `sdk/net/NetDefine.h`
 - 工具：`sdk/net/MsgId.h`（`makeMsgId` / `msgModule` / `msgSub`）
 - 分发：`MsgDispatcher` 按 `(module, sub)` 查表；仍支持扁平 `uint16_t` 注册
-- 协议：`common/ClientMsg.h`（客户端）、`protocal/InternalMsg.h`（服间）
+- 协议：`Common/ClientMsg.h`（客户端，RPG_Common submodule）、`protocal/InternalMsg.h`（服间）
 - 网关：`ClientMsgValidator` + `ClientMsgRouter`（`GatewayServer/`）
 
 #### Gateway 客户端消息
@@ -226,7 +226,7 @@ mysql -u root -p < tables/seed_test_data.sql  # 可选：开发测试账号
 | 本进程场景 | `SceneServer/SceneManager.h` |
 | Lua 入口 | `script/scene/init.lua`、`SceneServer/LuaManager.cpp` |
 | 配表加载 | `basefile/data_table.lua` |
-| 协议定义 | `protocal/InternalMsg.h`、`common/ClientMsg.h` |
+| 协议定义 | `protocal/InternalMsg.h`、`Common/ClientMsg.h` |
 
 ### 2.4 局限与后续方向
 

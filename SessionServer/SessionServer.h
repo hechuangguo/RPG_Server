@@ -19,7 +19,7 @@
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
 #include "../protocal/InternalMsg.h"
-#include "../common/ClientMsg.h"
+#include "../Common/ClientMsg.h"
 #include "../sdk/net/MsgId.h"
 #include "SessionUser.h"
 #include <string>
