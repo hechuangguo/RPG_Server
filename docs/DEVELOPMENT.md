@@ -8,11 +8,18 @@
 
 ### 1.1 定义协议
 
-[`common/ClientMsg.h`](../common/ClientMsg.h)：
+[`common/ClientMsg.h`](../common/ClientMsg.h) 来自 Git Submodule [RPG_Common](https://github.com/hechuangguo/RPG_Common)（Client 侧路径为 `Client/Common/`）。**在本仓库内编辑 `common/` 下的文件，在 submodule 内 commit 并 push 到 RPG_Common**，再在 RPG / RPG_Client 主仓库更新 submodule 指针。
 
 1. 确认 `ClientModule`（或新增 module 值）
 2. 添加 `ClientMsgID` 枚举项
 3. 定义 `#pragma pack(1)` wire struct（定长字符串用 [`WireStringUtil.h`](../sdk/util/WireStringUtil.h)）
+
+对方拉取更新：
+
+```bash
+git pull
+git submodule update --init --recursive
+```
 
 ### 1.2 网关登记（必须）
 

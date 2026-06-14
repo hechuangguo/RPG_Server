@@ -104,7 +104,7 @@ RPG/
 │   ├── net/       # NetDefine、MsgId、TcpServer/Client/Connection
 │   ├── time/      # 墙钟：TimeUtil、AlarmClock
 │   └── timer/     # 单调时钟：TimerMgr（相对间隔调度）
-├── common/        # 客户端协议 ClientMsg.h
+├── common/        # Git Submodule → RPG_Common（ClientMsg.h 等客户端协议）
 ├── protocal/      # 服务器内部协议 InternalMsg.h
 ├── GatewayServer/ # 接入 + ClientMsgValidator/Router
 ├── LoginServer/   # 外联登录 + 网关列表（可选）
@@ -132,6 +132,18 @@ RPG/
 ```
 
 ## 快速上手
+
+### 克隆（含共享协议）
+
+`common/` 为 [RPG_Common](https://github.com/hechuangguo/RPG_Common) 的 **Git Submodule**（与 Client 的 `Client/Common/` 同源）：
+
+```bash
+git clone --recurse-submodules git@github.com:hechuangguo/RPG.git
+# 已 clone 但未拉 submodule：
+git submodule update --init --recursive
+```
+
+修改 `common/ClientMsg.h` 时：在 submodule 内 commit/push 到 **RPG_Common**，再回到本仓库 commit submodule 指针。详见 [RPG_Common README](https://github.com/hechuangguo/RPG_Common) 与 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
 
 ### 环境依赖
 
