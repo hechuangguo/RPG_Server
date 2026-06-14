@@ -54,6 +54,8 @@
 | 0x0008 | S2C_CREATE_USER_RSP | S→C | — | 创角响应 |
 | 0x0009 | S2C_ENTER_GAME | S→C | `Msg_S2C_EnterGame` | 进入游戏世界 |
 | 0x000A | S2C_GATEWAY_INFO | S→C | `Msg_S2C_GatewayInfo` | LoginServer 下发网关地址 |
+| 0x000B | C2S_ZONE_LIST_REQ | C→S | `Msg_C2S_ZoneListReq` | LoginServer 请求区列表（空 body 视为全部） |
+| 0x000C | S2C_ZONE_LIST_RSP | S→C | `Msg_S2C_ZoneListRspHeader` + N×`Msg_S2C_ZoneEntryWire` | 区列表（变长，最多 64 条） |
 | 0x0101 | C2S_MOVE_REQ | C→S | `Msg_C2S_MoveReq` | 移动 |
 | 0x0102 | S2C_MOVE_NOTIFY | S→C | `Msg_S2C_MoveNotify` | 移动广播 |
 | 0x0103 | S2C_ENTER_MAP | S→C | — | 进图 |

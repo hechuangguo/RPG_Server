@@ -3,6 +3,7 @@
  * @brief   LoginServer 客户端登录（ClientListen）
  *
  * 职责：
+ *   - 处理 C2S_ZONE_LIST_REQ（返回 serverlist.xml 区服列表）
  *   - 处理 C2S_LOGIN_REQ（MySQL 校验 / 自动建号）
  *   - 回复 S2C_LOGIN_RSP
  *   - 成功时经 ZoneInfo + LoginGatewayRegistry 下发 S2C_GATEWAY_INFO
@@ -33,6 +34,14 @@ public:
      * @param len    长度
      */
     void onClientLogin(ConnID connID, const char* data, uint16_t len);
+
+    /**
+     * @brief 处理客户端区列表请求
+     * @param connID 客户端连接 ID
+     * @param data   Msg_C2S_ZoneListReq（空 body 视为 gameType=0xFF）
+     * @param len    长度
+     */
+    void onClientZoneList(ConnID connID, const char* data, uint16_t len);
 
 private:
     /**

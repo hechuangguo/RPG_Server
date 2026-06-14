@@ -63,6 +63,8 @@ enum class ClientMsgID : uint16_t
     S2C_CREATE_USER_RSP  = 0x0008,  /**< S→C: 创建用户响应 */
     S2C_ENTER_GAME       = 0x0009,  /**< S→C: 通知客户端进入游戏世界 */
     S2C_GATEWAY_INFO     = 0x000A,  /**< S→C: LoginServer 下发可用网关地址 */
+    C2S_ZONE_LIST_REQ    = 0x000B,  /**< C→S: 请求游戏区列表（LoginServer ClientListen） */
+    S2C_ZONE_LIST_RSP    = 0x000C,  /**< S→C: 游戏区列表响应（变长 body） */
 
     // ============================================================
     //  场景/移动 (0x0101 ~ 0x0107)
@@ -182,8 +184,44 @@ struct Msg_S2C_GatewayInfo
     char     msg[64];        /**< 可读说明 */
 };
 
+/** @brief 区列表响应最大条目数（LoginServer serverlist.xml） */
+constexpr uint16_t MAX_ZONE_LIST_ENTRIES = 64;
+
 /**
- * @brief C→S: 玩家移动请求
+ * @brief C→S: 请求游戏区列表
+ *
+ * 客户端连接 LoginServer ClientListen（9010）后、登录前发送。
+ * gameType=0xFF 表示返回全部游戏类型下的区服。
+ */
+struct Msg_C2S_ZoneListReq
+{
+    uint8_t gameType;  /**< 游戏类型；0xFF=全部 */
+};
+
+/** @brief S→C: 区列表单条 wire 格式（紧随 Msg_S2C_ZoneListRspHeader） */
+struct Msg_S2C_ZoneEntryWire
+{
+    uint32_t zoneId;       /**< 游戏区号 */
+    uint8_t  gameType;     /**< 游戏类型 */
+    uint8_t  enabled;      /**< 1=可登录 0=维护 */
+    char     name[32];     /**< 区服显示名 */
+    char     ip[64];       /**< 入口 IP */
+    uint16_t superPort;    /**< SuperServer 端口 */
+};
+
+/**
+ * @brief S→C: 区列表响应头（变长 body 前缀）
+ *
+ * 完整 body = sizeof(Msg_S2C_ZoneListRspHeader) + count * sizeof(Msg_S2C_ZoneEntryWire)
+ */
+struct Msg_S2C_ZoneListRspHeader
+{
+    int32_t  code;   /**< 0=成功，非 0 失败 */
+    uint16_t count;  /**< 紧随其后的 Msg_S2C_ZoneEntryWire 条数 */
+};
+
+/**
+ * @brief S→C: 玩家移动请求
  *
  * 客户端持续上报位置，SceneServer 通过 AOIServer 广播给视野内玩家。
  */

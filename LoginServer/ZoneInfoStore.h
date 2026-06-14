@@ -1,8 +1,8 @@
 /**
  * @file    ZoneInfoStore.h
- * @brief   LoginServer ZoneInfo 表内存缓存与轮询选区
+ * @brief   LoginServer 游戏区列表内存缓存与轮询选区
  *
- * 从 MySQL ZoneInfo 表只读加载游戏区入口配置；登录下发网关时与
+ * 从 serverlist.xml 只读加载游戏区入口配置；登录下发网关时与
  * LoginGatewayRegistry 按 zone_id ↔ gatewayServerId 对齐。
  */
 
@@ -29,13 +29,20 @@ struct ZoneInfoRow
 };
 
 /**
- * @brief ZoneInfo 表：加载、轮询选取 enabled 区服
+ * @brief 游戏区列表：加载、轮询选取 enabled 区服
  */
 class ZoneInfoStore
 {
 public:
     /**
-     * @brief 从 MySQL 全量加载 ZoneInfo
+     * @brief 从 serverlist.xml 全量加载游戏区列表
+     * @param path XML 文件路径
+     * @return 成功 true
+     */
+    bool loadFromFile(const char* path);
+
+    /**
+     * @brief 从 MySQL 全量加载 ZoneInfo（保留供迁移/工具，LoginServer 启动不调用）
      * @param db 已连接的 MySQL 句柄
      * @return 成功 true
      */
@@ -58,6 +65,13 @@ public:
 
     /** @brief 已加载行数（含 disabled） */
     size_t size() const { return m_rows.size(); }
+
+    /**
+     * @brief 列出全部或按 gameType 过滤的区服（含 disabled）
+     * @param out            [out] 输出列表
+     * @param gameTypeFilter 0xFF=全部，否则仅匹配该 gameType
+     */
+    void listAll(std::vector<ZoneInfoRow>& out, uint8_t gameTypeFilter) const;
 
 private:
     /** @brief 重建 enabled 区服的轮询索引 */

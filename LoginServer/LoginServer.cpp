@@ -87,13 +87,16 @@ bool LoginServer::initDatabase(const DatabaseConfig& dbCfg)
     return true;
 }
 
-bool LoginServer::loadZoneInfo()
+bool LoginServer::loadServerList(const std::string& path)
 {
-    if (!m_db)
-        return true;
-    if (!m_zoneInfoStore.loadFromDb(m_db))
+    if (path.empty())
     {
-        LOG_FATAL("LoginServer ZoneInfo load failed");
+        LOG_FATAL("LoginServer: serverList path is empty");
+        return false;
+    }
+    if (!m_zoneInfoStore.loadFromFile(path.c_str()))
+    {
+        LOG_FATAL("LoginServer ServerList load failed: %s", path.c_str());
         return false;
     }
     return true;
@@ -107,9 +110,9 @@ bool LoginServer::Init(const LoginExternConfig& cfg)
         LOG_FATAL("LoginServer: ClientListen/RegisterListen port required");
         return false;
     }
-    if (!initDatabase(cfg.database))
+    if (!loadServerList(cfg.serverListPath))
         return false;
-    if (m_dbRequired && !loadZoneInfo())
+    if (!initDatabase(cfg.database))
         return false;
 
     if (!m_clientServer.Start(cfg.clientListenIP, cfg.clientListenPort))
@@ -127,16 +130,10 @@ bool LoginServer::Init(const LoginExternConfig& cfg)
 
     registerHandlers();
     TimerMgr::Instance().Register(10000, 10000, [this] { pruneGatewayTable(); });
-    if (m_db)
-    {
-        TimerMgr::Instance().Register(60000, 60000, [this] {
-            if (m_db && !m_zoneInfoStore.loadFromDb(m_db))
-                LOG_ERR("LoginServer ZoneInfo reload failed");
-        });
-    }
-    LOG_INFO("LoginServer started: client=%s:%u register=%s:%u",
+    LOG_INFO("LoginServer started: client=%s:%u register=%s:%u zones=%zu",
              cfg.clientListenIP.c_str(), cfg.clientListenPort,
-             cfg.registerListenIP.c_str(), cfg.registerListenPort);
+             cfg.registerListenIP.c_str(), cfg.registerListenPort,
+             m_zoneInfoStore.size());
     return true;
 }
 
@@ -163,8 +160,12 @@ void LoginServer::onClientDisconnect(ConnID id)
 void LoginServer::onClientMessage(ConnID id, uint8_t module, uint8_t sub,
                                    const char* data, uint16_t len)
 {
-    if (module == static_cast<uint8_t>(ClientModule::LOGIN) && sub == 0x01)
+    if (module != static_cast<uint8_t>(ClientModule::LOGIN))
+        return;
+    if (sub == 0x01)
         m_authService.onClientLogin(id, data, len);
+    else if (sub == 0x0B)
+        m_authService.onClientZoneList(id, data, len);
 }
 
 void LoginServer::onRegisterConnect(ConnID id)

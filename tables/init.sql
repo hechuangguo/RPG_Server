@@ -144,10 +144,11 @@ ON DUPLICATE KEY UPDATE ip=VALUES(ip), port=VALUES(port), name=VALUES(name);
 DELETE FROM ServerList WHERE server_type IN (6, 7, 8);
 
 -- -----------------------------------------------------------
--- 表：ZoneInfo（LoginServer 游戏区入口表 —— 多游戏公用）
+-- 表：ZoneInfo（游戏区入口参考表 —— 多游戏公用）
 -- 设计意图：登记各游戏类型下的可登录区服入口（IP/Super 端口/维护开关）。
 --           game_type 区分游戏产品；zone_id 区分同产品下的游戏区号。
---           LoginServer 只读；Gateway gatewayServerId 建议与 zone_id 对齐（同 game_type 下）。
+--           LoginServer 实际读取 LoginServer/serverlist.xml（本表仅作 DB 参考/种子）。
+--           Gateway gatewayServerId 建议与 zone_id 对齐（同 game_type 下）。
 -- -----------------------------------------------------------
 CREATE TABLE IF NOT EXISTS ZoneInfo (
     zone_id      INT UNSIGNED NOT NULL COMMENT '游戏区号（同 game_type 下唯一，如 1=一区）',

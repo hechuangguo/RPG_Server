@@ -8,6 +8,7 @@
     - 可选 Database：与 RecordServer 同库做账号校验
 
   独立进程，不向 Super 注册；仅 SuperServer 经 loginserverlist.xml 连接 GameZoneListen。
+  游戏区列表见 ServerList 节点指向的 serverlist.xml（客户端 C2S_ZONE_LIST_REQ）。
   修改后需重启 LoginServer 生效。
 -->
 <ExternServer>
@@ -15,6 +16,8 @@
     <ClientListen ip="0.0.0.0" port="9010"/>
     <!-- 游戏区 Gateway 网关注册/心跳（非玩家口） -->
     <RegisterListen ip="0.0.0.0" port="19010"/>
+    <!-- 游戏区列表（启动加载至内存，供客户端选区） -->
+    <ServerList path="LoginServer/serverlist.xml"/>
     <LogPath>logs/login.log</LogPath>
     <!-- 可选：与 config.xml Database 同库 -->
     <Database host="127.0.0.1" port="3306" user="rpg_table" pass="rpg_table" name="rpg_game"/>

@@ -25,6 +25,7 @@ struct LoginExternConfig
     std::string registerListenIP = "0.0.0.0"; /**< 网关注册监听 IP */
     uint16_t    registerListenPort = 0;      /**< 网关注册端口（如 19010） */
     std::string logPath = "logs/login.log";  /**< 本进程日志路径 */
+    std::string serverListPath = XmlConfig::SERVER_LIST_PATH_DEFAULT; /**< 游戏区列表 serverlist.xml */
     DatabaseConfig database;                 /**< 可选 MySQL（账号校验） */
 };
 
@@ -67,6 +68,13 @@ public:
             const std::string text = XmlConfig::readElementText(logPath);
             if (!text.empty())
                 cfg.logPath = text;
+        }
+        if (auto* serverList = root->FirstChildElement("ServerList"))
+        {
+            std::string path;
+            XmlConfig::readStrAttr(serverList, "path", path);
+            if (!path.empty())
+                cfg.serverListPath = path;
         }
         loadDatabase(root->FirstChildElement("Database"), cfg.database);
         return true;

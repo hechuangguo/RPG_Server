@@ -4,9 +4,26 @@
  */
 
 #include "ZoneInfoStore.h"
+#include "ServerListLoader.h"
 #include "../sdk/log/Logger.h"
 
 #include <cstdlib>
+
+bool ZoneInfoStore::loadFromFile(const char* path)
+{
+    std::vector<ZoneInfoRow> loaded;
+    std::string err;
+    if (!ServerListLoader::Load(path, loaded, &err))
+    {
+        LOG_ERR("ZoneInfoStore loadFromFile failed: %s", err.c_str());
+        return false;
+    }
+    m_rows = std::move(loaded);
+    rebuildEnabledOrder();
+    LOG_INFO("ServerList loaded from %s: %zu entries (%zu enabled)",
+             path, m_rows.size(), m_enabledIndices.size());
+    return true;
+}
 
 bool ZoneInfoStore::loadFromDb(MYSQL* db)
 {
@@ -81,4 +98,16 @@ void ZoneInfoStore::rebuildEnabledOrder()
     }
     if (m_rrIndex >= m_enabledIndices.size())
         m_rrIndex = 0;
+}
+
+void ZoneInfoStore::listAll(std::vector<ZoneInfoRow>& out, uint8_t gameTypeFilter) const
+{
+    out.clear();
+    out.reserve(m_rows.size());
+    for (const ZoneInfoRow& row : m_rows)
+    {
+        if (gameTypeFilter != 0xFF && row.gameType != gameTypeFilter)
+            continue;
+        out.push_back(row);
+    }
 }

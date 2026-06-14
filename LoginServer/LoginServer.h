@@ -3,11 +3,11 @@
  * @brief  外联登录服务器 —— 客户端账号校验与网关负载均衡
  *
  * ## 职责
- * - ClientListen：接收 C2S_LOGIN_REQ，MySQL 校验后发 S2C_LOGIN_RSP + S2C_GATEWAY_INFO
+ * - ClientListen：接收 C2S_ZONE_LIST_REQ / C2S_LOGIN_REQ，MySQL 校验后发 S2C_LOGIN_RSP + S2C_GATEWAY_INFO
  * - RegisterListen：接收 Gateway LOGIN_GATEWAY_REGISTER / HEARTBEAT，维护网关表
  *
  * ## 部署
- * - 独立进程，读 LoginServer/extern_login.xml；不向 SuperServer 注册
+ * - 独立进程，读 LoginServer/extern_login.xml 与 serverlist.xml；不向 SuperServer 注册
  * - 游戏区 Gateway 经 loginserverlist.xml 连接 RegisterListen 口上报
  */
 
@@ -93,7 +93,7 @@ public:
 private:
     void registerHandlers();
     bool initDatabase(const DatabaseConfig& dbCfg);
-    bool loadZoneInfo();
+    bool loadServerList(const std::string& path);
     void pruneGatewayTable();
 
     /** @brief 客户端口 INetCallback 桥接 */
@@ -107,7 +107,7 @@ private:
     TcpServer m_clientServer;    /**< 玩家登录监听 */
     TcpServer m_registerServer;  /**< 网关注册监听 */
     LoginGatewayRegistry m_gatewayRegistry; /**< 存活网关表 */
-    ZoneInfoStore        m_zoneInfoStore;     /**< ZoneInfo 表缓存 */
+    ZoneInfoStore        m_zoneInfoStore;     /**< serverlist.xml 区服缓存 */
     LoginAuthService     m_authService;     /**< 客户端登录 */
     LoginRechargeService m_rechargeService; /**< 充值骨架 */
     LoginGmService       m_gmService;       /**< GM 骨架 */

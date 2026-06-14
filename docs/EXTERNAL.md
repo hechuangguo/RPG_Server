@@ -85,6 +85,8 @@ sequenceDiagram
     participant GW as Gateway
     participant SS as Super
 
+    C->>LS: C2S_ZONE_LIST_REQ (9010)
+    LS-->>C: S2C_ZONE_LIST_RSP
     C->>LS: C2S_LOGIN_REQ (9010)
     LS->>LS: MySQL CharBase.name 校验
     LS-->>C: S2C_LOGIN_RSP + S2C_GATEWAY_INFO
@@ -98,7 +100,7 @@ sequenceDiagram
 
 | 端口 | 默认 | 监听方 | 用途 |
 |------|------|--------|------|
-| ClientListen | 9010 | LoginServer | 玩家登录、下发网关列表 |
+| ClientListen | 9010 | LoginServer | 玩家区列表、登录、下发网关 |
 | RegisterListen | 19010 | LoginServer | Super 代理的网关注册 |
 
 ### 4.3 Gateway 注册（经 Super 代理）
@@ -110,12 +112,22 @@ Gateway **不直连** Login RegisterListen，而是：
 
 实现：[`SuperServer/SuperLoginMsg.*`](../SuperServer/SuperLoginMsg.cpp)、[`GatewayServer/GatewayServer.cpp`](../GatewayServer/GatewayServer.cpp)
 
-### 4.4 LoginAuthService
+### 4.4 区列表与 LoginAuthService
 
+**配置命名区分**（勿与区内拓扑混淆）：
+
+| 名称 | 位置 | 用途 |
+|------|------|------|
+| `serverlist.xml` | `LoginServer/serverlist.xml` | 玩家可见游戏区列表；启动加载至 `ZoneInfoStore` |
+| `loginserverlist.xml` | 项目根 | 区内进程连外联 Logger/Global/Zone |
+| MySQL `ServerList` | `tables/init.sql` | Super 区内拓扑 |
+| MySQL `ZoneInfo` | `tables/init.sql` | 参考/种子数据；LoginServer **不再读取** |
+
+- `extern_login.xml` 中 `<ServerList path="..."/>` 指定区列表路径（默认 `LoginServer/serverlist.xml`）
+- `C2S_ZONE_LIST_REQ` / `S2C_ZONE_LIST_RSP`：登录前返回全部区服（含维护中条目）
 - 可选 MySQL：同 Record 按 `CharBase.name` 查找/创建
 - `LoginGatewayRegistry`：内存网关表，round-robin LB
 - 10s 清理 stale 网关
-- `ZoneInfoStore`：读 `ZoneInfo` 表（60s reload）
 
 ### 4.5 骨架能力
 
@@ -184,7 +196,7 @@ ENABLE_GLOBAL=1 ENABLE_ZONE=1 ./RunServer.sh
 |------|-------|
 | SuperServer | 启动只读 `ServerList`（区内拓扑） |
 | RecordServer | 写 CharBase / Relation |
-| LoginServer | 可选：CharBase 验证 + ZoneInfo |
+| LoginServer | 可选：CharBase 验证；区列表来自 `serverlist.xml` |
 | GlobalServer | 可选：HTTP API |
 | ZoneServer | 可选（配置预留） |
 | LoggerServer | 无 |

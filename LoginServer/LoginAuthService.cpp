@@ -10,10 +10,57 @@
 #include "../sdk/util/WireStringUtil.h"
 
 #include <cstring>
+#include <vector>
 
 LoginAuthService::LoginAuthService(LoginServer& owner)
     : m_owner(owner)
 {
+}
+
+void LoginAuthService::onClientZoneList(ConnID connID, const char* data, uint16_t len)
+{
+    uint8_t gameTypeFilter = 0xFF;
+    if (len >= sizeof(Msg_C2S_ZoneListReq))
+        gameTypeFilter = reinterpret_cast<const Msg_C2S_ZoneListReq*>(data)->gameType;
+
+    std::vector<ZoneInfoRow> zones;
+    m_owner.zoneInfoStore().listAll(zones, gameTypeFilter);
+
+    Msg_S2C_ZoneListRspHeader header{};
+    if (zones.size() > MAX_ZONE_LIST_ENTRIES)
+    {
+        header.code = -1;
+        header.count = 0;
+        LOG_ERR("Zone list too large: %zu entries (max %u)", zones.size(), MAX_ZONE_LIST_ENTRIES);
+        m_owner.clientServer().SendMsg(connID, (uint16_t)ClientMsgID::S2C_ZONE_LIST_RSP,
+                                       reinterpret_cast<char*>(&header), sizeof(header));
+        return;
+    }
+
+    header.code = 0;
+    header.count = static_cast<uint16_t>(zones.size());
+
+    const size_t bodyLen = sizeof(header) + header.count * sizeof(Msg_S2C_ZoneEntryWire);
+    std::vector<char> body(bodyLen);
+    std::memcpy(body.data(), &header, sizeof(header));
+
+    auto* entries = reinterpret_cast<Msg_S2C_ZoneEntryWire*>(body.data() + sizeof(header));
+    for (size_t i = 0; i < zones.size(); ++i)
+    {
+        Msg_S2C_ZoneEntryWire& wire = entries[i];
+        const ZoneInfoRow& row = zones[i];
+        wire.zoneId = row.zoneId;
+        wire.gameType = row.gameType;
+        wire.enabled = row.enabled ? 1 : 0;
+        copyToWire(wire.name, sizeof(wire.name), row.name.c_str());
+        copyToWire(wire.ip, sizeof(wire.ip), row.ip.c_str());
+        wire.superPort = row.superPort;
+    }
+
+    m_owner.clientServer().SendMsg(connID, (uint16_t)ClientMsgID::S2C_ZONE_LIST_RSP,
+                                   body.data(), static_cast<uint16_t>(bodyLen));
+    LOG_INFO("Sent zone list: conn=%u count=%u filter=0x%02X",
+             connID, header.count, gameTypeFilter);
 }
 
 void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t len)

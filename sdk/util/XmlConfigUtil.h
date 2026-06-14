@@ -42,6 +42,8 @@ constexpr const char* ENV_EXTERN_ZONE_CONFIG = "RPG_EXTERN_ZONE_CONFIG";
 
 constexpr const char* EXTERN_LOGIN_CONFIG_DEFAULT = "LoginServer/extern_login.xml";
 constexpr const char* ENV_EXTERN_LOGIN_CONFIG = "RPG_EXTERN_LOGIN_CONFIG";
+/** @brief 默认 LoginServer 游戏区列表配置路径 */
+constexpr const char* SERVER_LIST_PATH_DEFAULT = "LoginServer/serverlist.xml";
 
 /**
  * @brief 设置错误输出字符串
