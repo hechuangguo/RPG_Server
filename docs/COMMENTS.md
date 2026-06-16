@@ -92,6 +92,23 @@
 | `naming-conventions.mdc` | 命名（与注释互补） |
 | `project.mdc` | 架构与目录 |
 
+## 日志文案规范（新增与修改必遵）
+
+1. `LOG_INFO/WARN/ERR/FATAL/DEBUG` 文案统一使用中文，不新增英文整句日志。  
+2. 同一术语保持一致，不混用中英文；推荐映射：
+   - `SuperServer` → 超级服
+   - `LoginServer` → 登录服
+   - `GatewayServer` → 网关服
+   - `SessionServer` → 会话服
+   - `SceneServer` → 场景服
+   - `RecordServer` → 存档服
+   - `AOIServer` → 视野服
+   - `GlobalServer` → 全局服
+   - `ZoneServer` → 跨区服
+   - `LoggerServer` → 日志服
+3. 日志应包含关键上下文（如 `conn`、`userId`、`mapId`、`code`），避免“失败/成功”但无定位信息。  
+4. 修改存量文件时，若触及日志，顺带统一该文件内可见的不一致术语。
+
 ## 提交前自检
 
 - [ ] 本次修改涉及的 `.h` / `.xml` / `.sql` 均已补齐注释  

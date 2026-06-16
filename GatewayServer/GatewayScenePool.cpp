@@ -14,7 +14,7 @@ bool GatewayScenePool::connectAll(const ServerList& list)
     list.findAll(SubServerType::SCENE, scenes);
     if (scenes.empty())
     {
-        LOG_WARN("GatewayScenePool: no SCENE entries in ServerList");
+        LOG_WARN("场景连接池: 服务器列表中没有场景服条目");
         return false;
     }
 

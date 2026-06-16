@@ -17,11 +17,11 @@ void onZoneStatusReport(LoginServer& server, ConnID /*fromConn*/, const char* da
     const auto* report = reinterpret_cast<const Msg_Login_ZoneStatusReport*>(data);
     if (!server.zoneInfoStore().applyZoneReport(*report))
     {
-        LOG_WARN("Zone status report ignored: unknown zone gameType=%u zoneId=%u",
+        LOG_WARN("忽略区状态上报: 未知区服 gameType=%u zoneId=%u",
                  report->gameType, report->zoneId);
         return;
     }
-    LOG_DEBUG("Zone status updated: gameType=%u zoneId=%u online=%u gateways=%u alive=%u",
+    LOG_DEBUG("区状态已更新: gameType=%u zoneId=%u online=%u gateways=%u alive=%u",
               report->gameType, report->zoneId, report->onlineCount,
               report->gatewayCount, report->alive);
 }

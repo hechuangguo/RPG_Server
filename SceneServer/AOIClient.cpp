@@ -24,7 +24,7 @@ void AOIClient::registerScene(uint32_t sceneServerId, const Scene& scene)
     if (!isConnected())
     {
         pendingRegs.push_back(req);
-        LOG_WARN("AOIClient: queued scene register instance=%llu map=%u",
+        LOG_WARN("视野客户端: 场景注册已入队 instance=%llu map=%u",
                  req.sceneInstanceId, req.mapId);
         return;
     }
@@ -36,7 +36,7 @@ void AOIClient::registerScene(uint32_t sceneServerId, const Scene& scene)
         return;
     }
 
-    LOG_INFO("AOIClient register scene instance=%llu map=%u",
+    LOG_INFO("视野客户端注册场景: instance=%llu map=%u",
              req.sceneInstanceId, req.mapId);
 }
 
@@ -94,7 +94,7 @@ void AOIClient::flushPendingRegistrations()
     {
         sendMsg(static_cast<uint16_t>(InternalMsgID::AOI_SCENE_REGISTER),
                 reinterpret_cast<const char*>(&req), sizeof(req));
-        LOG_INFO("AOIClient flushed pending register instance=%llu map=%u",
+        LOG_INFO("视野客户端补发待注册场景: instance=%llu map=%u",
                  req.sceneInstanceId, req.mapId);
     }
 }

@@ -33,28 +33,28 @@ bool SessionServer::Init(const std::string& ip, uint16_t port,
                          const ServerConfig& cfg, const ServerList& list, uint32_t selfId)
 {
     Logger::Instance().SetServerName("SessionServer");
-    LOG_INFO("SessionServer starting on %s:%d", ip.c_str(), port);
+    LOG_INFO("会话服启动中: %s:%d", ip.c_str(), port);
     if (const ServerEntry* self = list.find(SubServerType::SESSION, selfId))
         m_self = *self;
     m_externSender.setSelfId(m_self.id ? m_self.id : selfId);
     ServerBootstrap::bindRemoteLog(m_externSender, SubServerType::SESSION);
     if (!m_server.Start(ip, port))
     {
-        LOG_FATAL("Start failed");
+        LOG_FATAL("会话服监听启动失败");
         return false;
     }
     if (!m_superClient.Connect(cfg.superIP, (uint16_t)cfg.superPort))
-        LOG_WARN("Cannot connect to SuperServer");
+        LOG_WARN("无法连接超级服");
 
     const ServerEntry* rec = list.findFirst(SubServerType::RECORD);
     if (!rec)
     {
-        LOG_FATAL("ServerList missing RECORD entry");
+        LOG_FATAL("服务器列表缺少 RECORD 条目");
         return false;
     }
     if (!m_recordClient.Connect(rec->ip, rec->port))
     {
-        LOG_FATAL("Cannot connect to RecordServer at %s:%u", rec->ip.c_str(), rec->port);
+        LOG_FATAL("无法连接存档服: %s:%u", rec->ip.c_str(), rec->port);
         return false;
     }
 
@@ -66,13 +66,13 @@ bool SessionServer::Init(const std::string& ip, uint16_t port,
 
     if (!m_recordClient.IsConnected())
     {
-        LOG_FATAL("RecordServer connection not ready (start Record before Session)");
+        LOG_FATAL("存档服连接未就绪（请先启动存档服）");
         return false;
     }
 
     if (!preloadRelations())
     {
-        LOG_FATAL("Relation preload from RecordServer failed");
+        LOG_FATAL("从存档服预加载关系数据失败");
         return false;
     }
 
@@ -80,7 +80,7 @@ bool SessionServer::Init(const std::string& ip, uint16_t port,
     TimerMgr::Instance().Register(10000, 10000, [this] { SendHeartbeat(); });
     TimerMgr::Instance().Register(60000, 60000, [this] { AutoSaveAll(); });
     s_active = this;
-    LOG_INFO("SessionServer started (Record + SceneManager).");
+    LOG_INFO("会话服启动完成（Record + SceneManager）");
     return true;
 }
 
@@ -99,13 +99,13 @@ void SessionServer::OnConnect(ConnID id)
 {
     if (m_gatewayInboundConn == INVALID_CONN_ID)
         m_gatewayInboundConn = id;
-    LOG_INFO("InnerConn connected=%u (gateway=%u)", id, m_gatewayInboundConn);
+    LOG_INFO("内部连接建立: conn=%u (gateway=%u)", id, m_gatewayInboundConn);
 }
 
 void SessionServer::OnDisconnect(ConnID id)
 {
     SessionSceneManager::Instance().unbindConn(id);
-    LOG_INFO("InnerConn disconnected=%u", id);
+    LOG_INFO("内部连接断开: conn=%u", id);
 }
 
 void SessionServer::OnMessage(ConnID id, uint8_t module, uint8_t sub, const char* data, uint16_t len)
@@ -129,7 +129,7 @@ bool SessionServer::preloadRelations()
     if (!m_recordClient.SendMsg((uint16_t)InternalMsgID::REC_RELATION_PRELOAD_REQ,
                                 reinterpret_cast<char*>(&req), sizeof(req)))
     {
-        LOG_ERR("Failed to send REC_RELATION_PRELOAD_REQ");
+        LOG_ERR("发送 REC_RELATION_PRELOAD_REQ 失败");
         return false;
     }
 
@@ -205,7 +205,7 @@ void SessionServer::OnRelationPreloadRsp(ConnID /*fromConn*/, const char* data, 
     const auto* hdr = reinterpret_cast<const Msg_REC_RelationPreloadRsp*>(data);
     if (hdr->code != 0)
     {
-        LOG_ERR("Relation preload rsp code=%d", hdr->code);
+        LOG_ERR("关系预加载响应失败: code=%d", hdr->code);
         m_relationPreloadOk   = false;
         m_relationPreloadDone = true;
         return;
@@ -214,7 +214,7 @@ void SessionServer::OnRelationPreloadRsp(ConnID /*fromConn*/, const char* data, 
     std::vector<RelationRowData> rows;
     if (!RelationWireUtil::parseAllRows(data, len, sizeof(Msg_REC_RelationPreloadRsp), rows))
     {
-        LOG_ERR("Relation preload rsp parse failed");
+        LOG_ERR("关系预加载响应解析失败");
         m_relationPreloadOk   = false;
         m_relationPreloadDone = true;
         return;
@@ -266,7 +266,7 @@ void SessionServer::OnGatewayClientMsg(ConnID fromConn, const char* data, uint16
     if (len < sizeof(Msg_GW_ClientMsg) + hdr->dataLen)
         return;
 
-    LOG_INFO("GatewayClientMsg: conn=%u mod=0x%02X sub=0x%02X len=%u",
+    LOG_INFO("网关客户端消息: conn=%u mod=0x%02X sub=0x%02X len=%u",
              hdr->clientConnID, hdr->module, hdr->sub, hdr->dataLen);
 
     if (hdr->module == static_cast<uint8_t>(ClientModule::SOCIAL))
@@ -278,13 +278,13 @@ void SessionServer::OnGatewayClientMsg(ConnID fromConn, const char* data, uint16
 void SessionServer::handleSocialClientMsg(uint32_t clientConnId, uint8_t sub,
                                           const char* /*data*/, uint16_t len)
 {
-    LOG_DEBUG("SocialClientMsg: conn=%u sub=0x%02X len=%u", clientConnId, sub, len);
+    LOG_DEBUG("社交模块消息: conn=%u sub=0x%02X len=%u", clientConnId, sub, len);
 }
 
 void SessionServer::handleQuestClientMsg(uint32_t clientConnId, uint8_t sub,
                                        const char* /*data*/, uint16_t len)
 {
-    LOG_DEBUG("QuestClientMsg: conn=%u sub=0x%02X len=%u", clientConnId, sub, len);
+    LOG_DEBUG("任务模块消息: conn=%u sub=0x%02X len=%u", clientConnId, sub, len);
 }
 
 void SessionServer::RegisterToSuper()
@@ -334,7 +334,7 @@ void SessionServer::OnSaveUserReq(ConnID /*fromConn*/, const char* data, uint16_
 
 void SessionServer::OnFriendUpdate(ConnID /*fromConn*/, const char* /*data*/, uint16_t len)
 {
-    LOG_DEBUG("FriendUpdate len=%d", len);
+    LOG_DEBUG("好友更新消息长度: len=%d", len);
 }
 
 void SessionServer::OnSceneRegisterReq(ConnID fromConn, const char* data, uint16_t len)
@@ -374,7 +374,7 @@ void SessionServer::OnResolveMapReq(ConnID fromConn, const char* data, uint16_t 
 
     m_server.SendMsg(fromConn, static_cast<uint16_t>(InternalMsgID::SES_RESOLVE_MAP_RSP),
                      reinterpret_cast<char*>(&rsp), sizeof(rsp));
-    LOG_INFO("ResolveMap user=%llu map=%u -> sceneServerId=%u code=%d",
+    LOG_INFO("地图解析结果: user=%llu map=%u -> sceneServerId=%u code=%d",
              req->userID, req->mapId, rsp.sceneServerId, rsp.code);
 }
 
@@ -441,7 +441,7 @@ void SessionServer::OnCopyCreateReq(ConnID fromConn, const char* data, uint16_t 
         }
         else
         {
-            LOG_WARN("CopyCreateCmd: target SceneServer %u not connected", targetId);
+            LOG_WARN("副本创建命令下发失败: 目标场景服 %u 未连接", targetId);
             rsp.code = -1;
         }
     }
@@ -472,7 +472,7 @@ void SessionServer::SendToClient(uint32_t clientConnID, uint8_t module, uint8_t 
         memcpy(buf.data() + sizeof(Msg_GW_SendToClient), data, len);
     if (m_gatewayInboundConn == INVALID_CONN_ID)
     {
-        LOG_WARN("SendToClient: no Gateway inbound conn clientConn=%u", clientConnID);
+        LOG_WARN("下发客户端失败: 无网关入站连接 clientConn=%u", clientConnID);
         return;
     }
     m_server.SendMsg(m_gatewayInboundConn,

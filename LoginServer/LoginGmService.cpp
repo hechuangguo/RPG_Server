@@ -15,5 +15,5 @@ LoginGmService::LoginGmService(LoginServer& owner)
 void LoginGmService::onGmCmdReq(ConnID fromConn, const char* data, uint16_t len)
 {
     (void)data;
-    LOG_DEBUG("LoginGmService: skeleton req conn=%u len=%u", fromConn, len);
+    LOG_DEBUG("GM 指令请求骨架: conn=%u len=%u", fromConn, len);
 }

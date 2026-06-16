@@ -33,7 +33,7 @@ void onGatewayRegister(LoginServer& server, ConnID fromConn, const char* data, u
     server.registerServer().SendMsg(fromConn,
                                     static_cast<uint16_t>(InternalMsgID::LOGIN_GATEWAY_REGISTER_RSP),
                                     reinterpret_cast<char*>(&rsp), sizeof(rsp));
-    LOG_INFO("Gateway registered: id=%u %s:%u name=%s (total=%zu)",
+    LOG_INFO("网关注册成功: id=%u %s:%u name=%s (total=%zu)",
              req->gatewayServerId, req->ip, req->port, req->name,
              server.gatewayRegistry().size());
 }
@@ -48,7 +48,7 @@ void onGatewayHeartbeat(LoginServer& server, ConnID fromConn, const char* data, 
         onGatewayRegister(server, fromConn, data, len);
         return;
     }
-    LOG_DEBUG("Gateway heartbeat: id=%u", req->gatewayServerId);
+    LOG_DEBUG("收到网关心跳: id=%u", req->gatewayServerId);
 }
 } // namespace
 

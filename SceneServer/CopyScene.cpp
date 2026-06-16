@@ -16,7 +16,7 @@ CopyScene::CopyScene(uint32_t sceneServerId, const CopySceneDef& def)
 
 bool CopyScene::onLoadResources()
 {
-    LOG_INFO("CopyScene load: instance=%llu type=%u owner=%llu map=%u",
+    LOG_INFO("副本场景加载: instance=%llu type=%u owner=%llu map=%u",
              sceneInstanceId, static_cast<uint32_t>(copyType), ownerId, mapId);
     return Scene::onLoadResources();
 }
@@ -28,7 +28,7 @@ TeamCopyScene::TeamCopyScene(uint32_t sceneServerId, const CopySceneDef& def)
 
 void TeamCopyScene::onStartedHook()
 {
-    LOG_DEBUG("TeamCopyScene started: instance=%llu", sceneInstanceId);
+    LOG_DEBUG("组队副本启动完成: instance=%llu", sceneInstanceId);
 }
 
 SoloCopyScene::SoloCopyScene(uint32_t sceneServerId, const CopySceneDef& def)

@@ -32,7 +32,7 @@ SuperServer::~SuperServer()
 bool SuperServer::Init(const std::string& ip, uint16_t port, const ServerConfig& cfg)
 {
     Logger::Instance().SetServerName("SuperServer");
-    LOG_INFO("SuperServer starting on %s:%d zone=%u gameType=%u",
+    LOG_INFO("超级服启动中: %s:%d zone=%u gameType=%u",
              ip.c_str(), port, cfg.zoneId, cfg.gameType);
 
     m_zoneId = cfg.zoneId;
@@ -40,13 +40,13 @@ bool SuperServer::Init(const std::string& ip, uint16_t port, const ServerConfig&
 
     if (!loadServerList(cfg))
     {
-        LOG_FATAL("Load ServerList failed");
+        LOG_FATAL("加载服务器列表失败");
         return false;
     }
 
     if (!m_server.Start(ip, port))
     {
-        LOG_FATAL("Start failed");
+        LOG_FATAL("超级服监听启动失败");
         return false;
     }
 
@@ -54,7 +54,7 @@ bool SuperServer::Init(const std::string& ip, uint16_t port, const ServerConfig&
 
     TimerMgr::Instance().Register(30000, 30000, [this] { CheckHeartbeat(); });
     SuperZoneStatusMsgRegister(*this);
-    LOG_INFO("SuperServer started.");
+    LOG_INFO("超级服启动完成");
     return true;
 }
 
@@ -68,7 +68,7 @@ bool SuperServer::loadServerList(const ServerConfig& cfg)
     if (!mysql_real_connect(m_db, cfg.dbHost.c_str(), cfg.dbUser.c_str(), cfg.dbPass.c_str(),
                             cfg.dbName.c_str(), (unsigned int)cfg.dbPort, nullptr, 0))
     {
-        LOG_ERR("MySQL connect failed: %s", mysql_error(m_db));
+        LOG_ERR("数据库连接失败: %s", mysql_error(m_db));
         return false;
     }
     mysql_set_character_set(m_db, "utf8mb4");
@@ -76,13 +76,13 @@ bool SuperServer::loadServerList(const ServerConfig& cfg)
     const char* sql = "SELECT server_id, server_type, ip, port, name FROM ServerList";
     if (mysql_query(m_db, sql) != 0)
     {
-        LOG_ERR("ServerList query failed: %s", mysql_error(m_db));
+        LOG_ERR("查询服务器列表失败: %s", mysql_error(m_db));
         return false;
     }
     MYSQL_RES* res = mysql_store_result(m_db);
     if (!res)
     {
-        LOG_ERR("ServerList store_result failed: %s", mysql_error(m_db));
+        LOG_ERR("服务器列表读取结果失败: %s", mysql_error(m_db));
         return false;
     }
     m_serverList.clear();
@@ -98,7 +98,7 @@ bool SuperServer::loadServerList(const ServerConfig& cfg)
         m_serverList.add(e);
     }
     mysql_free_result(res);
-    LOG_INFO("ServerList loaded: %zu entries", m_serverList.size());
+    LOG_INFO("服务器列表加载完成: 条目=%zu", m_serverList.size());
     return true;
 }
 
@@ -120,12 +120,12 @@ void SuperServer::setupExternalClients(const LoginServerList& list)
 
 void SuperServer::OnConnect(ConnID id)
 {
-    LOG_INFO("SubServer connected, connID=%u", id);
+    LOG_INFO("子服连接建立: connID=%u", id);
 }
 
 void SuperServer::OnDisconnect(ConnID id)
 {
-    LOG_WARN("SubServer disconnected, connID=%u", id);
+    LOG_WARN("子服连接断开: connID=%u", id);
     RemoveSubServer(id);
 }
 
@@ -179,7 +179,7 @@ void SuperServer::OnRegister(ConnID connID, const char* data, uint16_t len)
     info.alive = true;
     info.lastHeartbeat = TimerMgr::NowMs();
     m_servers[connID] = info;
-    LOG_INFO("SubServer registered: type=%d serverID=%u ip=%s port=%d name=%s",
+    LOG_INFO("子服注册成功: type=%d serverID=%u ip=%s port=%d name=%s",
              (int)info.type, info.serverID, info.ip.c_str(), info.port, info.name.c_str());
 
     char rsp[4] = {0};
@@ -243,7 +243,7 @@ void SuperServer::reportZoneStatusToLogin()
 
     login->SendMsg(static_cast<uint16_t>(InternalMsgID::LOGIN_ZONE_STATUS_REPORT),
                    reinterpret_cast<char*>(&report), sizeof(report));
-    LOG_DEBUG("Zone status report: zone=%u online=%u gateways=%u alive=%u",
+    LOG_DEBUG("区状态上报: zone=%u online=%u gateways=%u alive=%u",
               report.zoneId, report.onlineCount, report.gatewayCount, report.alive);
 }
 
@@ -271,7 +271,7 @@ void SuperServer::OnServerListReq(ConnID connID, const char* /*data*/, uint16_t 
 
     m_server.SendMsg(connID, (uint16_t)InternalMsgID::S2S_SERVERLIST_RSP,
                      buf.data(), (uint16_t)buf.size());
-    LOG_INFO("ServerList sent to connID=%u (%u entries)", connID, count);
+    LOG_INFO("已发送服务器列表: connID=%u (entries=%u)", connID, count);
 }
 
 void SuperServer::OnUserLoginReq(ConnID connID, const char* data, uint16_t len)
@@ -289,7 +289,7 @@ void SuperServer::OnUserLoginReq(ConnID connID, const char* data, uint16_t len)
     pending.gatewayClientConnID = rsp->gatewayConnID;
     m_pendingLogins[rsp->userID] = pending;
 
-    LOG_INFO("UserLogin: userID=%llu gatewayConn=%u (await load+map resolve)",
+    LOG_INFO("用户登录流程开始: userID=%llu gatewayConn=%u (等待加载与选图)",
              rsp->userID, connID);
 
     ConnID recConn = FindSubServer(SubServerType::RECORD);
@@ -333,7 +333,7 @@ void SuperServer::OnLoadUserRsp(ConnID /*connID*/, const char* data, uint16_t le
     ConnID sesConn = FindSubServer(SubServerType::SESSION);
     if (sesConn == INVALID_CONN_ID)
     {
-        LOG_WARN("UserLogin: no SessionServer for map resolve userID=%llu", hdr->userID);
+        LOG_WARN("用户登录失败: 无会话服可选图 userID=%llu", hdr->userID);
         SendLoginFailToGateway(pit->second.gatewayConnID, pit->second.gatewayClientConnID, -2);
         m_pendingLogins.erase(pit);
         return;
@@ -345,7 +345,7 @@ void SuperServer::OnLoadUserRsp(ConnID /*connID*/, const char* data, uint16_t le
     pit->second.awaitingMapResolve = true;
     m_server.SendMsg(sesConn, (uint16_t)InternalMsgID::SES_RESOLVE_MAP_REQ,
                      reinterpret_cast<char*>(&req), sizeof(req));
-    LOG_INFO("UserLogin: map resolve req map=%u userID=%llu", req.mapId, hdr->userID);
+    LOG_INFO("已请求地图解析: map=%u userID=%llu", req.mapId, hdr->userID);
 }
 
 void SuperServer::OnResolveMapRsp(ConnID /*connID*/, const char* data, uint16_t len)
@@ -363,7 +363,7 @@ void SuperServer::OnResolveMapRsp(ConnID /*connID*/, const char* data, uint16_t 
 
     if (rsp->code != 0 || rsp->sceneServerId == 0)
     {
-        LOG_WARN("UserLogin: map %u not registered userID=%llu", rsp->mapId, rsp->userID);
+        LOG_WARN("用户登录失败: 地图未注册 map=%u userID=%llu", rsp->mapId, rsp->userID);
         SendLoginFailToGateway(pending.gatewayConnID, pending.gatewayClientConnID, -3);
         m_pendingLogins.erase(pit);
         return;
@@ -372,7 +372,7 @@ void SuperServer::OnResolveMapRsp(ConnID /*connID*/, const char* data, uint16_t 
     pending.sceneConnID = FindSubServerByServerId(SubServerType::SCENE, rsp->sceneServerId);
     if (pending.sceneConnID == INVALID_CONN_ID)
     {
-        LOG_WARN("UserLogin: sceneServerId=%u not connected", rsp->sceneServerId);
+        LOG_WARN("用户登录失败: 场景服未连接 sceneServerId=%u", rsp->sceneServerId);
         SendLoginFailToGateway(pending.gatewayConnID, pending.gatewayClientConnID, -4);
         m_pendingLogins.erase(pit);
         return;
@@ -411,7 +411,7 @@ void SuperServer::sendUserEnterToScene(PendingLogin& pending)
 
     m_server.SendMsg(pending.sceneConnID, (uint16_t)InternalMsgID::SCE_USER_ENTER_REQ,
                      reinterpret_cast<char*>(&enter), sizeof(enter));
-    LOG_INFO("UserEnter sent: userID=%llu map=%u sceneConn=%u",
+    LOG_INFO("已发送用户入场: userID=%llu map=%u sceneConn=%u",
              wire.userID, pending.mapId, pending.sceneConnID);
 }
 
@@ -497,7 +497,7 @@ void SuperServer::CheckHeartbeat()
     {
         if (now - info.lastHeartbeat > 90000)
         {
-            LOG_WARN("SubServer timeout: connID=%u type=%d", cid, (int)info.type);
+            LOG_WARN("子服心跳超时: connID=%u type=%d", cid, (int)info.type);
             info.alive = false;
         }
     }

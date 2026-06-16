@@ -10,7 +10,7 @@
 std::shared_ptr<RecordUser> RecordUser::create(const UserBase& base)
 {
     auto user = std::shared_ptr<RecordUser>(new RecordUser(base));
-    LOG_DEBUG("RecordUser::create userID=%llu", base.userID);
+    LOG_DEBUG("创建存档用户对象 userID=%llu", base.userID);
     return user;
 }
 
@@ -29,7 +29,7 @@ bool RecordUser::init()
     m_initialized        = true;
     SetState(UserState::LOADING);
 
-    LOG_DEBUG("RecordUser::init userID=%llu", GetID());
+    LOG_DEBUG("存档用户初始化完成 userID=%llu", GetID());
     return true;
 }
 
@@ -42,7 +42,7 @@ bool RecordUser::save()
     m_record.dirty        = false;
     SetState(UserState::OFFLINE);
 
-    LOG_DEBUG("RecordUser::save userID=%llu level=%u", GetID(), m_record.base.level);
+    LOG_DEBUG("存档用户保存完成 userID=%llu level=%u", GetID(), m_record.base.level);
     return true;
 }
 
@@ -54,6 +54,6 @@ bool RecordUser::load()
     m_record.dirty = false;
     SetState(UserState::OFFLINE);
 
-    LOG_DEBUG("RecordUser::load userID=%llu name=%s", GetID(), GetName());
+    LOG_DEBUG("存档用户读档完成 userID=%llu name=%s", GetID(), GetName());
     return true;
 }

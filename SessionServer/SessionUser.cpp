@@ -56,7 +56,7 @@ void loadBlobFromRow(const char* ptr, unsigned long len, std::vector<uint8_t>& o
 std::shared_ptr<SessionUser> SessionUser::create(const UserBase& base)
 {
     auto user = std::shared_ptr<SessionUser>(new SessionUser(base));
-    LOG_DEBUG("SessionUser::create userID=%llu", base.userID);
+    LOG_DEBUG("创建会话用户 userID=%llu", base.userID);
     return user;
 }
 
@@ -76,7 +76,7 @@ bool SessionUser::init()
     m_initialized     = true;
     SetState(UserState::LOADING);
 
-    LOG_DEBUG("SessionUser::init userID=%llu", GetID());
+    LOG_DEBUG("会话用户初始化完成 userID=%llu", GetID());
     return true;
 }
 
@@ -85,14 +85,14 @@ bool SessionUser::onOnline()
     if (!m_initialized && !init()) return false;
 
     SetState(UserState::ONLINE);
-    LOG_INFO("SessionUser::onOnline userID=%llu", GetID());
+    LOG_INFO("会话用户上线 userID=%llu", GetID());
     return true;
 }
 
 bool SessionUser::onOffline()
 {
     SetState(UserState::OFFLINE);
-    LOG_INFO("SessionUser::onOffline userID=%llu", GetID());
+    LOG_INFO("会话用户下线 userID=%llu", GetID());
     return true;
 }
 
@@ -141,7 +141,7 @@ bool SessionUser::load(SessionServer& server)
     if (!server.loadRelationSync(GetID(), row))
         return false;
     applyRelationRow(row);
-    LOG_DEBUG("SessionUser::load userID=%llu friends=%zu binary=%zu",
+    LOG_DEBUG("会话用户读档完成 userID=%llu friends=%zu binary=%zu",
               GetID(), m_social.friends.size(), m_social.binary.size());
     return true;
 }
@@ -152,7 +152,7 @@ bool SessionUser::save(SessionServer& server)
     if (!server.saveRelation(toRelationRow()))
         return false;
     m_dirty = false;
-    LOG_DEBUG("SessionUser::save userID=%llu → Record binary=%zu",
+    LOG_DEBUG("会话用户存档完成 userID=%llu -> Record binary=%zu",
               GetID(), m_social.binary.size());
     return true;
 }
@@ -176,7 +176,7 @@ void SessionUser::loop(uint64_t nowMs)
 
 void SessionUser::onMidnight()
 {
-    LOG_INFO("SessionUser::onMidnight userID=%llu", GetID());
+    LOG_INFO("会话用户跨天事件 userID=%llu", GetID());
 }
 
 bool SessionUser::sendCmdToMe(uint8_t module, uint8_t sub, const char* data, uint16_t len)

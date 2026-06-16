@@ -15,5 +15,5 @@ LoginRechargeService::LoginRechargeService(LoginServer& owner)
 void LoginRechargeService::onRechargeReq(ConnID fromConn, const char* data, uint16_t len)
 {
     (void)data;
-    LOG_DEBUG("LoginRechargeService: skeleton req conn=%u len=%u", fromConn, len);
+    LOG_DEBUG("充值请求骨架: conn=%u len=%u", fromConn, len);
 }

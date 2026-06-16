@@ -38,7 +38,7 @@ bool SuperExternSendToExtern(SuperServer& super, SubServerType targetType,
     TcpClient* client = super.externHub().client(targetType);
     if (!client || !client->IsConnected())
     {
-        LOG_WARN("SuperExtern: extern %u not connected", static_cast<unsigned>(targetType));
+        LOG_WARN("外联转发: 外联服 %u 未连接", static_cast<unsigned>(targetType));
         return false;
     }
 
@@ -85,7 +85,7 @@ void SuperExternOnForwardReq(SuperServer& super, ConnID fromConn,
     if (target != SubServerType::LOGIN && target != SubServerType::LOGGER &&
         target != SubServerType::GLOBAL && target != SubServerType::ZONE)
     {
-        LOG_WARN("SuperExtern: invalid target type %u", hdr->targetServerType);
+        LOG_WARN("外联转发: 非法目标类型 %u", hdr->targetServerType);
         return;
     }
 
@@ -106,7 +106,7 @@ void SuperExternOnForwardReq(SuperServer& super, ConnID fromConn,
     }
     else
     {
-        LOG_DEBUG("SuperExtern: fwd to extern type=%u inner=0x%04X len=%u fromConn=%u",
+        LOG_DEBUG("外联转发: 转发到外联服 type=%u inner=0x%04X len=%u fromConn=%u",
                   hdr->targetServerType, hdr->innerMsgId, hdr->dataLen, fromConn);
     }
 }
@@ -125,7 +125,7 @@ void SuperExternOnForwardRsp(SuperServer& super, ConnID /*fromExternConn*/,
     ConnID targetConn = super.findSubServerConn(toSubServerType(hdr->sourceServerType));
     if (targetConn == INVALID_CONN_ID)
     {
-        LOG_WARN("SuperExtern: rsp target type=%u offline", hdr->sourceServerType);
+        LOG_WARN("外联转发: 响应目标类型=%u 离线", hdr->sourceServerType);
         return;
     }
 

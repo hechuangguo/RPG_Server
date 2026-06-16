@@ -26,5 +26,5 @@ void RecordClient::onSaveRsp(const char* data, uint16_t len)
         return;
     const auto* rsp = reinterpret_cast<const Msg_REC_LoadUserRsp*>(data);
     if (rsp->code != 0)
-        LOG_WARN("RecordClient save failed userID=%llu code=%d", rsp->userID, rsp->code);
+        LOG_WARN("存档客户端保存失败 userID=%llu code=%d", rsp->userID, rsp->code);
 }

@@ -16,7 +16,7 @@ void onExternFwdRsp(SceneServer& /*server*/, ConnID /*fromConn*/,
     if (len < sizeof(Msg_SS_ExternForwardRsp))
         return;
     const auto* hdr = reinterpret_cast<const Msg_SS_ExternForwardRsp*>(data);
-    LOG_DEBUG("SceneLogin: SS_EXTERN_FWD_RSP inner=0x%04X seq=%u code=%d",
+    LOG_DEBUG("场景服登录外联响应: inner=0x%04X seq=%u code=%d",
               hdr->innerMsgId, hdr->seq, hdr->code);
 }
 
@@ -24,7 +24,7 @@ void onLoginGmCmd(ConnID fromConn, const char* data, uint16_t len)
 {
     (void)fromConn;
     (void)data;
-    LOG_DEBUG("SceneLogin: LOGIN_GM_CMD_REQ len=%u (skeleton)", len);
+    LOG_DEBUG("场景服收到 LOGIN_GM_CMD_REQ: len=%u（骨架）", len);
 }
 } // namespace
 

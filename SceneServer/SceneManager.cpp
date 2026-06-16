@@ -19,14 +19,14 @@ bool SceneManager::createNormalScenesFromConfig(uint32_t sceneServerId,
 
         if (!scene->start())
         {
-            LOG_ERR("Failed to start normal scene map=%u", mc.mapID);
+            LOG_ERR("普通场景启动失败: map=%u", mc.mapID);
             allOk = false;
             continue;
         }
 
         if (!addScene(scene))
         {
-            LOG_ERR("Duplicate normal scene map=%u", mc.mapID);
+            LOG_ERR("普通场景重复注册: map=%u", mc.mapID);
             allOk = false;
         }
     }
@@ -47,7 +47,7 @@ std::shared_ptr<CopyScene> SceneManager::createCopyScene(uint32_t sceneServerId,
 
     if (!copy->start())
     {
-        LOG_ERR("Failed to start copy scene instance=%llu", def.copyInstanceId);
+        LOG_ERR("副本场景启动失败: instance=%llu", def.copyInstanceId);
         return nullptr;
     }
 

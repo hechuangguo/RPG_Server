@@ -44,14 +44,14 @@ bool RelationStore::preloadAll(std::vector<RelationRow>& out) const
         "SELECT user_id,friends_json,blacklist_json,guild_id,team_id,`binary` FROM Relation";
     if (mysql_query(m_db, sql) != 0)
     {
-        LOG_ERR("RelationStore::preloadAll SQL err: %s", mysql_error(m_db));
+        LOG_ERR("关系存储 preloadAll SQL 失败: %s", mysql_error(m_db));
         return false;
     }
 
     MYSQL_RES* res = mysql_store_result(m_db);
     if (!res)
     {
-        LOG_ERR("RelationStore::preloadAll store_result err: %s", mysql_error(m_db));
+        LOG_ERR("关系存储 preloadAll store_result 失败: %s", mysql_error(m_db));
         return false;
     }
 
@@ -86,7 +86,7 @@ bool RelationStore::loadOne(uint64_t userID, RelationRow& out) const
 
     if (mysql_query(m_db, sql) != 0)
     {
-        LOG_ERR("RelationStore::loadOne SQL err: %s", mysql_error(m_db));
+        LOG_ERR("关系存储 loadOne SQL 失败: %s", mysql_error(m_db));
         return false;
     }
 
@@ -114,7 +114,7 @@ bool RelationStore::loadOne(uint64_t userID, RelationRow& out) const
                  "INSERT INTO Relation (user_id,friends_json,blacklist_json,guild_id,team_id,`binary`)"
                  " VALUES (%" PRIu64 ",'','',0,0,x'')", userID);
         if (mysql_query(m_db, ins) != 0)
-            LOG_WARN("RelationStore::loadOne insert err: %s", mysql_error(m_db));
+            LOG_WARN("关系存储 loadOne 自动插入失败: %s", mysql_error(m_db));
         out.friendsJson.clear();
         out.blacklistJson.clear();
         out.guildId = 0;
@@ -143,7 +143,7 @@ bool RelationStore::saveOne(const RelationRow& row) const
     const std::string q = sql.str();
     if (mysql_query(m_db, q.c_str()) != 0)
     {
-        LOG_ERR("RelationStore::saveOne SQL err: %s", mysql_error(m_db));
+        LOG_ERR("关系存储 saveOne SQL 失败: %s", mysql_error(m_db));
         return false;
     }
     return true;

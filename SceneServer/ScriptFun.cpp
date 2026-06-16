@@ -33,7 +33,7 @@ constexpr int MAX_NPC_TALK_OPTIONS = 4;
 LUA_GLOBAL_FUNC("log_info", logInfo)
 {
     const char* msg = luaL_checkstring(L, 1);
-    LOG_INFO("[Lua] %s", msg);
+    LOG_INFO("[脚本] %s", msg);
     return 0;
 }
 

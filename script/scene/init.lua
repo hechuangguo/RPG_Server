@@ -15,7 +15,7 @@ require("scene.entry_api")
 require("scene.npc_dialog")
 require("quest.quest_mgr")
 
-print("[Lua] scene/init.lua loaded")
+print("[脚本] scene/init.lua loaded")
 
 -- ============================================================
 --  全局 tick（每秒被 C++ 调用）

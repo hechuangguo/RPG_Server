@@ -20,11 +20,11 @@ bool SceneClient::connect(const std::string& ip, uint16_t port)
 {
     if (!m_client->Connect(ip, port))
     {
-        LOG_WARN("SceneClient: connect failed sceneId=%u %s:%u",
+        LOG_WARN("场景连接: 连接失败 sceneId=%u %s:%u",
                  m_sceneServerId, ip.c_str(), port);
         return false;
     }
-    LOG_INFO("SceneClient: connecting sceneId=%u %s:%u", m_sceneServerId, ip.c_str(), port);
+    LOG_INFO("场景连接: 发起连接 sceneId=%u %s:%u", m_sceneServerId, ip.c_str(), port);
     return true;
 }
 
@@ -44,7 +44,7 @@ bool SceneClient::forwardClientMsg(uint32_t clientConnId, uint8_t module, uint8_
 {
     if (!isConnected())
     {
-        LOG_WARN("SceneClient: forward skipped sceneId=%u not connected", m_sceneServerId);
+        LOG_WARN("场景连接: 转发跳过 sceneId=%u（未连接）", m_sceneServerId);
         return false;
     }
 

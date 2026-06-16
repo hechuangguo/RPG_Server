@@ -16,7 +16,7 @@
 std::shared_ptr<SceneUser> SceneUser::create(const UserBase& base)
 {
     auto user = std::shared_ptr<SceneUser>(new SceneUser(base));
-    LOG_DEBUG("SceneUser::create userID=%llu", base.userID);
+    LOG_DEBUG("创建场景用户 userID=%llu", base.userID);
     return user;
 }
 
@@ -113,7 +113,7 @@ bool SceneUser::init()
 
     syncFromUserBase();
     initManagers();
-    LOG_DEBUG("SceneUser::init userID=%llu", GetID());
+    LOG_DEBUG("场景用户初始化完成 userID=%llu", GetID());
     return true;
 }
 
@@ -124,7 +124,7 @@ bool SceneUser::onOnline()
     SetState(UserState::ONLINE);
     setState(SceneEntryState::ALIVE);
     syncFromUserBase();
-    LOG_INFO("SceneUser::onOnline userID=%llu map=%u", GetID(), mapId);
+    LOG_INFO("场景用户上线 userID=%llu map=%u", GetID(), mapId);
     return true;
 }
 
@@ -132,7 +132,7 @@ bool SceneUser::onOffline()
 {
     SetState(UserState::OFFLINE);
     setState(SceneEntryState::OFFLINE);
-    LOG_INFO("SceneUser::onOffline userID=%llu", GetID());
+    LOG_INFO("场景用户下线 userID=%llu", GetID());
     return true;
 }
 
@@ -143,7 +143,7 @@ bool SceneUser::save()
     saveManagers();
     syncToUserBase();
     m_dirty = false;
-    LOG_DEBUG("SceneUser::save userID=%llu (charbase via RecordServer)", GetID());
+    LOG_DEBUG("场景用户存档完成 userID=%llu（角色基础数据经存档服）", GetID());
     return true;
 }
 
@@ -158,7 +158,7 @@ bool SceneUser::load()
 
     loadManagers();
     m_dirty = false;
-    LOG_DEBUG("SceneUser::load userID=%llu name=%s", GetID(), GetName());
+    LOG_DEBUG("场景用户读档完成 userID=%llu name=%s", GetID(), GetName());
     return true;
 }
 
@@ -179,7 +179,7 @@ void SceneUser::loop(uint64_t nowMs)
 
 void SceneUser::onMidnight()
 {
-    LOG_INFO("SceneUser::onMidnight userID=%llu", GetID());
+    LOG_INFO("场景用户跨天事件 userID=%llu", GetID());
 }
 
 bool SceneUser::sendCmdToMe(uint8_t module, uint8_t sub, const char* data, uint16_t len)

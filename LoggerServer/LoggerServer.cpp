@@ -17,11 +17,11 @@ bool LoggerServer::Init(const std::string& ip, uint16_t port, const std::string&
     m_logDir = logDir;
     if (!m_server.Start(ip, port))
     {
-        LOG_FATAL("LoggerServer start failed");
+        LOG_FATAL("日志服启动失败");
         return false;
     }
     RegisterHandlers();
-    LOG_INFO("LoggerServer started on %s:%d logDir=%s", ip.c_str(), port, logDir.c_str());
+    LOG_INFO("日志服启动完成: %s:%d logDir=%s", ip.c_str(), port, logDir.c_str());
     return true;
 }
 

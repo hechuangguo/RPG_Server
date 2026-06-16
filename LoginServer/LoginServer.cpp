@@ -70,20 +70,20 @@ bool LoginServer::initDatabase(const DatabaseConfig& dbCfg)
     m_db = mysql_init(nullptr);
     if (!m_db)
     {
-        LOG_FATAL("LoginServer mysql_init failed");
+        LOG_FATAL("登录服初始化数据库句柄失败");
         return false;
     }
     if (!mysql_real_connect(m_db, dbCfg.host.c_str(), dbCfg.user.c_str(), dbCfg.pass.c_str(),
                             dbCfg.name.c_str(), static_cast<unsigned int>(dbCfg.port),
                             nullptr, 0))
     {
-        LOG_FATAL("LoginServer MySQL connect failed: %s", mysql_error(m_db));
+        LOG_FATAL("登录服连接数据库失败: %s", mysql_error(m_db));
         mysql_close(m_db);
         m_db = nullptr;
         return false;
     }
     mysql_set_character_set(m_db, "utf8mb4");
-    LOG_INFO("LoginServer MySQL connected: %s:%d/%s",
+    LOG_INFO("登录服数据库连接成功: %s:%d/%s",
              dbCfg.host.c_str(), dbCfg.port, dbCfg.name.c_str());
     return true;
 }
@@ -92,12 +92,12 @@ bool LoginServer::loadServerList(const std::string& path)
 {
     if (path.empty())
     {
-        LOG_FATAL("LoginServer: serverList path is empty");
+        LOG_FATAL("登录服: 服务器列表路径为空");
         return false;
     }
     if (!m_zoneInfoStore.loadFromFile(path.c_str()))
     {
-        LOG_FATAL("LoginServer ServerList load failed: %s", path.c_str());
+        LOG_FATAL("登录服加载服务器列表失败: %s", path.c_str());
         return false;
     }
     return true;
@@ -108,7 +108,7 @@ bool LoginServer::Init(const LoginExternConfig& cfg)
     Logger::Instance().SetServerName("LoginServer");
     if (cfg.clientListenPort == 0 || cfg.registerListenPort == 0)
     {
-        LOG_FATAL("LoginServer: ClientListen/RegisterListen port required");
+        LOG_FATAL("登录服: 必须配置客户端监听/注册监听端口");
         return false;
     }
     if (!loadServerList(cfg.serverListPath))
@@ -118,20 +118,20 @@ bool LoginServer::Init(const LoginExternConfig& cfg)
 
     if (!m_clientServer.Start(cfg.clientListenIP, cfg.clientListenPort))
     {
-        LOG_FATAL("LoginServer client listen failed on %s:%u",
+        LOG_FATAL("登录服客户端监听失败: %s:%u",
                   cfg.clientListenIP.c_str(), cfg.clientListenPort);
         return false;
     }
     if (!m_registerServer.Start(cfg.registerListenIP, cfg.registerListenPort))
     {
-        LOG_FATAL("LoginServer register listen failed on %s:%u",
+        LOG_FATAL("登录服注册监听失败: %s:%u",
                   cfg.registerListenIP.c_str(), cfg.registerListenPort);
         return false;
     }
 
     registerHandlers();
     TimerMgr::Instance().Register(10000, 10000, [this] { pruneGatewayTable(); });
-    LOG_INFO("LoginServer started: client=%s:%u register=%s:%u zones=%zu",
+    LOG_INFO("登录服启动成功: client=%s:%u register=%s:%u zones=%zu",
              cfg.clientListenIP.c_str(), cfg.clientListenPort,
              cfg.registerListenIP.c_str(), cfg.registerListenPort,
              m_zoneInfoStore.size());
@@ -150,12 +150,12 @@ void LoginServer::Run()
 
 void LoginServer::onClientConnect(ConnID id)
 {
-    LOG_INFO("Login client connected: conn=%u", id);
+    LOG_INFO("登录客户端连接: conn=%u", id);
 }
 
 void LoginServer::onClientDisconnect(ConnID id)
 {
-    LOG_INFO("Login client disconnected: conn=%u", id);
+    LOG_INFO("登录客户端断开: conn=%u", id);
 }
 
 void LoginServer::onClientMessage(ConnID id, uint8_t module, uint8_t sub,
@@ -173,12 +173,12 @@ void LoginServer::onClientMessage(ConnID id, uint8_t module, uint8_t sub,
 
 void LoginServer::onRegisterConnect(ConnID id)
 {
-    LOG_INFO("Gateway register connected: conn=%u", id);
+    LOG_INFO("网关注册连接建立: conn=%u", id);
 }
 
 void LoginServer::onRegisterDisconnect(ConnID id)
 {
-    LOG_INFO("Gateway register disconnected: conn=%u", id);
+    LOG_INFO("网关注册连接断开: conn=%u", id);
 }
 
 void LoginServer::onRegisterMessage(ConnID id, uint8_t module, uint8_t sub,
@@ -198,7 +198,7 @@ void LoginServer::pruneGatewayTable()
     m_gatewayRegistry.pruneStale(TimerMgr::NowMs());
     const uint64_t after = m_gatewayRegistry.size();
     if (after < before)
-        LOG_INFO("Pruned stale gateways: %llu -> %llu",
+        LOG_INFO("清理过期网关: %llu -> %llu",
                  static_cast<unsigned long long>(before),
                  static_cast<unsigned long long>(after));
 }

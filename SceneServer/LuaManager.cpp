@@ -87,7 +87,7 @@ bool LuaManager::init(const char* initScriptPath)
     m_lua = luaL_newstate();
     if (!m_lua)
     {
-        LOG_FATAL("LuaManager: luaL_newstate failed");
+        LOG_FATAL("脚本管理器初始化脚本虚拟机失败");
         return false;
     }
 
@@ -112,16 +112,16 @@ bool LuaManager::init(const char* initScriptPath)
         if (luaL_dofile(m_lua, *p) == LUA_OK)
         {
             scriptLoaded = true;
-            LOG_INFO("LuaManager: loaded %s", *p);
+            LOG_INFO("脚本管理器已加载脚本: %s", *p);
             break;
         }
-        LOG_WARN("LuaManager: load %s failed: %s", *p, lua_tostring(m_lua, -1));
+        LOG_WARN("脚本管理器加载脚本失败: %s err=%s", *p, lua_tostring(m_lua, -1));
         lua_pop(m_lua, 1);
     }
     if (!scriptLoaded)
-        LOG_WARN("LuaManager: no init script loaded");
+        LOG_WARN("脚本管理器未加载到初始化脚本");
 
-    LOG_INFO("LuaManager initialized");
+    LOG_INFO("脚本管理器初始化完成");
     return true;
 }
 
@@ -223,7 +223,7 @@ bool LuaManager::invokeGlobal(SceneEntry* entry, const char* funcName,
 
     if (lua_pcall(m_lua, nargs, nret, 0) != LUA_OK)
     {
-        LOG_WARN("[Lua] call %s failed: %s", funcName, lua_tostring(m_lua, -1));
+        LOG_WARN("[脚本] 调用 %s 失败: %s", funcName, lua_tostring(m_lua, -1));
         lua_pop(m_lua, 1);
         return false;
     }

@@ -32,7 +32,7 @@ void LoginAuthService::onClientZoneList(ConnID connID, const char* data, uint16_
     {
         header.code = -1;
         header.count = 0;
-        LOG_ERR("Zone list too large: %zu entries (max %u)", zones.size(), MAX_ZONE_LIST_ENTRIES);
+        LOG_ERR("区列表条目过多: %zu（上限 %u）", zones.size(), MAX_ZONE_LIST_ENTRIES);
         m_owner.clientServer().SendMsg(connID, (uint16_t)ClientMsgID::S2C_ZONE_LIST_RSP,
                                        reinterpret_cast<char*>(&header), sizeof(header));
         return;
@@ -74,7 +74,7 @@ void LoginAuthService::onClientZoneList(ConnID connID, const char* data, uint16_
 
     m_owner.clientServer().SendMsg(connID, (uint16_t)ClientMsgID::S2C_ZONE_LIST_RSP,
                                    body.data(), static_cast<uint16_t>(bodyLen));
-    LOG_INFO("Sent zone list: conn=%u count=%u filter=0x%02X",
+    LOG_INFO("已下发区列表: conn=%u count=%u filter=0x%02X",
              connID, header.count, gameTypeFilter);
 }
 
@@ -119,7 +119,7 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
                  "WHERE account='%s' LIMIT 1", escAccount);
         if (mysql_query(db, sql) != 0)
         {
-            LOG_ERR("LoginServer query GameUser failed: %s", mysql_error(db));
+            LOG_ERR("查询 GameUser 失败: %s", mysql_error(db));
             loginRsp.code = -1;
             copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "Database error");
         }
@@ -160,6 +160,12 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
 
     m_owner.clientServer().SendMsg(connID, (uint16_t)ClientMsgID::S2C_LOGIN_RSP,
                                    reinterpret_cast<char*>(&loginRsp), sizeof(loginRsp));
+    if (loginRsp.code == 0)
+    {
+        LOG_INFO("账号登录成功: connID=%u zone=%u gameType=%u userID=%llu",
+                 connID, req->zoneId, req->gameType,
+                 static_cast<unsigned long long>(loginRsp.userID));
+    }
 
     if (loginRsp.code == 0)
         sendGatewayInfo(connID, 0, "OK", req->zoneId, req->gameType);
@@ -232,6 +238,6 @@ void LoginAuthService::sendGatewayInfo(ConnID connID, int32_t code, const char* 
     }
     m_owner.clientServer().SendMsg(connID, (uint16_t)ClientMsgID::S2C_GATEWAY_INFO,
                                    reinterpret_cast<char*>(&info), sizeof(info));
-    LOG_INFO("Sent gateway info: conn=%u code=%d ip=%s port=%u",
+    LOG_INFO("已下发网关信息: conn=%u code=%d ip=%s port=%u",
              connID, info.code, info.gatewayIP, info.gatewayPort);
 }

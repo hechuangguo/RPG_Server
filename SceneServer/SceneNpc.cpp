@@ -12,7 +12,7 @@ std::shared_ptr<SceneNpc> SceneNpc::create(const SceneNpcDef& def)
         return nullptr;
 
     auto npc = std::shared_ptr<SceneNpc>(new SceneNpc(def));
-    LOG_DEBUG("SceneNpc::create npcId=%llu template=%u", def.npcId, def.templateId);
+    LOG_DEBUG("创建场景怪物: npcId=%llu template=%u", def.npcId, def.templateId);
     return npc;
 }
 
@@ -44,7 +44,7 @@ bool SceneNpc::init()
 
     respawnAtMs  = 0;
     initialized  = true;
-    LOG_DEBUG("SceneNpc::init npcId=%llu name=%s map=%u",
+    LOG_DEBUG("场景怪物初始化完成: npcId=%llu name=%s map=%u",
               getEntryId(), getName().c_str(), getMapId());
     return true;
 }
@@ -64,7 +64,7 @@ void SceneNpc::loop(uint64_t nowMs)
             setVitality(maxVitality);
             setState(SceneEntryState::ALIVE);
             respawnAtMs = 0;
-            LOG_INFO("SceneNpc respawn npcId=%llu map=%u", getEntryId(), getMapId());
+            LOG_INFO("场景怪物复活: npcId=%llu map=%u", getEntryId(), getMapId());
             if (auto* srv = SceneServer::Instance())
                 srv->notifyNpcEnterAoi(*this);
         }
@@ -82,7 +82,7 @@ void SceneNpc::onDeath()
     setHp(0);
     setState(SceneEntryState::DEAD);
     respawnAtMs = 0;
-    LOG_INFO("SceneNpc::onDeath npcId=%llu name=%s", getEntryId(), getName().c_str());
+    LOG_INFO("场景怪物死亡: npcId=%llu name=%s", getEntryId(), getName().c_str());
     if (auto* srv = SceneServer::Instance())
         srv->notifyNpcLeaveAoi(getEntryId());
 }

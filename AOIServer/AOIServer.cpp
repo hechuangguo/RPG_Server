@@ -23,12 +23,12 @@ bool AOIServer::Init(const std::string& ip, uint16_t port,
         m_self = *self;
     m_externSender.setSelfId(m_self.id ? m_self.id : selfId);
     ServerBootstrap::bindRemoteLog(m_externSender, SubServerType::AOI);
-    if (!m_server.Start(ip, port)) { LOG_FATAL("AOIServer start failed"); return false; }
+    if (!m_server.Start(ip, port)) { LOG_FATAL("视野服启动失败"); return false; }
     m_superClient.Connect(cfg.superIP, (uint16_t)cfg.superPort);
     RegisterHandlers();
     TimerMgr::Instance().Register(500,   0,     [this]{ RegisterToSuper(); });
     TimerMgr::Instance().Register(10000, 10000, [this]{ SendHeartbeat(); });
-    LOG_INFO("AOIServer started on %s:%d", ip.c_str(), port);
+    LOG_INFO("视野服启动完成: %s:%d", ip.c_str(), port);
     return true;
 }
 
@@ -44,12 +44,12 @@ void AOIServer::Run()
 
 void AOIServer::OnConnect(ConnID id)
 {
-    LOG_DEBUG("AOI InnerConn=%u", id);
+    LOG_DEBUG("视野服内部连接建立: conn=%u", id);
 }
 
 void AOIServer::OnDisconnect(ConnID id)
 {
-    LOG_WARN("AOI InnerConn=%u lost", id);
+    LOG_WARN("视野服内部连接断开: conn=%u", id);
 }
 
 void AOIServer::OnMessage(ConnID id, uint8_t module, uint8_t sub,
@@ -114,7 +114,7 @@ void AOIServer::OnEnter(ConnID fromConn, const char* data, uint16_t len)
     m_entityGrid[e.entityID] = g;
 
     NotifyViewChange(e.entityID, true);
-    LOG_DEBUG("AOI Enter: entityID=%llu map=%u (%.1f,%.1f)", e.entityID, e.mapID, e.x, e.z);
+    LOG_DEBUG("视野进入: entityID=%llu map=%u (%.1f,%.1f)", e.entityID, e.mapID, e.x, e.z);
 }
 
 void AOIServer::OnLeave(ConnID /*fromConn*/, const char* data, uint16_t len)
@@ -162,7 +162,7 @@ void AOIServer::OnSceneRegister(ConnID /*fromConn*/, const char* data, uint16_t 
     if (len < sizeof(Msg_AOI_SceneRegister)) return;
     const auto* req = reinterpret_cast<const Msg_AOI_SceneRegister*>(data);
     m_scenes[req->sceneInstanceId] = *req;
-    LOG_INFO("AOI scene register: instance=%llu map=%u server=%u kind=%u",
+    LOG_INFO("视野场景注册: instance=%llu map=%u server=%u kind=%u",
              req->sceneInstanceId, req->mapId, req->sceneServerId, req->sceneKind);
 }
 
@@ -171,7 +171,7 @@ void AOIServer::OnSceneUnregister(ConnID /*fromConn*/, const char* data, uint16_
     if (len < sizeof(Msg_AOI_SceneUnregister)) return;
     const auto* req = reinterpret_cast<const Msg_AOI_SceneUnregister*>(data);
     m_scenes.erase(req->sceneInstanceId);
-    LOG_INFO("AOI scene unregister: instance=%llu", req->sceneInstanceId);
+    LOG_INFO("视野场景注销: instance=%llu", req->sceneInstanceId);
 }
 
 void AOIServer::NotifyViewChange(uint64_t entityID, bool enter)

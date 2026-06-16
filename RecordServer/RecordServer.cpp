@@ -26,19 +26,19 @@ bool RecordServer::Init(const std::string& ip, uint16_t port,
                         const ServerConfig& cfg, const ServerList& list, uint32_t selfId)
 {
     Logger::Instance().SetServerName("RecordServer");
-    LOG_INFO("RecordServer starting on %s:%d", ip.c_str(), port);
+    LOG_INFO("存档服启动中: %s:%d", ip.c_str(), port);
     if (const ServerEntry* self = list.find(SubServerType::RECORD, selfId))
         m_self = *self;
     m_externSender.setSelfId(m_self.id ? m_self.id : selfId);
     ServerBootstrap::bindRemoteLog(m_externSender, SubServerType::RECORD);
     if (!m_server.Start(ip, port))
     {
-        LOG_FATAL("Start failed");
+        LOG_FATAL("存档服监听启动失败");
         return false;
     }
     if (!InitDB(cfg))
     {
-        LOG_FATAL("DB init failed");
+        LOG_FATAL("数据库初始化失败");
         return false;
     }
 
@@ -50,7 +50,7 @@ bool RecordServer::Init(const std::string& ip, uint16_t port,
     TimerMgr::Instance().Register(10000, 10000, [this] { SendHeartbeat(); });
     // 每 60 秒自动保存所有脏数据
     TimerMgr::Instance().Register(60000, 60000, [this] { AutoSaveAll(); });
-    LOG_INFO("RecordServer started.");
+    LOG_INFO("存档服启动完成");
     return true;
 }
 
@@ -66,12 +66,12 @@ void RecordServer::Run()
 
 void RecordServer::OnConnect(ConnID id)
 {
-    LOG_INFO("InnerConn=%u connected", id);
+    LOG_INFO("内部连接建立: conn=%u", id);
 }
 
 void RecordServer::OnDisconnect(ConnID id)
 {
-    LOG_WARN("InnerConn=%u disconnected", id);
+    LOG_WARN("内部连接断开: conn=%u", id);
 }
 
 void RecordServer::OnMessage(ConnID id, uint8_t module, uint8_t sub, const char* data, uint16_t len)
@@ -89,11 +89,11 @@ bool RecordServer::InitDB(const ServerConfig& cfg)
     if (!mysql_real_connect(m_db, cfg.dbHost.c_str(), cfg.dbUser.c_str(), cfg.dbPass.c_str(),
                             cfg.dbName.c_str(), (unsigned int)cfg.dbPort, nullptr, 0))
     {
-        LOG_ERR("MySQL connect failed: %s", mysql_error(m_db));
+        LOG_ERR("数据库连接失败: %s", mysql_error(m_db));
         return false;
     }
     mysql_set_character_set(m_db, "utf8mb4");
-    LOG_INFO("MySQL connected: %s:%d/%s", cfg.dbHost.c_str(), cfg.dbPort, cfg.dbName.c_str());
+    LOG_INFO("数据库连接成功: %s:%d/%s", cfg.dbHost.c_str(), cfg.dbPort, cfg.dbName.c_str());
     return true;
 }
 
@@ -159,7 +159,7 @@ void RecordServer::OnLoginVerify(ConnID fromConn, const char* data, uint16_t len
 
     if (mysql_query(m_db, sql) != 0)
     {
-        LOG_ERR("MySQL query failed: %s", mysql_error(m_db));
+        LOG_ERR("数据库查询失败: %s", mysql_error(m_db));
         rsp.code = -1;
     }
     else
@@ -183,14 +183,14 @@ void RecordServer::OnLoginVerify(ConnID fromConn, const char* data, uint16_t len
                      "INSERT INTO CharBase (name) VALUES ('%s')", escName);
             if (mysql_query(m_db, sql) != 0)
             {
-                LOG_ERR("Auto-create char failed: %s", mysql_error(m_db));
+                LOG_ERR("自动创建角色失败: %s", mysql_error(m_db));
                 rsp.code = -1;
             }
             else
             {
                 rsp.code = 0;
                 rsp.userID = (uint64_t)mysql_insert_id(m_db);
-                LOG_INFO("Auto-create char: name=%s userID=%llu",
+                LOG_INFO("创建角色成功: account=%s userID=%llu（首次登录自动创建）",
                          accName, (unsigned long long)rsp.userID);
             }
         }
@@ -301,7 +301,7 @@ void RecordServer::OnRelationPreloadReq(ConnID fromConn, const char* /*data*/, u
     else
     {
         RelationStore::encodePreloadRsp(0, rows, buf);
-        LOG_INFO("RelationPreload: %zu row(s) to Session", rows.size());
+        LOG_INFO("关系数据预加载完成: 下发 Session 行数=%zu", rows.size());
     }
     m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::REC_RELATION_PRELOAD_RSP,
                      buf.data(), static_cast<uint16_t>(buf.size()));
@@ -355,7 +355,7 @@ void RecordServer::LoadUserFromDB(UserID rid)
              rid);
     if (mysql_query(m_db, sql) != 0)
     {
-        LOG_ERR("LoadUser SQL err: %s", mysql_error(m_db));
+        LOG_ERR("加载用户 SQL 失败: %s", mysql_error(m_db));
         return;
     }
     MYSQL_RES* res = mysql_store_result(m_db);
@@ -381,7 +381,7 @@ void RecordServer::LoadUserFromDB(UserID rid)
         user->init();
         user->load();
         m_userManager.addUser(rid, user);
-        LOG_DEBUG("LoadUserFromDB: userID=%llu name=%s", rid, base.name.c_str());
+        LOG_DEBUG("从数据库加载用户: userID=%llu name=%s", rid, base.name.c_str());
     }
     if (res)
     {
@@ -412,16 +412,16 @@ void RecordServer::SaveUserToDB(UserID rid)
              base.posX, base.posY, base.posZ, base.hp, base.maxHP, base.mp, base.maxMP, base.gold);
     if (mysql_query(m_db, sql) != 0)
     {
-        LOG_ERR("SaveUser SQL err: %s", mysql_error(m_db));
+        LOG_ERR("保存用户 SQL 失败: %s", mysql_error(m_db));
     }
     else
     {
-        LOG_DEBUG("SaveUserToDB: userID=%llu", rid);
+        LOG_DEBUG("用户已写入数据库: userID=%llu", rid);
     }
 }
 
 void RecordServer::AutoSaveAll()
 {
     m_userManager.forEach([this](UserID rid, RecordUser& /*user*/) { SaveUserToDB(rid); });
-    LOG_INFO("AutoSave: %zu users saved.", m_userManager.getUserCount());
+    LOG_INFO("自动存档完成: 已保存用户=%zu", m_userManager.getUserCount());
 }

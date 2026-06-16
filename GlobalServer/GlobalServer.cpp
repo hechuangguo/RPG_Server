@@ -30,20 +30,20 @@ bool GlobalServer::initDatabase(const DatabaseConfig& dbCfg)
     m_db = mysql_init(nullptr);
     if (!m_db)
     {
-        LOG_FATAL("GlobalServer mysql_init failed");
+        LOG_FATAL("全局服初始化 MySQL 句柄失败");
         return false;
     }
     if (!mysql_real_connect(m_db, dbCfg.host.c_str(), dbCfg.user.c_str(), dbCfg.pass.c_str(),
                             dbCfg.name.c_str(), static_cast<unsigned int>(dbCfg.port),
                             nullptr, 0))
     {
-        LOG_FATAL("GlobalServer MySQL connect failed: %s", mysql_error(m_db));
+        LOG_FATAL("全局服连接 MySQL 失败: %s", mysql_error(m_db));
         mysql_close(m_db);
         m_db = nullptr;
         return false;
     }
     mysql_set_character_set(m_db, "utf8mb4");
-    LOG_INFO("GlobalServer MySQL connected: %s:%d/%s",
+    LOG_INFO("全局服 MySQL 连接成功: %s:%d/%s",
              dbCfg.host.c_str(), dbCfg.port, dbCfg.name.c_str());
     return true;
 }
@@ -53,7 +53,7 @@ bool GlobalServer::Init(const ExternServerConfig& cfg)
     Logger::Instance().SetServerName("GlobalServer");
     if (!m_server.Start(cfg.listenIP, cfg.listenPort))
     {
-        LOG_FATAL("GlobalServer start failed");
+        LOG_FATAL("全局服启动失败");
         return false;
     }
     if (!initDatabase(cfg.database))
@@ -66,11 +66,11 @@ bool GlobalServer::Init(const ExternServerConfig& cfg)
         });
         if (!m_httpServer.start(cfg.httpListen.listenIP, cfg.httpListen.port))
         {
-            LOG_FATAL("GlobalServer HTTP listen failed on %s:%u",
+            LOG_FATAL("全局服网页接口监听失败: %s:%u",
                       cfg.httpListen.listenIP.c_str(), cfg.httpListen.port);
             return false;
         }
-        LOG_INFO("GlobalServer HTTP listening on %s:%u",
+        LOG_INFO("全局服网页接口监听中: %s:%u",
                  cfg.httpListen.listenIP.c_str(), cfg.httpListen.port);
     }
 
@@ -84,7 +84,7 @@ bool GlobalServer::Init(const ExternServerConfig& cfg)
     {
         TimerMgr::Instance().Register(30000, 30000, [this] { probeHttpPeer(); });
     }
-    LOG_INFO("GlobalServer started on %s:%u", cfg.listenIP.c_str(), cfg.listenPort);
+    LOG_INFO("全局服启动完成: %s:%u", cfg.listenIP.c_str(), cfg.listenPort);
     return true;
 }
 
@@ -103,13 +103,13 @@ void GlobalServer::Run()
 void GlobalServer::OnConnect(ConnID id)
 {
     m_innerConns[id] = true;
-    LOG_DEBUG("GlobalServer conn=%u", id);
+    LOG_DEBUG("全局服连接建立: conn=%u", id);
 }
 
 void GlobalServer::OnDisconnect(ConnID id)
 {
     m_innerConns.erase(id);
-    LOG_WARN("GlobalServer conn=%u lost", id);
+    LOG_WARN("全局服连接断开: conn=%u", id);
 }
 
 void GlobalServer::OnMessage(ConnID id, uint8_t module, uint8_t sub,
@@ -143,7 +143,7 @@ void GlobalServer::OnRankUpdate(ConnID /*fromConn*/, const char* data, uint16_t 
 
 void GlobalServer::OnDataSync(ConnID /*fromConn*/, const char* data, uint16_t len)
 {
-    LOG_DEBUG("GlobalDataSync len=%d", len);
+    LOG_DEBUG("全局数据同步: len=%d", len);
     for (auto& [cid, alive] : m_innerConns)
     {
         (void)alive;
@@ -153,7 +153,7 @@ void GlobalServer::OnDataSync(ConnID /*fromConn*/, const char* data, uint16_t le
 
 void GlobalServer::SyncGlobalData()
 {
-    LOG_INFO("GlobalServer: syncing rank to all scene servers. rank size=%zu", m_rank.size());
+    LOG_INFO("全局服开始同步排行到所有场景服，排行数量=%zu", m_rank.size());
 }
 
 void GlobalServer::probeHttpPeer()

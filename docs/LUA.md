@@ -53,7 +53,7 @@ script/?.lua;script/?/init.lua;database/?.lua;basefile/?.lua
 
 | 函数 | 说明 |
 |------|------|
-| `log_info(msg)` | 写 LOG_INFO，前缀 `[Lua]` |
+| `log_info(msg)` | 写 LOG_INFO，前缀 `[脚本]` |
 | `send_to_user(userId, msgId, data)` | 经 Gateway 下发客户端（flat msgId + binary body） |
 | `send_npc_talk_rsp(userId, npcId, dialogStep, text, optionsTable?)` | 下发 `S2C_NPC_TALK_RSP` |
 

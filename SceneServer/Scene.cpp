@@ -20,17 +20,17 @@ Scene::Scene(uint32_t serverId, uint64_t instanceId, const MapConfig& cfg)
 bool Scene::loadResources()
 {
     state = SceneState::CREATING;
-    LOG_INFO("Scene loadResources: instance=%llu map=%u file=%s",
+    LOG_INFO("场景加载资源: instance=%llu map=%u file=%s",
              sceneInstanceId, mapId, mapFile.c_str());
 
     if (!onLoadResources())
     {
-        LOG_ERR("Scene loadResources failed: instance=%llu map=%u",
+        LOG_ERR("场景加载资源失败: instance=%llu map=%u",
                 sceneInstanceId, mapId);
         return false;
     }
 
-    LOG_DEBUG("Scene resources loaded: map=%u (%s)", mapId, mapName.c_str());
+    LOG_DEBUG("场景资源加载完成: map=%u (%s)", mapId, mapName.c_str());
     return true;
 }
 
@@ -48,7 +48,7 @@ bool Scene::start()
     if (onStarted)
         onStarted(*this);
 
-    LOG_INFO("Scene started: instance=%llu map=%u kind=%u",
+    LOG_INFO("场景启动完成: instance=%llu map=%u kind=%u",
              sceneInstanceId, mapId, static_cast<unsigned>(getSceneKind()));
     return true;
 }
@@ -66,13 +66,13 @@ void Scene::shutdown()
 
     players.clear();
     state = SceneState::CLOSED;
-    LOG_INFO("Scene shutdown: instance=%llu map=%u", sceneInstanceId, mapId);
+    LOG_INFO("场景已关闭: instance=%llu map=%u", sceneInstanceId, mapId);
 }
 
 bool Scene::onLoadResources()
 {
     if (mapFile.empty())
-        LOG_WARN("Scene mapFile empty, map=%u", mapId);
+        LOG_WARN("场景 mapFile 为空: map=%u", mapId);
     return true;
 }
 

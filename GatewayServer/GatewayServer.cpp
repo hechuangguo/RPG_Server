@@ -46,14 +46,14 @@ bool GatewayServer::Init(uint16_t clientPort,
                          const ServerConfig& cfg, const ServerList& list, uint32_t selfId)
 {
     Logger::Instance().SetServerName("GatewayServer");
-    LOG_INFO("GatewayServer starting: clientPort=%d", clientPort);
+    LOG_INFO("网关服启动中: clientPort=%d", clientPort);
 
     m_serverList = list;
     if (const ServerEntry* self = list.find(SubServerType::GATEWAY, selfId))
         m_self = *self;
 
     if (!m_clientServer.Start("0.0.0.0", clientPort))
-    { LOG_FATAL("Client listen failed"); return false; }
+    { LOG_FATAL("客户端监听失败"); return false; }
 
     m_superClient.Connect(cfg.superIP, (uint16_t)cfg.superPort);
     m_clientPort = clientPort;
@@ -66,7 +66,7 @@ bool GatewayServer::Init(uint16_t clientPort,
     TimerMgr::Instance().Register(30000, 30000, [this]{ CheckTimeout(); });
     TimerMgr::Instance().Register(10000, 10000, [this]{ sendLoginGatewayHeartbeat(); });
 
-    LOG_INFO("GatewayServer started (awaiting S2S_REGISTER_RSP for upstream).");
+    LOG_INFO("网关服启动完成（等待 S2S_REGISTER_RSP 后连接上游）");
     return true;
 }
 
@@ -89,7 +89,7 @@ void GatewayServer::Run()
 void GatewayServer::OnConnect(ConnID id)
 {
     m_userManager.addUser(id);
-    LOG_INFO("Client connected: connID=%u", id);
+    LOG_INFO("客户端连接建立: connID=%u", id);
 }
 
 void GatewayServer::OnDisconnect(ConnID id)
@@ -139,7 +139,7 @@ void GatewayServer::onSuperRegisterRsp(ConnID /*fromConn*/, const char* /*data*/
 {
     if (m_upstreamReady)
         return;
-    LOG_INFO("S2S_REGISTER_RSP received, setting up upstream clients");
+    LOG_INFO("收到 S2S_REGISTER_RSP，开始建立上游连接");
     setupUpstreamClients();
 }
 
@@ -151,20 +151,20 @@ void GatewayServer::setupUpstreamClients()
     if (const ServerEntry* rec = m_serverList.findFirst(SubServerType::RECORD))
         m_recordClient.Connect(rec->ip, rec->port);
     else
-        LOG_WARN("ServerList missing RECORD entry");
+        LOG_WARN("服务器列表缺少 RECORD 条目");
 
     if (const ServerEntry* ses = m_serverList.findFirst(SubServerType::SESSION))
         m_sessionClient.Connect(ses->ip, ses->port);
     else
-        LOG_WARN("ServerList missing SESSION entry");
+        LOG_WARN("服务器列表缺少 SESSION 条目");
 
     if (!m_scenePool.connectAll(m_serverList))
-        LOG_WARN("No SCENE connections initiated");
+        LOG_WARN("未建立任何 SCENE 连接");
 
     pollUpstreamUntilReady();
 
     m_upstreamReady = true;
-    LOG_INFO("Gateway upstream ready: record=%d session=%d scene=%d",
+    LOG_INFO("网关上游就绪: record=%d session=%d scene=%d",
              m_recordClient.IsConnected() ? 1 : 0,
              m_sessionClient.IsConnected() ? 1 : 0,
              m_scenePool.hasAnyConnected() ? 1 : 0);
@@ -188,14 +188,14 @@ void GatewayServer::pollUpstreamUntilReady()
             return;
         }
     }
-    LOG_WARN("Gateway upstream connect timeout (partial connections may exist)");
+    LOG_WARN("网关上游连接超时（可能仅部分连通）");
 }
 
 void GatewayServer::reportGatewayToSuper()
 {
     if (!m_superClient.IsConnected())
     {
-        LOG_WARN("SuperServer not connected; skip gateway register");
+        LOG_WARN("超级服未连接，跳过网关注册");
         return;
     }
 
@@ -212,7 +212,7 @@ void GatewayServer::reportGatewayToSuper()
 
     m_superClient.SendMsg(static_cast<uint16_t>(InternalMsgID::SS_LOGIN_GATEWAY_WRAP_REQ),
                           reinterpret_cast<char*>(&wrap), sizeof(wrap));
-    LOG_INFO("SS_LOGIN_GATEWAY_WRAP sent: id=%u %s:%u",
+    LOG_INFO("已发送 SS_LOGIN_GATEWAY_WRAP: id=%u %s:%u",
              wrap.body.gatewayServerId, wrap.body.ip, wrap.body.port);
 }
 
@@ -247,11 +247,11 @@ void GatewayServer::onLoginGatewayWrapRsp(ConnID /*fromConn*/, const char* data,
     if (rsp->body.code == 0)
     {
         m_reportedToLogin = true;
-        LOG_INFO("SS_LOGIN_GATEWAY_WRAP_RSP ok: gatewayId=%u", rsp->body.gatewayServerId);
+        LOG_INFO("登录网关注册回包成功: gatewayId=%u", rsp->body.gatewayServerId);
     }
     else
     {
-        LOG_WARN("SS_LOGIN_GATEWAY_WRAP_RSP failed: code=%d gatewayId=%u",
+        LOG_WARN("登录网关注册回包失败: code=%d gatewayId=%u",
                  rsp->body.code, rsp->body.gatewayServerId);
     }
 }
@@ -268,7 +268,7 @@ void GatewayServer::HandleClientMsg(ConnID connID, uint8_t module, uint8_t sub,
     if (vr != ValidateResult::OK)
     {
         sendClientError(connID, vr);
-        LOG_WARN("ClientMsg rejected: conn=%u mod=0x%02X sub=0x%02X vr=%u",
+        LOG_WARN("客户端消息被拒绝: conn=%u mod=0x%02X sub=0x%02X vr=%u",
                  connID, module, sub, static_cast<unsigned>(vr));
         return;
     }
@@ -358,7 +358,7 @@ void GatewayServer::OnClientLogin(ConnID connID, const char* data, uint16_t len)
     verifyReq.gatewayConnID = connID;
     m_recordClient.SendMsg((uint16_t)InternalMsgID::REC_LOGIN_VERIFY_REQ,
                            reinterpret_cast<char*>(&verifyReq), sizeof(verifyReq));
-    LOG_INFO("ClientLogin: account=%s connID=%u", req->account, connID);
+    LOG_INFO("客户端登录请求: account=%s connID=%u", req->account, connID);
 }
 
 void GatewayServer::OnClientHeartbeat(ConnID connID, const char* data, uint16_t len)
@@ -387,14 +387,14 @@ void GatewayServer::OnLoginVerifyRsp(ConnID /*fromConn*/, const char* data, uint
         user->setClientState(ClientState::CONNECTED);
         m_clientServer.SendMsg(clientConn, (uint16_t)ClientMsgID::S2C_LOGIN_RSP,
                                reinterpret_cast<char*>(&loginRsp), sizeof(loginRsp));
-        LOG_WARN("LoginFail: connID=%u code=%d", clientConn, rsp->code);
+        LOG_WARN("登录校验失败: connID=%u code=%d", clientConn, rsp->code);
         return;
     }
 
     user->setUserId(rsp->userID);
     m_superClient.SendMsg((uint16_t)InternalMsgID::GW_USER_LOGIN_REQ,
                           data, len);
-    LOG_INFO("LoginVerifyOK, forwarding to Super: connID=%u userID=%llu",
+    LOG_INFO("登录校验通过，转发 Super: connID=%u userID=%llu",
              clientConn, rsp->userID);
 }
 
@@ -432,7 +432,7 @@ void GatewayServer::OnUserLoginRsp(ConnID /*fromConn*/, const char* data, uint16
                                reinterpret_cast<char*>(&loginRsp), sizeof(loginRsp));
         m_clientServer.SendMsg(clientConn, (uint16_t)ClientMsgID::S2C_ENTER_GAME,
                                reinterpret_cast<char*>(&enter), sizeof(enter));
-        LOG_INFO("EnterGame: connID=%u userID=%llu map=%u sceneServerId=%u",
+        LOG_INFO("进入游戏成功: connID=%u userID=%llu map=%u sceneServerId=%u",
                  clientConn, rsp->userID, rsp->mapID, rsp->sceneServerId);
     }
     else
@@ -458,7 +458,7 @@ void GatewayServer::OnKickClient(ConnID /*fromConn*/, const char* data, uint16_t
 {
     if (len < sizeof(uint32_t)) return;
     uint32_t clientConnID = *reinterpret_cast<const uint32_t*>(data);
-    LOG_INFO("KickClient: connID=%u", clientConnID);
+    LOG_INFO("踢下线客户端: connID=%u", clientConnID);
     m_clientServer.Kick(clientConnID);
     m_userManager.removeUser(clientConnID);
 }
@@ -484,7 +484,7 @@ void GatewayServer::CheckTimeout()
     uint64_t now = TimerMgr::NowMs();
     for (ConnID cid : m_userManager.collectExpiredConnIds(now, 60000))
     {
-        LOG_WARN("ClientTimeout: connID=%u", cid);
+        LOG_WARN("客户端心跳超时: connID=%u", cid);
         m_clientServer.Kick(cid);
         m_userManager.removeUser(cid);
     }

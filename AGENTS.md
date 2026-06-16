@@ -69,6 +69,7 @@ docs/LUA.md                      # Lua 绑定与模块
 
 - [ ] 未破坏单线程 / DB 唯一入口 / Session 调度边界
 - [ ] 新命名与注释符合 `.cursor/rules/*`（`.h` 文件头+API；XML 段/属性；SQL 表/字段 `COMMENT`）
+- [ ] 新增/修改日志均为中文文案，且术语与项目约定一致（如“登录服/网关服/场景服/会话服/存档服/超级服/视野服/全局服/跨区服/日志服”）
 - [ ] 新建或改动的 `.h` 中，**本次新增**符号均有 Doxygen 注释
 - [ ] 新客户端消息：Validator 规则 + Router 目标 + `ClientMsg.h` 注释
 - [ ] 协议字段用 `WireStringUtil`；线上帧为 6 字节头（非旧 4 字节）
@@ -83,3 +84,4 @@ docs/LUA.md                      # Lua 绑定与模块
 - 在 Lua 或 C++ 中复制粘贴大段策划表（应走 DataDoc）
 - 无说明地重命名存量 `OnXxx` / `m_` 前缀符号
 - 使用 `strncpy` 写入 `ClientMsg` / `InternalMsg` 定长字符串字段
+- 新增英文整句日志或在同一概念上混用中英文术语（如 `LoginServer` 与“登录服”并存）

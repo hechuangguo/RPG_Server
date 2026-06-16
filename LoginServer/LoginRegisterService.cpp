@@ -104,7 +104,7 @@ void LoginRegisterService::onClientRegister(ConnID connID, const char* data, uin
                   "SELECT accid FROM GameUser WHERE account='%s' LIMIT 1", escAccount);
     if (mysql_query(db, querySql) != 0)
     {
-        LOG_ERR("Register query account failed: %s", mysql_error(db));
+        LOG_ERR("注册时查询账号失败: %s", mysql_error(db));
         sendRegisterRsp(connID, REGISTER_SERVER_ERROR, "database error");
         return;
     }
@@ -144,13 +144,13 @@ void LoginRegisterService::onClientRegister(ConnID connID, const char* data, uin
             sendRegisterRsp(connID, REGISTER_ACCOUNT_EXISTS, "account exists");
             return;
         }
-        LOG_ERR("Register insert GameUser failed: %s", mysql_error(db));
+        LOG_ERR("注册写入 GameUser 失败: %s", mysql_error(db));
         sendRegisterRsp(connID, REGISTER_SERVER_ERROR, "create account failed");
         return;
     }
 
     const uint64_t accid = static_cast<uint64_t>(mysql_insert_id(db));
     sendRegisterRsp(connID, REGISTER_OK, "register ok", accid);
-    LOG_INFO("Register success: accid=%llu account=%s zone=%u gameType=%u",
-             static_cast<unsigned long long>(accid), account, req->zoneId, req->gameType);
+    LOG_INFO("账号注册成功: connID=%u accid=%llu account=%s zone=%u gameType=%u",
+             connID, static_cast<unsigned long long>(accid), account, req->zoneId, req->gameType);
 }

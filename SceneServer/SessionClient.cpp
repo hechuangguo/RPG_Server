@@ -29,7 +29,7 @@ void SessionClient::registerScene(uint32_t sceneServerId, const Scene& scene)
     if (!isConnected())
     {
         pendingRegs.push_back(req);
-        LOG_WARN("SessionClient: queued scene register instance=%llu map=%u",
+        LOG_WARN("会话客户端: 场景注册已入队 instance=%llu map=%u",
                  req.sceneInstanceId, req.mapId);
         return;
     }
@@ -41,7 +41,7 @@ void SessionClient::registerScene(uint32_t sceneServerId, const Scene& scene)
         return;
     }
 
-    LOG_INFO("SessionClient register scene instance=%llu map=%u",
+    LOG_INFO("会话客户端注册场景: instance=%llu map=%u",
              req.sceneInstanceId, req.mapId);
 }
 
@@ -69,7 +69,7 @@ void SessionClient::requestCopyCreate(uint32_t sceneServerId, CopyType copyType,
     copyToWire(req.mapFile, sizeof(req.mapFile), mapFile.c_str());
     sendMsg(static_cast<uint16_t>(InternalMsgID::SES_COPY_CREATE_REQ),
             reinterpret_cast<char*>(&req), sizeof(req));
-    LOG_INFO("SessionClient CopyCreateReq: type=%u map=%u owner=%llu",
+    LOG_INFO("会话客户端副本创建请求: type=%u map=%u owner=%llu",
              req.copyType, mapId, ownerId);
 }
 
@@ -80,13 +80,13 @@ void SessionClient::onRegisterRsp(const char* data, uint16_t len)
     const auto* rsp = reinterpret_cast<const Msg_SES_SceneRegisterRsp*>(data);
     if (rsp->code != 0)
     {
-        LOG_ERR("SessionClient register failed: instance=%llu code=%d",
+        LOG_ERR("会话客户端注册场景失败: instance=%llu code=%d",
                 rsp->sceneInstanceId, rsp->code);
         // TODO: 自动重试注册
     }
     else
     {
-        LOG_INFO("SessionClient register ok: instance=%llu", rsp->sceneInstanceId);
+        LOG_INFO("会话客户端注册场景成功: instance=%llu", rsp->sceneInstanceId);
     }
 }
 
@@ -101,7 +101,7 @@ void SessionClient::flushPendingRegistrations()
     {
         sendMsg(static_cast<uint16_t>(InternalMsgID::SES_SCENE_REGISTER_REQ),
                 reinterpret_cast<const char*>(&req), sizeof(req));
-        LOG_INFO("SessionClient flushed pending register instance=%llu map=%u",
+        LOG_INFO("会话客户端补发待注册场景: instance=%llu map=%u",
                  req.sceneInstanceId, req.mapId);
     }
 }

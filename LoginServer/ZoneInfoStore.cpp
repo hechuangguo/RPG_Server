@@ -26,12 +26,12 @@ bool ZoneInfoStore::loadFromFile(const char* path)
     std::string err;
     if (!ServerListLoader::Load(path, loaded, &err))
     {
-        LOG_ERR("ZoneInfoStore loadFromFile failed: %s", err.c_str());
+        LOG_ERR("ZoneInfoStore 从文件加载失败: %s", err.c_str());
         return false;
     }
     m_rows = std::move(loaded);
     rebuildEnabledOrder();
-    LOG_INFO("ServerList loaded from %s: %zu entries (%zu enabled)",
+    LOG_INFO("服务器列表加载完成: %s，条目=%zu，可用=%zu",
              path, m_rows.size(), m_enabledIndices.size());
     return true;
 }
@@ -46,14 +46,14 @@ bool ZoneInfoStore::loadFromDb(MYSQL* db)
         "FROM ZoneInfo ORDER BY game_type, zone_id";
     if (mysql_query(db, sql) != 0)
     {
-        LOG_ERR("ZoneInfoStore query failed: %s", mysql_error(db));
+        LOG_ERR("ZoneInfoStore 查询失败: %s", mysql_error(db));
         return false;
     }
 
     MYSQL_RES* res = mysql_store_result(db);
     if (!res)
     {
-        LOG_ERR("ZoneInfoStore store_result failed: %s", mysql_error(db));
+        LOG_ERR("ZoneInfoStore store_result 失败: %s", mysql_error(db));
         return false;
     }
 
@@ -73,7 +73,7 @@ bool ZoneInfoStore::loadFromDb(MYSQL* db)
     mysql_free_result(res);
 
     rebuildEnabledOrder();
-    LOG_INFO("ZoneInfo loaded: %zu entries (%zu enabled)",
+    LOG_INFO("ZoneInfo 加载完成: 条目=%zu，可用=%zu",
              m_rows.size(), m_enabledIndices.size());
     return true;
 }

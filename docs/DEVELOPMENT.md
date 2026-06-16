@@ -147,7 +147,7 @@ mysql -u root -p < tables/init.sql
 | 协议排查 | 查 flat ID：`makeMsgId(module, sub)`；对照 [PROTOCOL.md](PROTOCOL.md) |
 | 网关拒绝 | 客户端收 `S2C_ERROR`（0x0F/0x05），看 `GatewayValidateCode` |
 | 登录失败 | 顺序查 Gateway → Record → Super → Scene 日志 |
-| Lua 错误 | `logs/scene.log` 中 `[Lua]` 前缀 |
+| 脚本错误 | `logs/scene.log` 中 `[脚本]` 前缀 |
 | 外联不通 | 查 `loginserverlist.xml`、Super 日志、`SS_EXTERN_FWD` |
 
 ---

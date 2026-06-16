@@ -24,7 +24,7 @@ void SessionSceneManager::bindSceneServer(ConnID connId, uint32_t sceneServerId)
         m_sceneServers[sceneServerId] = node;
     }
     m_connToServerId[connId] = sceneServerId;
-    LOG_INFO("SessionSceneManager bind SceneServer id=%u conn=%u", sceneServerId, connId);
+    LOG_INFO("会话场景管理器绑定场景服: id=%u conn=%u", sceneServerId, connId);
 }
 
 void SessionSceneManager::unbindConn(ConnID connId)
@@ -52,7 +52,7 @@ void SessionSceneManager::unbindConn(ConnID connId)
             ++cit;
     }
 
-    LOG_WARN("SessionSceneManager unbind SceneServer id=%u conn=%u", serverId, connId);
+    LOG_WARN("会话场景管理器解绑场景服: id=%u conn=%u", serverId, connId);
 }
 
 ConnID SessionSceneManager::findConnBySceneServerId(uint32_t sceneServerId) const
@@ -73,7 +73,7 @@ bool SessionSceneManager::registerScene(ConnID connId,
     m_normalScenes[req.sceneInstanceId] = scene;
     adjustServerSceneCount(req.sceneServerId, 1);
 
-    LOG_INFO("Session register scene instance=%llu map=%u server=%u kind=%u",
+    LOG_INFO("会话服注册场景: instance=%llu map=%u server=%u kind=%u",
              req.sceneInstanceId, req.mapId, req.sceneServerId, req.sceneKind);
     return true;
 }

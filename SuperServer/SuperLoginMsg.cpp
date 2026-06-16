@@ -44,7 +44,7 @@ void SuperLoginOnGatewayWrapReq(SuperServer& super, ConnID fromConn,
     TcpClient* login = super.externHub().client(SubServerType::LOGIN);
     if (!login || !login->IsConnected())
     {
-        LOG_WARN("SuperLogin: LoginServer not connected");
+        LOG_WARN("登录外联: 登录服未连接");
         Msg_SS_LoginGatewayWrapRsp rsp{};
         rsp.gatewayConnID = fromConn;
         rsp.body.code = -1;
@@ -57,7 +57,7 @@ void SuperLoginOnGatewayWrapReq(SuperServer& super, ConnID fromConn,
 
     login->SendMsg(static_cast<uint16_t>(InternalMsgID::LOGIN_GATEWAY_REGISTER_REQ),
                    reinterpret_cast<const char*>(&wrap->body), sizeof(wrap->body));
-    LOG_INFO("SuperLogin: gateway wrap fwd id=%u conn=%u",
+    LOG_INFO("登录外联: 网关包装消息已转发 id=%u conn=%u",
              wrap->body.gatewayServerId, wrap->gatewayConnID);
 }
 
@@ -71,7 +71,7 @@ void SuperLoginOnGatewayRegisterRsp(SuperServer& super, ConnID /*fromLoginConn*/
     auto it = g_gatewayConnByServerId.find(body->gatewayServerId);
     if (it == g_gatewayConnByServerId.end())
     {
-        LOG_WARN("SuperLogin: no gateway route for id=%u", body->gatewayServerId);
+        LOG_WARN("登录外联: 未找到网关路由 id=%u", body->gatewayServerId);
         return;
     }
 

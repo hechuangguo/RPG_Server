@@ -24,20 +24,20 @@ bool ZoneServer::initDatabase(const DatabaseConfig& dbCfg)
     m_db = mysql_init(nullptr);
     if (!m_db)
     {
-        LOG_FATAL("ZoneServer mysql_init failed");
+        LOG_FATAL("跨区服初始化 MySQL 句柄失败");
         return false;
     }
     if (!mysql_real_connect(m_db, dbCfg.host.c_str(), dbCfg.user.c_str(), dbCfg.pass.c_str(),
                             dbCfg.name.c_str(), static_cast<unsigned int>(dbCfg.port),
                             nullptr, 0))
     {
-        LOG_FATAL("ZoneServer MySQL connect failed: %s", mysql_error(m_db));
+        LOG_FATAL("跨区服连接 MySQL 失败: %s", mysql_error(m_db));
         mysql_close(m_db);
         m_db = nullptr;
         return false;
     }
     mysql_set_character_set(m_db, "utf8mb4");
-    LOG_INFO("ZoneServer MySQL connected: %s:%d/%s",
+    LOG_INFO("跨区服 MySQL 连接成功: %s:%d/%s",
              dbCfg.host.c_str(), dbCfg.port, dbCfg.name.c_str());
     return true;
 }
@@ -47,13 +47,13 @@ bool ZoneServer::Init(const ExternServerConfig& cfg)
     Logger::Instance().SetServerName("ZoneServer");
     if (!m_server.Start(cfg.listenIP, cfg.listenPort))
     {
-        LOG_FATAL("ZoneServer start failed");
+        LOG_FATAL("跨区服启动失败");
         return false;
     }
     if (!initDatabase(cfg.database))
         return false;
     RegisterHandlers();
-    LOG_INFO("ZoneServer started on %s:%u", cfg.listenIP.c_str(), cfg.listenPort);
+    LOG_INFO("跨区服启动完成: %s:%u", cfg.listenIP.c_str(), cfg.listenPort);
     return true;
 }
 
@@ -66,11 +66,11 @@ void ZoneServer::Run()
     }
 }
 
-void ZoneServer::OnConnect(ConnID id) { LOG_INFO("Zone conn=%u", id); }
+void ZoneServer::OnConnect(ConnID id) { LOG_INFO("跨区服连接建立: conn=%u", id); }
 
 void ZoneServer::OnDisconnect(ConnID id)
 {
-    LOG_WARN("Zone conn=%u lost", id);
+    LOG_WARN("跨区服连接断开: conn=%u", id);
     for (auto& [zid, route] : m_routes)
     {
         (void)zid;
@@ -95,7 +95,7 @@ void ZoneServer::OnCrossReq(ConnID fromConn, const char* data, uint16_t len)
     if (len < 12)
         return;
     ZoneID dstZone = *reinterpret_cast<const ZoneID*>(data);
-    LOG_INFO("CrossReq: dstZone=%u from conn=%u", dstZone, fromConn);
+    LOG_INFO("跨区请求: dstZone=%u from conn=%u", dstZone, fromConn);
     auto it = m_routes.find(dstZone);
     if (it != m_routes.end() && it->second.alive)
     {
@@ -106,11 +106,11 @@ void ZoneServer::OnCrossReq(ConnID fromConn, const char* data, uint16_t len)
     }
     else
     {
-        LOG_WARN("CrossReq: dstZone=%u not found", dstZone);
+        LOG_WARN("跨区请求失败: dstZone=%u 未找到", dstZone);
     }
 }
 
 void ZoneServer::OnForward(ConnID /*fromConn*/, const char* /*data*/, uint16_t len)
 {
-    LOG_DEBUG("ZoneForward len=%d", len);
+    LOG_DEBUG("跨区转发: len=%d", len);
 }

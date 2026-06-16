@@ -168,7 +168,7 @@ void GlobalHttpClient::onReadable()
                                                    consumed, rsp);
     if (pr == HttpParseResult::OK)
     {
-        LOG_INFO("HttpClient response status=%d reason=%s bodyLen=%zu preview=%.64s",
+        LOG_INFO("外呼客户端响应: status=%d reason=%s bodyLen=%zu preview=%.64s",
                  rsp.status, rsp.reason.c_str(), rsp.body.size(),
                  rsp.body.empty() ? "" : rsp.body.c_str());
         m_recvBuf.erase(0, consumed);
@@ -189,7 +189,7 @@ void GlobalHttpClient::poll(int timeoutMs)
             if (!m_connectNotified)
             {
                 m_connectNotified = true;
-                LOG_INFO("HttpClient connected to %s:%u", m_cfg.host.c_str(), m_cfg.port);
+                LOG_INFO("外呼客户端连接成功: %s:%u", m_cfg.host.c_str(), m_cfg.port);
             }
             trySend();
         }

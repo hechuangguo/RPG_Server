@@ -33,7 +33,7 @@ bool SceneServer::Init(const std::string& ip, uint16_t port,
         m_self = *first;
     m_externSender.setSelfId(m_self.id ? m_self.id : selfId);
     ServerBootstrap::bindRemoteLog(m_externSender, SubServerType::SCENE);
-    if (!m_server.Start(ip, port)) { LOG_FATAL("SceneServer start failed"); return false; }
+    if (!m_server.Start(ip, port)) { LOG_FATAL("场景服启动失败"); return false; }
 
     m_superClient.Connect(cfg.superIP, (uint16_t)cfg.superPort);
     if (const ServerEntry* ses = list.findFirst(SubServerType::SESSION))
@@ -48,19 +48,19 @@ bool SceneServer::Init(const std::string& ip, uint16_t port,
     SceneManager::Instance().setStoppedCallback([this](Scene& scene) { onSceneStopped(scene); });
 
     if (!SceneManager::Instance().createNormalScenesFromConfig(m_sceneID, sceneInfo))
-        LOG_WARN("Some normal scenes failed to start on SceneServer %u", m_sceneID);
+        LOG_WARN("部分普通场景启动失败: sceneID=%u", m_sceneID);
 
     initMapNpcs();
 
     if (!LuaManager::Instance().init())
-        LOG_WARN("SceneServer Lua init failed");
+        LOG_WARN("场景服脚本初始化失败");
     RegisterHandlers();
 
     TimerMgr::Instance().Register(500, 0, [this] { RegisterToSuper(); });
     TimerMgr::Instance().Register(10000, 10000, [this] { SendHeartbeat(); });
     TimerMgr::Instance().Register(1000, 1000, [this] { OnTick(); });
 
-    LOG_INFO("SceneServer %u started on %s:%d", m_sceneID, ip.c_str(), port);
+    LOG_INFO("场景服启动完成: sceneID=%u %s:%d", m_sceneID, ip.c_str(), port);
     return true;
 }
 
@@ -82,7 +82,7 @@ void SceneServer::requestCreateCopy(CopyType copyType, uint32_t mapId, uint64_t 
                                     uint32_t maxPlayer)
 {
     m_sessionClient.requestCopyCreate(m_sceneID, copyType, mapId, ownerId, mapName, mapFile, maxPlayer);
-    LOG_INFO("CopyCreateReq sent: type=%u map=%u owner=%llu",
+    LOG_INFO("已发送副本创建请求: type=%u map=%u owner=%llu",
              static_cast<uint32_t>(copyType), mapId, ownerId);
 }
 
@@ -90,14 +90,14 @@ void SceneServer::OnConnect(ConnID id)
 {
     if (m_gatewayInboundConn == INVALID_CONN_ID)
         m_gatewayInboundConn = id;
-    LOG_INFO("SceneServer inbound conn=%u (gateway=%u)", id, m_gatewayInboundConn);
+    LOG_INFO("场景服入站连接建立: conn=%u (gateway=%u)", id, m_gatewayInboundConn);
 }
 
 void SceneServer::OnDisconnect(ConnID id)
 {
     if (id == m_gatewayInboundConn)
         m_gatewayInboundConn = INVALID_CONN_ID;
-    LOG_WARN("SceneServer conn lost=%u", id);
+    LOG_WARN("场景服连接断开: conn=%u", id);
 }
 
 void SceneServer::OnMessage(ConnID id, uint8_t module, uint8_t sub,
@@ -132,14 +132,14 @@ void SceneServer::OnUserEnter(ConnID /*fromConn*/, const char* data, uint16_t le
 {
     if (len < sizeof(Msg_SCE_UserEnterReq)) return;
     const auto* req = reinterpret_cast<const Msg_SCE_UserEnterReq*>(data);
-    LOG_INFO("UserEnter: userID=%llu mapID=%u clientConn=%u",
+    LOG_INFO("用户进入场景: userID=%llu mapID=%u clientConn=%u",
              req->userID, req->mapID, req->gatewayClientConnID);
 
     uint32_t mapID = req->mapID ? req->mapID : 1001;
     auto scene = SceneManager::Instance().findNormalSceneByMapId(mapID);
     if (!scene)
     {
-        LOG_WARN("Map %u not found on SceneServer %u", mapID, m_sceneID);
+        LOG_WARN("场景服未找到地图: map=%u sceneID=%u", mapID, m_sceneID);
         SendUserEnterRsp(req, -1);
         return;
     }
@@ -242,7 +242,7 @@ void SceneServer::OnUserLeave(ConnID /*fromConn*/, const char* data, uint16_t le
     m_aoiClient.leaveEntity(uid);
     CallLuaOnLeave(uid);
     SceneUserManager::Instance().removeUser(uid);
-    LOG_INFO("UserLeave: userID=%llu", uid);
+    LOG_INFO("用户离开场景: userID=%llu", uid);
 }
 
 void SceneServer::sendCharBaseToRecord(const SceneUser& user)
@@ -256,7 +256,7 @@ void SceneServer::OnClientMsg(ConnID /*fromConn*/, const char* data, uint16_t le
     const auto* hdr = reinterpret_cast<const Msg_GW_ClientMsg*>(data);
     const char* body = data + sizeof(Msg_GW_ClientMsg);
     uint16_t bodyLen = hdr->dataLen;
-    LOG_DEBUG("ClientMsg: connID=%u mod=0x%02X sub=0x%02X",
+    LOG_DEBUG("客户端消息: connID=%u mod=0x%02X sub=0x%02X",
               hdr->clientConnID, hdr->module, hdr->sub);
     HandleClientMsg(hdr->clientConnID, hdr->module, hdr->sub, body, bodyLen);
 }
@@ -383,7 +383,7 @@ void SceneServer::OnChatReq(uint32_t clientConnID, const char* data, uint16_t le
 
 void SceneServer::OnSkillReq(uint32_t clientConnID, const char* data, uint16_t len)
 {
-    LOG_DEBUG("SkillReq from conn=%u", clientConnID);
+    LOG_DEBUG("技能请求: conn=%u", clientConnID);
     CallLuaSkillHandler(clientConnID, data, len);
 }
 
@@ -454,7 +454,7 @@ void SceneServer::SendToClient(uint32_t clientConnID, uint8_t module, uint8_t su
         memcpy(buf.data() + sizeof(Msg_GW_SendToClient), data, len);
     if (m_gatewayInboundConn == INVALID_CONN_ID)
     {
-        LOG_WARN("SendToClient: no Gateway inbound conn clientConn=%u", clientConnID);
+        LOG_WARN("下发客户端失败: 无网关入站连接 clientConn=%u", clientConnID);
         return;
     }
     m_server.SendMsg(m_gatewayInboundConn,
@@ -553,7 +553,7 @@ void SceneServer::initMapNpcs()
 
         if (SceneNpcManager::Instance().createNpc(def))
         {
-            LOG_INFO("NPC spawned: id=%llu map=%u", def.npcId, mapId);
+            LOG_INFO("怪物已生成: id=%llu map=%u", def.npcId, mapId);
             auto npc = SceneNpcManager::Instance().findNpc(def.npcId);
             if (npc)
                 notifyNpcEnterAoi(*npc);
@@ -565,7 +565,7 @@ void SceneServer::onSceneStarted(Scene& scene)
 {
     m_aoiClient.registerScene(m_sceneID, scene);
     m_sessionClient.registerScene(m_sceneID, scene);
-    LOG_INFO("Scene registered AOI+Session: instance=%llu map=%u kind=%u",
+    LOG_INFO("场景已注册到视野服+会话服: instance=%llu map=%u kind=%u",
              scene.getSceneInstanceId(), scene.getMapId(),
              static_cast<unsigned>(scene.getSceneKind()));
 }
@@ -590,7 +590,7 @@ void SceneServer::OnCopyCreateRsp(ConnID /*fromConn*/, const char* data, uint16_
 {
     if (len < sizeof(Msg_SES_CopyCreateRsp)) return;
     const auto* rsp = reinterpret_cast<const Msg_SES_CopyCreateRsp*>(data);
-    LOG_INFO("CopyCreateRsp: code=%d targetServer=%u instance=%llu reused=%u",
+    LOG_INFO("副本创建响应: code=%d targetServer=%u instance=%llu reused=%u",
              rsp->code, rsp->targetSceneServerId, rsp->copyInstanceId, rsp->reused);
 }
 
@@ -609,9 +609,9 @@ void SceneServer::OnCopyCreateCmd(ConnID /*fromConn*/, const char* data, uint16_
     def.mapFile = cmd->mapFile;
 
     if (SceneManager::Instance().createCopyScene(m_sceneID, def))
-        LOG_INFO("CopyScene created locally: instance=%llu", cmd->copyInstanceId);
+        LOG_INFO("本地创建副本成功: instance=%llu", cmd->copyInstanceId);
     else
-        LOG_ERR("CopyScene create failed: instance=%llu", cmd->copyInstanceId);
+        LOG_ERR("本地创建副本失败: instance=%llu", cmd->copyInstanceId);
 }
 
 void SceneServer::fillSpawnFromEntry(const SceneEntry& entry, uint8_t entityType,
