@@ -51,6 +51,7 @@ LOG_DIR="$SCRIPT_DIR/logs"
 #   scene.log   → SceneServer  （场景逻辑日志）
 #   gateway.log → GatewayServer（网关流量日志）
 #   logger.log  → LoggerServer （集中收集日志）
+#   login.log   → LoginServer   （分区管理日志）
 #   global.log  → GlobalServer （跨区服务日志，可选）
 #   zone.log    → ZoneServer   （分区管理日志，可选）
 LOG_FILES=(
@@ -61,6 +62,7 @@ LOG_FILES=(
     "$LOG_DIR/scene.log"
     "$LOG_DIR/gateway.log"
     "$LOG_DIR/logger.log"
+    "$LOG_DIR/login.log"
     "$LOG_DIR/global.log"
     "$LOG_DIR/zone.log"
 )
