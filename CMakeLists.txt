@@ -71,20 +71,32 @@ else()
     message(STATUS "tinyxml2: ${TINYXML2_LIB}")
 endif()
 
-# --- MySQL 客户端库 (MariaDB Connector/C in 3Party) ---
-# 用途：RecordServer 通过 MySQL 客户端库连接数据库执行 SQL 操作
-#       其他服务器不直接链接此库，数据操作通过 RecordServer 代理完成
-#       MariaDB Connector/C 是 MySQL 协议兼容的轻量客户端实现
+# --- MySQL 客户端库 ---
+# 优先系统 libmysqlclient（兼容 MySQL 8.4 caching_sha2_password）；
+# 回退 3Party 静态 MariaDB Connector/C（离线/无系统库环境）。
 set(MYSQL_INCLUDE "${THIRD_PARTY_DIR}/mysql/include")
-set(MYSQL_LIB     "${THIRD_PARTY_DIR}/mysql/lib/libmariadbclient.a")
-if(NOT EXISTS "${MYSQL_LIB}")
-    # 尝试备用库名
-    set(MYSQL_LIB "${THIRD_PARTY_DIR}/mysql/lib/libmariadb.a")
-endif()
 set(MYSQL_EXTRA_LIBS "")
-if(EXISTS "${MYSQL_LIB}")
-    message(STATUS "MySQL client: ${MYSQL_LIB}")
-    # MySQL 客户端的额外依赖：SSL（加密连接）和 zlib（压缩传输）
+find_library(MYSQL_LIB_SYS
+    NAMES mysqlclient libmysqlclient.so.24
+    PATHS /usr/lib64/mysql /usr/lib/mysql /usr/lib64 /usr/lib
+    NO_DEFAULT_PATH)
+if(NOT MYSQL_LIB_SYS AND EXISTS "/usr/lib64/mysql/libmysqlclient.so.24")
+    set(MYSQL_LIB_SYS "/usr/lib64/mysql/libmysqlclient.so.24")
+endif()
+if(MYSQL_LIB_SYS)
+    set(MYSQL_LIB ${MYSQL_LIB_SYS})
+    list(APPEND MYSQL_EXTRA_LIBS dl)
+    message(STATUS "MySQL client: system ${MYSQL_LIB}")
+else()
+    set(MYSQL_LIB "${THIRD_PARTY_DIR}/mysql/lib/libmariadbclient.a")
+    if(NOT EXISTS "${MYSQL_LIB}")
+        set(MYSQL_LIB "${THIRD_PARTY_DIR}/mysql/lib/libmariadb.a")
+    endif()
+    if(NOT EXISTS "${MYSQL_LIB}")
+        message(FATAL_ERROR
+            "MySQL client not found. Run: ./3Party/download_and_build.sh")
+    endif()
+    message(STATUS "MySQL client: bundled ${MYSQL_LIB}")
     find_package(OpenSSL QUIET)
     find_library(ZLIB_LIB z)
     if(OpenSSL_FOUND)
@@ -100,20 +112,6 @@ if(EXISTS "${MYSQL_LIB}")
         list(APPEND MYSQL_EXTRA_LIBS ${ZLIB_LIB})
     endif()
     list(APPEND MYSQL_EXTRA_LIBS dl)
-else()
-    # 回退到系统库查找
-    find_path(MYSQL_INCLUDE_SYS mysql/mysql.h
-        PATHS /usr/include /usr/local/include /usr/include/mysql)
-    find_library(MYSQL_LIB_SYS mysqlclient mariadb
-        PATHS /usr/lib /usr/lib64 /usr/lib/x86_64-linux-gnu /usr/local/lib)
-    if(MYSQL_INCLUDE_SYS AND MYSQL_LIB_SYS)
-        set(MYSQL_INCLUDE ${MYSQL_INCLUDE_SYS})
-        set(MYSQL_LIB ${MYSQL_LIB_SYS})
-        message(STATUS "MySQL client: system ${MYSQL_LIB}")
-    else()
-        message(FATAL_ERROR
-            "MySQL client not found. Run: ./3Party/download_and_build.sh")
-    endif()
 endif()
 
 # -------------------------------------------------------

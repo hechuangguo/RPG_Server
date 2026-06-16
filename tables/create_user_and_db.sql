@@ -11,12 +11,15 @@ CREATE DATABASE IF NOT EXISTS rpg_game
     COLLATE utf8mb4_unicode_ci;
 
 -- MySQL 8：使用 mysql_native_password，兼容 Database Client 等旧版客户端
+CREATE USER IF NOT EXISTS 'rpg_table'@'%' IDENTIFIED WITH mysql_native_password BY 'rpg_table';
 CREATE USER IF NOT EXISTS 'rpg_table'@'localhost' IDENTIFIED WITH mysql_native_password BY 'rpg_table';
 CREATE USER IF NOT EXISTS 'rpg_table'@'127.0.0.1' IDENTIFIED WITH mysql_native_password BY 'rpg_table';
 
+ALTER USER 'rpg_table'@'%' IDENTIFIED WITH mysql_native_password BY 'rpg_table';
 ALTER USER 'rpg_table'@'localhost' IDENTIFIED WITH mysql_native_password BY 'rpg_table';
 ALTER USER 'rpg_table'@'127.0.0.1' IDENTIFIED WITH mysql_native_password BY 'rpg_table';
 
+GRANT ALL PRIVILEGES ON rpg_game.* TO 'rpg_table'@'%';
 GRANT ALL PRIVILEGES ON rpg_game.* TO 'rpg_table'@'localhost';
 GRANT ALL PRIVILEGES ON rpg_game.* TO 'rpg_table'@'127.0.0.1';
 
