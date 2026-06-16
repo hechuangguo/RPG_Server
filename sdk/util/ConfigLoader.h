@@ -51,6 +51,8 @@ struct ServerConfig
     int aoiPort      = 9003;  /**< AOIServer 端口 */
     int scenePort    = 9004;  /**< SceneServer 端口（区内 ServerList；保留默认值兜底） */
     int gatewayPort  = 9005;  /**< GatewayServer 端口（区内 ServerList；保留默认值兜底） */
+    uint32_t zoneId  = 1;     /**< 本游戏区号（Super/Gateway 上报 Login 用） */
+    uint8_t  gameType = 0;    /**< 游戏类型（0=当前 RPG） */
     /** @brief 日志输出路径映射：服务器名称 → 日志文件路径 */
     std::unordered_map<std::string, std::string> logPaths;
 };
@@ -89,6 +91,11 @@ public:
         {
             XmlConfig::readStrAttr(ss, "ip", cfg.superIP);
             cfg.superPort = XmlConfig::readIntAttr(ss, "port", cfg.superPort);
+        }
+        if (auto* zone = root->FirstChildElement("Zone"))
+        {
+            cfg.zoneId = XmlConfig::readUIntAttr(zone, "zoneId", cfg.zoneId);
+            cfg.gameType = static_cast<uint8_t>(XmlConfig::readUIntAttr(zone, "gameType", cfg.gameType));
         }
         // Session/Record/AOI/Scene/Gateway 端口已迁移至 DB 的 ServerList。
         // Logger/Global/Zone 外联地址见 loginserverlist.xml，不在此加载。

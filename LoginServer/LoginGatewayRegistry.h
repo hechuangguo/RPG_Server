@@ -18,6 +18,8 @@
 struct LoginGatewayEntry
 {
     uint32_t gatewayServerId = 0; /**< 网关实例 ID */
+    uint32_t zoneId = 0;          /**< 所属游戏区号 */
+    uint8_t gameType = 0;         /**< 游戏类型 */
     std::string ip;              /**< 客户端可连 IP */
     uint16_t port = 0;           /**< 客户端端口 */
     std::string name;            /**< 网关名称 */
@@ -65,6 +67,19 @@ public:
      */
     bool pickByServerId(uint32_t gatewayServerId, LoginGatewayEntry& out);
 
+    /**
+     * @brief 在指定游戏区内轮询选取网关
+     * @param zoneId   游戏区号
+     * @param gameType 游戏类型
+     * @param out      [out] 选中的网关
+     */
+    bool pickByZone(uint32_t zoneId, uint8_t gameType, LoginGatewayEntry& out);
+
+    /**
+     * @brief 统计指定区存活网关数
+     */
+    size_t countForZone(uint32_t zoneId, uint8_t gameType) const;
+
     /** @brief 当前存活网关数量 */
     size_t size() const { return m_entries.size(); }
 
@@ -73,5 +88,6 @@ private:
 
     std::unordered_map<uint32_t, LoginGatewayEntry> m_entries; /**< gatewayId → 记录 */
     std::vector<uint32_t> m_order;                             /**< 轮询顺序 */
-    size_t m_rrIndex = 0;                                      /**< 轮询游标 */
+    std::unordered_map<uint64_t, size_t> m_zoneRrIndex;         /**< 区内轮询游标 */
+    size_t m_rrIndex = 0;                                      /**< 全局轮询游标 */
 };

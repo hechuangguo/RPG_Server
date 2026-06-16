@@ -18,6 +18,8 @@ void onGatewayRegister(LoginServer& server, ConnID fromConn, const char* data, u
 
     LoginGatewayEntry entry;
     entry.gatewayServerId = req->gatewayServerId;
+    entry.zoneId = req->zoneId;
+    entry.gameType = req->gameType;
     entry.ip = req->ip;
     entry.port = req->port;
     entry.name = req->name;

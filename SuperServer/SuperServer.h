@@ -138,6 +138,19 @@ public:
     /** @brief 查找存活区内服连接 */
     ConnID findSubServerConn(SubServerType type) { return FindSubServer(type); }
 
+    /**
+     * @brief 周期汇总 Gateway 在线人数并上报 LoginServer
+     *
+     * 由 SuperZoneStatusMsg 定时器触发。
+     */
+    void reportZoneStatusToLogin();
+
+    /** @brief 本游戏区号（config.xml Zone） */
+    uint32_t zoneId() const { return m_zoneId; }
+
+    /** @brief 游戏类型（config.xml Zone） */
+    uint8_t gameType() const { return m_gameType; }
+
     // ============================================================
     //  INetCallback 实现
     // ============================================================
@@ -296,4 +309,8 @@ private:
     MYSQL* m_db = nullptr;
     /** @brief 外联服出站连接（Logger 等） */
     ExternalServerHub m_externHub;
+    uint32_t m_zoneId = 1;   /**< 本游戏区号 */
+    uint8_t m_gameType = 0;  /**< 游戏类型 */
+    /** @brief Gateway serverID → 最近心跳上报的在线人数 */
+    std::unordered_map<uint32_t, uint32_t> m_gatewayOnline;
 };

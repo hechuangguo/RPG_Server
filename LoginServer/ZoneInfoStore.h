@@ -8,9 +8,13 @@
 
 #pragma once
 
+#include "../Common/ClientMsg.h"
+#include "../protocal/InternalMsg.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <mysql/mysql.h>
@@ -25,7 +29,19 @@ struct ZoneInfoRow
     std::string name;          /**< 区服显示名 */
     std::string ip;            /**< 入口 IP（VIP 或对外地址） */
     uint16_t superPort = 0;    /**< SuperServer 端口（元数据） */
+    uint32_t maxOnline = 2000; /**< 负载阈值上限（计算畅通/繁忙/爆满） */
     bool enabled = false;      /**< 是否可登录 */
+};
+
+/**
+ * @brief 游戏区运行时状态（Super 周期上报合并）
+ */
+struct ZoneRuntimeRow
+{
+    uint32_t onlineCount = 0;   /**< 在线人数 */
+    uint32_t gatewayCount = 0;  /**< Super 上报的存活网关数 */
+    bool alive = false;         /**< 区是否可达 */
+    uint64_t lastReportMs = 0;  /**< 最近上报时间（ms） */
 };
 
 /**
@@ -73,11 +89,45 @@ public:
      */
     void listAll(std::vector<ZoneInfoRow>& out, uint8_t gameTypeFilter) const;
 
+    /**
+     * @brief 合并 Super 上报的运行时区状态
+     * @param report Super → Login 区状态包
+     * @return 静态表中存在对应区时 true
+     */
+    bool applyZoneReport(const Msg_Login_ZoneStatusReport& report);
+
+    /**
+     * @brief 查询区服静态配置
+     * @param gameType 游戏类型
+     * @param zoneId   游戏区号
+     * @param out      [out] 区服行
+     * @return 存在时 true
+     */
+    bool findZone(uint8_t gameType, uint32_t zoneId, ZoneInfoRow& out) const;
+
+    /**
+     * @brief 获取运行时状态（无上报时返回 false）
+     */
+    bool getRuntime(uint8_t gameType, uint32_t zoneId, ZoneRuntimeRow& out) const;
+
+    /**
+     * @brief 计算客户端展示的负载等级
+     * @param row           静态区配置
+     * @param runtime       运行时状态（可为 nullptr）
+     * @param gatewayCount  Login 侧存活网关数
+     */
+    static uint8_t computeLoadLevel(const ZoneInfoRow& row,
+                                    const ZoneRuntimeRow* runtime,
+                                    size_t gatewayCount);
+
 private:
+    static uint64_t zoneKey(uint8_t gameType, uint32_t zoneId);
+
     /** @brief 重建 enabled 区服的轮询索引 */
     void rebuildEnabledOrder();
 
     std::vector<ZoneInfoRow> m_rows;       /**< 全表缓存 */
     std::vector<size_t> m_enabledIndices;  /**< enabled 行在 m_rows 中的下标 */
     size_t m_rrIndex = 0;                  /**< 轮询游标 */
+    std::unordered_map<uint64_t, ZoneRuntimeRow> m_runtime; /**< 运行时覆盖 */
 };

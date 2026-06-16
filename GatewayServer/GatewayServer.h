@@ -238,6 +238,8 @@ private:
     ServerList m_serverList;         /**< 启动期拉取的集群拓扑（延迟出站用） */
     bool m_upstreamReady = false;    /**< 是否已完成区内出站连接 */
     bool m_reportedToLogin = false;  /**< 是否已向 Login 上报网关（经 Super） */
+    uint32_t m_zoneId = 1;           /**< 本游戏区号（config.xml Zone） */
+    uint8_t m_gameType = 0;          /**< 游戏类型 */
     // --- 客户端管理 ---
     GatewayUserManager m_userManager;  /**< 客户端会话表（connID -> GatewayUser） */
 };

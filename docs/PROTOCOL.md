@@ -55,7 +55,7 @@
 | 0x0009 | S2C_ENTER_GAME | S→C | `Msg_S2C_EnterGame` | 进入游戏世界 |
 | 0x000A | S2C_GATEWAY_INFO | S→C | `Msg_S2C_GatewayInfo` | LoginServer 下发网关地址 |
 | 0x000B | C2S_ZONE_LIST_REQ | C→S | `Msg_C2S_ZoneListReq` | LoginServer 请求区列表（空 body 视为全部） |
-| 0x000C | S2C_ZONE_LIST_RSP | S→C | `Msg_S2C_ZoneListRspHeader` + N×`Msg_S2C_ZoneEntryWire` | 区列表（变长，最多 64 条） |
+| 0x000C | S2C_ZONE_LIST_RSP | S→C | `Msg_S2C_ZoneListRspHeader` + N×`Msg_S2C_ZoneEntryWire` | 区列表（变长，最多 64 条；含 onlineCount/loadLevel/gatewayCount） |
 | 0x0101 | C2S_MOVE_REQ | C→S | `Msg_C2S_MoveReq` | 移动 |
 | 0x0102 | S2C_MOVE_NOTIFY | S→C | `Msg_S2C_MoveNotify` | 移动广播 |
 | 0x0103 | S2C_ENTER_MAP | S→C | — | 进图 |
@@ -142,7 +142,7 @@
 | 0x1601 | LoggerServer | LOG_WRITE_REQ |
 | 0x1701–0x1702 | GlobalServer | GLB_DATA_SYNC、GLB_RANK_UPDATE |
 | 0x1801–0x1803 | ZoneServer | ZONE_CROSS_REQ/RSP、ZONE_FORWARD |
-| 0x1901–0x1905 | LoginServer | LOGIN_GATEWAY_*、LOGIN_RECHARGE、LOGIN_GM_CMD |
+| 0x1901–0x1906 | LoginServer | LOGIN_GATEWAY_*、LOGIN_RECHARGE、LOGIN_GM_CMD、LOGIN_ZONE_STATUS_REPORT |
 
 ### 4.2 登录链路（区内）
 

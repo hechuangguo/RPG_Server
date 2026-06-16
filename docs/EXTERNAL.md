@@ -124,7 +124,10 @@ Gateway **不直连** Login RegisterListen，而是：
 | MySQL `ZoneInfo` | `tables/init.sql` | 参考/种子数据；LoginServer **不再读取** |
 
 - `extern_login.xml` 中 `<ServerList path="..."/>` 指定区列表路径（默认 `LoginServer/serverlist.xml`）
-- `C2S_ZONE_LIST_REQ` / `S2C_ZONE_LIST_RSP`：登录前返回全部区服（含维护中条目）
+- `C2S_ZONE_LIST_REQ` / `S2C_ZONE_LIST_RSP`：登录前返回全部区服（含维护中条目；`loadLevel` 0畅通/1繁忙/2爆满/3维护）
+- Super 每 15s 经 `LOGIN_ZONE_STATUS_REPORT` 上报区在线人数（Gateway 心跳汇总）与存活网关数；Login `ZoneInfoStore` 合并静态 `serverlist.xml` 与运行时数据
+- `config.xml` `<Zone zoneId gameType/>` 与 `serverlist.xml` 区号须一致
+- 登录 `C2S_LOGIN_REQ` 须带所选 `zoneId`/`gameType`；`S2C_GATEWAY_INFO` 按区从 `LoginGatewayRegistry` 轮询网关
 - 可选 MySQL：同 Record 按 `CharBase.name` 查找/创建
 - `LoginGatewayRegistry`：内存网关表，round-robin LB
 - 10s 清理 stale 网关

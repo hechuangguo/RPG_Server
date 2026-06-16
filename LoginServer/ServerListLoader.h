@@ -6,7 +6,7 @@
  * @code
  *   <ServerList>
  *     <Zone zoneId="1" gameType="0" name="RPG一区"
- *           ip="127.0.0.1" superPort="9000" enabled="1"/>
+ *           ip="127.0.0.1" superPort="9000" enabled="1" maxOnline="2000"/>
  *   </ServerList>
  * @endcode
  */
@@ -62,6 +62,13 @@ public:
             XmlConfig::readStrAttr(e, "ip", row.ip);
             row.superPort = static_cast<uint16_t>(XmlConfig::readUIntAttr(e, "superPort", 0));
             row.enabled = XmlConfig::readUIntAttr(e, "enabled", 1) != 0;
+            row.maxOnline = XmlConfig::readUIntAttr(e, "maxOnline", 2000);
+            if (row.maxOnline == 0)
+            {
+                XmlConfig::setError(errOut,
+                                     "Zone zoneId=" + std::to_string(row.zoneId) + ": maxOnline must be > 0");
+                return false;
+            }
 
             if (row.name.empty())
             {

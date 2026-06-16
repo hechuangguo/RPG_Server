@@ -6,8 +6,19 @@
 #include "ZoneInfoStore.h"
 #include "ServerListLoader.h"
 #include "../sdk/log/Logger.h"
+#include "../sdk/timer/TimerMgr.h"
 
 #include <cstdlib>
+
+namespace
+{
+constexpr uint64_t ZONE_RUNTIME_STALE_MS = 30000;
+} // namespace
+
+uint64_t ZoneInfoStore::zoneKey(uint8_t gameType, uint32_t zoneId)
+{
+    return (static_cast<uint64_t>(gameType) << 32) | zoneId;
+}
 
 bool ZoneInfoStore::loadFromFile(const char* path)
 {
@@ -110,4 +121,66 @@ void ZoneInfoStore::listAll(std::vector<ZoneInfoRow>& out, uint8_t gameTypeFilte
             continue;
         out.push_back(row);
     }
+}
+
+bool ZoneInfoStore::applyZoneReport(const Msg_Login_ZoneStatusReport& report)
+{
+    ZoneInfoRow row;
+    if (!findZone(report.gameType, report.zoneId, row))
+        return false;
+
+    ZoneRuntimeRow& rt = m_runtime[zoneKey(report.gameType, report.zoneId)];
+    rt.onlineCount = report.onlineCount;
+    rt.gatewayCount = report.gatewayCount;
+    rt.alive = report.alive != 0;
+    rt.lastReportMs = TimerMgr::NowMs();
+    return true;
+}
+
+bool ZoneInfoStore::findZone(uint8_t gameType, uint32_t zoneId, ZoneInfoRow& out) const
+{
+    for (const ZoneInfoRow& row : m_rows)
+    {
+        if (row.gameType == gameType && row.zoneId == zoneId)
+        {
+            out = row;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool ZoneInfoStore::getRuntime(uint8_t gameType, uint32_t zoneId, ZoneRuntimeRow& out) const
+{
+    auto it = m_runtime.find(zoneKey(gameType, zoneId));
+    if (it == m_runtime.end())
+        return false;
+    out = it->second;
+    return true;
+}
+
+uint8_t ZoneInfoStore::computeLoadLevel(const ZoneInfoRow& row,
+                                        const ZoneRuntimeRow* runtime,
+                                        size_t gatewayCount)
+{
+    if (!row.enabled)
+        return static_cast<uint8_t>(ZoneLoadLevel::MAINTENANCE);
+
+    const uint64_t nowMs = TimerMgr::NowMs();
+    if (!runtime || runtime->lastReportMs == 0 ||
+        nowMs < runtime->lastReportMs ||
+        nowMs - runtime->lastReportMs > ZONE_RUNTIME_STALE_MS)
+    {
+        return static_cast<uint8_t>(ZoneLoadLevel::MAINTENANCE);
+    }
+    if (!runtime->alive || gatewayCount == 0)
+        return static_cast<uint8_t>(ZoneLoadLevel::MAINTENANCE);
+
+    const uint32_t cap = row.maxOnline > 0 ? row.maxOnline : 1;
+    const uint64_t pct = (static_cast<uint64_t>(runtime->onlineCount) * 100) / cap;
+    if (pct >= 80)
+        return static_cast<uint8_t>(ZoneLoadLevel::FULL);
+    if (pct >= 50)
+        return static_cast<uint8_t>(ZoneLoadLevel::BUSY);
+    return static_cast<uint8_t>(ZoneLoadLevel::SMOOTH);
 }

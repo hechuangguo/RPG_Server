@@ -59,6 +59,36 @@ bool LoginGatewayRegistry::pickByServerId(uint32_t gatewayServerId, LoginGateway
     return true;
 }
 
+bool LoginGatewayRegistry::pickByZone(uint32_t zoneId, uint8_t gameType, LoginGatewayEntry& out)
+{
+    std::vector<uint32_t> zoneIds;
+    zoneIds.reserve(m_entries.size());
+    for (const auto& kv : m_entries)
+    {
+        if (kv.second.zoneId == zoneId && kv.second.gameType == gameType)
+            zoneIds.push_back(kv.first);
+    }
+    if (zoneIds.empty())
+        return false;
+
+    const uint64_t key = (static_cast<uint64_t>(gameType) << 32) | zoneId;
+    size_t& rr = m_zoneRrIndex[key];
+    const uint32_t id = zoneIds[rr % zoneIds.size()];
+    rr = (rr + 1) % zoneIds.size();
+    return pickByServerId(id, out);
+}
+
+size_t LoginGatewayRegistry::countForZone(uint32_t zoneId, uint8_t gameType) const
+{
+    size_t count = 0;
+    for (const auto& kv : m_entries)
+    {
+        if (kv.second.zoneId == zoneId && kv.second.gameType == gameType)
+            ++count;
+    }
+    return count;
+}
+
 void LoginGatewayRegistry::rebuildOrder()
 {
     m_order.clear();

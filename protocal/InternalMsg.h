@@ -180,6 +180,7 @@ enum class InternalMsgID : uint16_t
     LOGIN_GATEWAY_HEARTBEAT    = 0x1903, /**< Super → LoginServer: 网关存活心跳 */
     LOGIN_RECHARGE_REQ         = 0x1904, /**< 充值请求（骨架，经 SS_EXTERN_FWD） */
     LOGIN_GM_CMD_REQ           = 0x1905, /**< GM 指令（骨架，经 SS_EXTERN_FWD） */
+    LOGIN_ZONE_STATUS_REPORT   = 0x1906, /**< Super → LoginServer: 游戏区状态上报 */
 };
 
 /** @brief LoginServer 业务大类（骨架） */
@@ -235,8 +236,9 @@ struct Msg_S2S_Register
  */
 struct Msg_S2S_Heartbeat
 {
-    uint32_t seq;       /**< 序列号（自增） */
-    uint64_t timestamp; /**< 发送时间戳（毫秒） */
+    uint32_t seq;         /**< 序列号（自增） */
+    uint64_t timestamp;   /**< 发送时间戳（毫秒） */
+    uint32_t onlineCount; /**< Gateway：客户端会话数；其它子服填 0 */
 };
 
 /**
@@ -477,10 +479,28 @@ struct Msg_GW_UserLoginRsp
 struct Msg_Login_GatewayRegister
 {
     uint32_t gatewayServerId; /**< 网关实例 ID（ServerList） */
+    uint32_t zoneId;          /**< 所属游戏区号 */
+    uint8_t  gameType;        /**< 游戏类型 */
+    uint8_t  reserved[3];     /**< 对齐保留 */
     char     ip[32];          /**< 客户端可连 IP */
     uint16_t port;            /**< 客户端监听端口（如 9005） */
     char     name[32];        /**< 网关名称 */
     char     zoneName[32];    /**< 可选区服名 */
+};
+
+/**
+ * @brief SuperServer → LoginServer: 游戏区状态周期上报（单向，无回包）
+ *
+ * 触发时机：Super 定时汇总各 Gateway 心跳中的 onlineCount 后推送。
+ */
+struct Msg_Login_ZoneStatusReport
+{
+    uint32_t zoneId;       /**< 游戏区号 */
+    uint8_t  gameType;     /**< 游戏类型 */
+    uint8_t  alive;        /**< 1=区可达且有存活网关，0=不可达 */
+    uint8_t  reserved;     /**< 对齐保留 */
+    uint32_t onlineCount;  /**< 全区在线人数（各 Gateway 之和） */
+    uint32_t gatewayCount; /**< 近期有心跳的 Gateway 数量 */
 };
 
 /**

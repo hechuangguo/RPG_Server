@@ -46,11 +46,14 @@ public:
 private:
     /**
      * @brief 下发网关地址 S2C_GATEWAY_INFO
-     * @param connID 客户端连接 ID
-     * @param code   0 成功，非 0 失败
-     * @param msg    提示文案
+     * @param connID   客户端连接 ID
+     * @param code     0 成功，非 0 失败
+     * @param msg      提示文案
+     * @param zoneId   所选游戏区号（code=0 时有效）
+     * @param gameType 游戏类型（code=0 时有效）
      */
-    void sendGatewayInfo(ConnID connID, int32_t code, const char* msg);
+    void sendGatewayInfo(ConnID connID, int32_t code, const char* msg,
+                         uint32_t zoneId = 0, uint8_t gameType = 0);
 
     LoginServer& m_owner; /**< 所属 LoginServer */
 };

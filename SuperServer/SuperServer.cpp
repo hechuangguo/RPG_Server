@@ -9,6 +9,7 @@
 #include "SuperLoggerMsg.h"
 #include "SuperGlobalMsg.h"
 #include "SuperZoneMsg.h"
+#include "SuperZoneStatusMsg.h"
 #include "../sdk/util/ServerBootstrap.h"
 
 #include <cstring>
@@ -31,7 +32,11 @@ SuperServer::~SuperServer()
 bool SuperServer::Init(const std::string& ip, uint16_t port, const ServerConfig& cfg)
 {
     Logger::Instance().SetServerName("SuperServer");
-    LOG_INFO("SuperServer starting on %s:%d", ip.c_str(), port);
+    LOG_INFO("SuperServer starting on %s:%d zone=%u gameType=%u",
+             ip.c_str(), port, cfg.zoneId, cfg.gameType);
+
+    m_zoneId = cfg.zoneId;
+    m_gameType = cfg.gameType;
 
     if (!loadServerList(cfg))
     {
@@ -48,6 +53,7 @@ bool SuperServer::Init(const std::string& ip, uint16_t port, const ServerConfig&
     RegisterHandlers();
 
     TimerMgr::Instance().Register(30000, 30000, [this] { CheckHeartbeat(); });
+    SuperZoneStatusMsgRegister(*this);
     LOG_INFO("SuperServer started.");
     return true;
 }
@@ -186,6 +192,12 @@ void SuperServer::OnHeartbeat(ConnID connID, const char* data, uint16_t len)
     if (it != m_servers.end())
     {
         it->second.lastHeartbeat = TimerMgr::NowMs();
+        if (len >= sizeof(Msg_S2S_Heartbeat) &&
+            it->second.type == SubServerType::GATEWAY && it->second.alive)
+        {
+            const auto* hb = reinterpret_cast<const Msg_S2S_Heartbeat*>(data);
+            m_gatewayOnline[it->second.serverID] = hb->onlineCount;
+        }
     }
 
     Msg_S2S_Heartbeat ack{};
@@ -196,6 +208,37 @@ void SuperServer::OnHeartbeat(ConnID connID, const char* data, uint16_t len)
     ack.timestamp = TimerMgr::NowMs();
     m_server.SendMsg(connID, (uint16_t)InternalMsgID::S2S_HEARTBEAT_ACK,
                      reinterpret_cast<char*>(&ack), sizeof(ack));
+}
+
+void SuperServer::reportZoneStatusToLogin()
+{
+    TcpClient* login = m_externHub.client(SubServerType::LOGIN);
+    if (!login || !login->IsConnected())
+        return;
+
+    uint32_t onlineTotal = 0;
+    uint32_t gatewayCount = 0;
+    for (const auto& kv : m_servers)
+    {
+        if (kv.second.type != SubServerType::GATEWAY || !kv.second.alive)
+            continue;
+        ++gatewayCount;
+        auto git = m_gatewayOnline.find(kv.second.serverID);
+        if (git != m_gatewayOnline.end())
+            onlineTotal += git->second;
+    }
+
+    Msg_Login_ZoneStatusReport report{};
+    report.zoneId = m_zoneId;
+    report.gameType = m_gameType;
+    report.onlineCount = onlineTotal;
+    report.gatewayCount = gatewayCount;
+    report.alive = (gatewayCount > 0) ? 1 : 0;
+
+    login->SendMsg(static_cast<uint16_t>(InternalMsgID::LOGIN_ZONE_STATUS_REPORT),
+                   reinterpret_cast<char*>(&report), sizeof(report));
+    LOG_DEBUG("Zone status report: zone=%u online=%u gateways=%u alive=%u",
+              report.zoneId, report.onlineCount, report.gatewayCount, report.alive);
 }
 
 void SuperServer::OnServerListReq(ConnID connID, const char* /*data*/, uint16_t /*len*/)
@@ -481,5 +524,8 @@ ConnID SuperServer::FindSceneServer()
 
 void SuperServer::RemoveSubServer(ConnID connID)
 {
+    auto it = m_servers.find(connID);
+    if (it != m_servers.end() && it->second.type == SubServerType::GATEWAY)
+        m_gatewayOnline.erase(it->second.serverID);
     m_servers.erase(connID);
 }

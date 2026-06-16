@@ -57,6 +57,8 @@ bool GatewayServer::Init(uint16_t clientPort,
 
     m_superClient.Connect(cfg.superIP, (uint16_t)cfg.superPort);
     m_clientPort = clientPort;
+    m_zoneId = cfg.zoneId;
+    m_gameType = cfg.gameType;
 
     RegisterHandlers();
     TimerMgr::Instance().Register(500,   0,     [this]{ RegisterToSuper(); });
@@ -200,6 +202,8 @@ void GatewayServer::reportGatewayToSuper()
     Msg_SS_LoginGatewayWrap wrap{};
     wrap.gatewayConnID = 0;
     wrap.body.gatewayServerId = m_self.id;
+    wrap.body.zoneId = m_zoneId;
+    wrap.body.gameType = m_gameType;
     wrap.body.port = m_clientPort;
     copyToWire(wrap.body.ip, sizeof(wrap.body.ip),
                m_self.ip.empty() ? "127.0.0.1" : m_self.ip.c_str());
@@ -225,6 +229,8 @@ void GatewayServer::sendLoginGatewayHeartbeat()
 
     Msg_Login_GatewayRegister hb{};
     hb.gatewayServerId = m_self.id;
+    hb.zoneId = m_zoneId;
+    hb.gameType = m_gameType;
     hb.port = m_clientPort;
     copyToWire(hb.ip, sizeof(hb.ip),
                m_self.ip.empty() ? "127.0.0.1" : m_self.ip.c_str());
@@ -505,7 +511,10 @@ void GatewayServer::RegisterToSuper()
 
 void GatewayServer::SendHeartbeat()
 {
-    Msg_S2S_Heartbeat hb{}; hb.seq = ++m_hbSeq; hb.timestamp = TimerMgr::NowMs();
+    Msg_S2S_Heartbeat hb{};
+    hb.seq = ++m_hbSeq;
+    hb.timestamp = TimerMgr::NowMs();
+    hb.onlineCount = static_cast<uint32_t>(m_userManager.getUserCount());
     m_superClient.SendMsg((uint16_t)InternalMsgID::S2S_HEARTBEAT,
                           reinterpret_cast<char*>(&hb), sizeof(hb));
 }

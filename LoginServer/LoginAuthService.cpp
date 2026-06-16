@@ -45,6 +45,7 @@ void LoginAuthService::onClientZoneList(ConnID connID, const char* data, uint16_
     std::memcpy(body.data(), &header, sizeof(header));
 
     auto* entries = reinterpret_cast<Msg_S2C_ZoneEntryWire*>(body.data() + sizeof(header));
+    auto& registry = m_owner.gatewayRegistry();
     for (size_t i = 0; i < zones.size(); ++i)
     {
         Msg_S2C_ZoneEntryWire& wire = entries[i];
@@ -55,6 +56,19 @@ void LoginAuthService::onClientZoneList(ConnID connID, const char* data, uint16_
         copyToWire(wire.name, sizeof(wire.name), row.name.c_str());
         copyToWire(wire.ip, sizeof(wire.ip), row.ip.c_str());
         wire.superPort = row.superPort;
+
+        ZoneRuntimeRow runtime;
+        const ZoneRuntimeRow* runtimePtr = nullptr;
+        if (m_owner.zoneInfoStore().getRuntime(row.gameType, row.zoneId, runtime))
+            runtimePtr = &runtime;
+
+        const size_t gatewayCount = registry.countForZone(row.zoneId, row.gameType);
+        wire.onlineCount = runtimePtr ? runtimePtr->onlineCount : 0;
+        wire.gatewayCount = static_cast<uint8_t>(
+            gatewayCount > 255 ? 255 : gatewayCount);
+        wire.loadLevel = ZoneInfoStore::computeLoadLevel(row, runtimePtr, gatewayCount);
+        wire.reserved[0] = 0;
+        wire.reserved[1] = 0;
     }
 
     m_owner.clientServer().SendMsg(connID, (uint16_t)ClientMsgID::S2C_ZONE_LIST_RSP,
@@ -143,48 +157,72 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
                                    reinterpret_cast<char*>(&loginRsp), sizeof(loginRsp));
 
     if (loginRsp.code == 0)
-        sendGatewayInfo(connID, 0, "OK");
+        sendGatewayInfo(connID, 0, "OK", req->zoneId, req->gameType);
     else
         sendGatewayInfo(connID, -1, "Login failed");
 }
 
-void LoginAuthService::sendGatewayInfo(ConnID connID, int32_t code, const char* msg)
+void LoginAuthService::sendGatewayInfo(ConnID connID, int32_t code, const char* msg,
+                                       uint32_t zoneId, uint8_t gameType)
 {
     Msg_S2C_GatewayInfo info{};
     info.code = code;
     copyToWire(info.msg, sizeof(info.msg), msg);
     if (code == 0)
     {
-        LoginGatewayEntry gw;
-        ZoneInfoRow zone;
-        auto& zoneStore = m_owner.zoneInfoStore();
-        auto& registry = m_owner.gatewayRegistry();
-
-        if (zoneStore.size() > 0)
+        if (zoneId == 0)
         {
-            if (zoneStore.pickRoundRobin(zone) &&
-                registry.pickByServerId(zone.zoneId, gw))
-            {
-                copyToWire(info.gatewayIP, sizeof(info.gatewayIP), gw.ip.c_str());
-                info.gatewayPort = gw.port;
-                if (!zone.name.empty())
-                    copyToWire(info.msg, sizeof(info.msg), zone.name.c_str());
-            }
-            else
-            {
-                info.code = -1;
-                copyToWire(info.msg, sizeof(info.msg), "No gateway available");
-            }
-        }
-        else if (registry.pickRoundRobin(gw))
-        {
-            copyToWire(info.gatewayIP, sizeof(info.gatewayIP), gw.ip.c_str());
-            info.gatewayPort = gw.port;
+            info.code = -1;
+            copyToWire(info.msg, sizeof(info.msg), "Invalid zone");
         }
         else
         {
-            info.code = -1;
-            copyToWire(info.msg, sizeof(info.msg), "No gateway available");
+            auto& zoneStore = m_owner.zoneInfoStore();
+            auto& registry = m_owner.gatewayRegistry();
+
+            ZoneInfoRow zone;
+            if (!zoneStore.findZone(gameType, zoneId, zone))
+            {
+                info.code = -1;
+                copyToWire(info.msg, sizeof(info.msg), "Zone not found");
+            }
+            else if (!zone.enabled)
+            {
+                info.code = -1;
+                copyToWire(info.msg, sizeof(info.msg), "Zone maintenance");
+            }
+            else
+            {
+                ZoneRuntimeRow runtime;
+                const ZoneRuntimeRow* runtimePtr = nullptr;
+                if (zoneStore.getRuntime(gameType, zoneId, runtime))
+                    runtimePtr = &runtime;
+
+                const size_t gatewayCount = registry.countForZone(zoneId, gameType);
+                const uint8_t loadLevel =
+                    ZoneInfoStore::computeLoadLevel(zone, runtimePtr, gatewayCount);
+                if (loadLevel == static_cast<uint8_t>(ZoneLoadLevel::MAINTENANCE))
+                {
+                    info.code = -1;
+                    copyToWire(info.msg, sizeof(info.msg), "Zone unavailable");
+                }
+                else
+                {
+                    LoginGatewayEntry gw;
+                    if (registry.pickByZone(zoneId, gameType, gw))
+                    {
+                        copyToWire(info.gatewayIP, sizeof(info.gatewayIP), gw.ip.c_str());
+                        info.gatewayPort = gw.port;
+                        if (!zone.name.empty())
+                            copyToWire(info.msg, sizeof(info.msg), zone.name.c_str());
+                    }
+                    else
+                    {
+                        info.code = -1;
+                        copyToWire(info.msg, sizeof(info.msg), "No gateway available");
+                    }
+                }
+            }
         }
     }
     m_owner.clientServer().SendMsg(connID, (uint16_t)ClientMsgID::S2C_GATEWAY_INFO,
