@@ -17,8 +17,8 @@
 对方拉取更新：
 
 ```bash
-git pull --recurse-submodules
-# 等价于：git pull && git submodule update --init --recursive
+./pull.sh
+# 或：git pull --recurse-submodules
 ```
 
 ### 1.2 网关登记（必须）
@@ -117,6 +117,7 @@ Scene Lua 扩展：见 [LUA.md](LUA.md) § 扩展指南。
 ```bash
 ./autoinit.sh              # 首次：从 vendor 离线编译 3Party + cmake（无需 curl）
 ./gen_data.sh              # 改 Excel 后
+./pull.sh                  # 日常：拉取主仓库 + Common 子模块
 ./Build.sh                 # 编译全部 10 个服务器
 ./Build.sh LoginServer     # 或只编译指定服（支持多个目标）
 ./Build.sh clean           # 清除 .build/ 与各服目录下可执行文件

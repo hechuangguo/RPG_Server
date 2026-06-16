@@ -125,6 +125,7 @@ RPG/
 ├── gen_data.sh    # 配表生成入口
 ├── build          # 编译入口（等价 ./Build.sh）
 ├── Build.sh       # 编译脚本
+├── pull.sh        # 一键拉取主仓库 + Common 子模块
 ├── autoinit.sh    # 环境初始化
 ├── RunServer.sh   # 启动所有服务器
 ├── StopServer.sh  # 停止所有服务器
@@ -163,6 +164,7 @@ sudo dnf install -y gcc-c++ cmake make tar openssl-devel zlib-devel
 ```bash
 ./autoinit.sh          # 从 vendor 离线编译 3Party + cmake configure
 ./gen_data.sh          # DataDoc Excel → database/*.lua（可选 --init 生成示例表）
+./pull.sh              # 日常：拉取主仓库 + Common 子模块
 ./build                # 或 ./Build.sh（编译全部 10 个服务器）
 
 # 单服编译示例

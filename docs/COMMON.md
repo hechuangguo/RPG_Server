@@ -75,6 +75,13 @@ git submodule update --init --recursive
 ### 日常拉取对方对 Common 的修改
 
 ```bash
+./pull.sh
+# 等价于：git pull --rebase && git submodule sync && git submodule update --init --recursive
+```
+
+或手动：
+
+```bash
 git pull --recurse-submodules
 # 等价于：
 # git pull && git submodule update --init --recursive

@@ -153,6 +153,7 @@ step "Protocol files OK (Common/ClientMsg.h present)."
 chmod +x "$SCRIPT_DIR/RunServer.sh"
 chmod +x "$SCRIPT_DIR/StopServer.sh"
 chmod +x "$SCRIPT_DIR/log.sh"
+chmod +x "$SCRIPT_DIR/pull.sh"
 chmod +x build Build.sh 2>/dev/null || true
 
 # -------------------------------------------------------
