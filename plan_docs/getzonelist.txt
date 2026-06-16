@@ -5,3 +5,15 @@
 5、服务器 LoginServer 起服的时候加载 serverlist.xml数据，并缓存在 区列表管理器中。
 6、服务器 LoginServer 区列表管理器 在收到各游戏区 SuperServer 上报的区数据情况，更新区列表，更新数据包含不限于：服务器状态、服务器在线人数、服务器网关列表等数据。
 7、客户端根据返回的服务器区列表，显示服务器繁忙、畅通等信息。
+
+
+游戏注册账号逻辑如下：
+1、客户端输入账号、密码、确认密码，点击开宗立派，给服务器 LoginServer 发送注册消息。
+2、服务器 LoginServer 收到 注册消息 后，通过 账号注册管理器 检查注册账号逻辑，当前检查所选游戏区状态是否正常、账号重复注册等问题。
+    a、检查通过后，账号写入数据库表 GameUser，并分配账号id（accid）。
+    b、最终给客户端反馈注册结果，客户端通过反馈消息结果给出相应的提示。
+3、添加LoginServer 数据库表 GameUser。
+4、GameUser 表 字段：accid(账号id)、account（账号）、key（密码）、userid（角色id）、gamezone(游戏区号)、createtime(创建账号时间)等数据。
+5、字段：accid(账号id) 注册成功后，LoginServer 分配一个id。
+6、字段：key（密码）需要服务器把客户端发过来的注册密码加密后存储，后续的登录会解密后验证密码是否正确。
+7、字段：userid（角色id） 与 CharBase、Relation表中的 user_id 对应，注册账号成功后，后续创建角色，LoginServer 会创建id给到游戏区。

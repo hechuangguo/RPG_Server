@@ -7,6 +7,7 @@
 #include "LoginServer.h"
 #include "../Common/ClientMsg.h"
 #include "../sdk/log/Logger.h"
+#include "../sdk/util/PasswordUtil.h"
 #include "../sdk/util/WireStringUtil.h"
 
 #include <cstring>
@@ -97,20 +98,28 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
     }
 
     char accName[sizeof(req->account)];
+    char password[sizeof(req->password)];
     copyToWire(accName, sizeof(accName), req->account);
+    copyToWire(password, sizeof(password), req->password);
 
     MYSQL* db = m_owner.db();
-    if (db)
+    if (!db)
     {
-        char escName[sizeof(accName) * 2 + 1];
-        mysql_real_escape_string(db, escName, accName, strlen(accName));
-        char sql[256];
-        snprintf(sql, sizeof(sql),
-                 "SELECT user_id FROM CharBase WHERE name='%s' LIMIT 1", escName);
+        loginRsp.code = -1;
+        copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "Database unavailable");
+    }
+    else
+    {
+        char escAccount[sizeof(accName) * 2 + 1];
+        mysql_real_escape_string(db, escAccount, accName, strlen(accName));
 
+        char sql[384];
+        snprintf(sql, sizeof(sql),
+                 "SELECT password_hash, user_id, gamezone FROM GameUser "
+                 "WHERE account='%s' LIMIT 1", escAccount);
         if (mysql_query(db, sql) != 0)
         {
-            LOG_ERR("LoginServer MySQL query failed: %s", mysql_error(db));
+            LOG_ERR("LoginServer query GameUser failed: %s", mysql_error(db));
             loginRsp.code = -1;
             copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "Database error");
         }
@@ -118,39 +127,35 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
         {
             MYSQL_RES* res = mysql_store_result(db);
             MYSQL_ROW row = res ? mysql_fetch_row(res) : nullptr;
-            if (row)
+            if (!row)
             {
-                loginRsp.code = 0;
-                loginRsp.userID = static_cast<uint64_t>(strtoull(row[0], nullptr, 10));
-                copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "Login OK");
+                loginRsp.code = 1;
+                copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "Account not found");
             }
             else
             {
-                snprintf(sql, sizeof(sql),
-                         "INSERT INTO CharBase (name) VALUES ('%s')", escName);
-                if (mysql_query(db, sql) != 0)
+                const char* hash = row[0] ? row[0] : "";
+                const uint32_t gameZone = row[2] ? static_cast<uint32_t>(strtoul(row[2], nullptr, 10)) : 0;
+                if (!verifyPasswordBcrypt(password, hash))
                 {
-                    LOG_ERR("LoginServer auto-create failed: %s", mysql_error(db));
-                    loginRsp.code = -1;
-                    copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "Create account failed");
+                    loginRsp.code = 1;
+                    copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "Invalid account or password");
+                }
+                else if (gameZone != 0 && gameZone != req->zoneId)
+                {
+                    loginRsp.code = 1;
+                    copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "Zone mismatch");
                 }
                 else
                 {
                     loginRsp.code = 0;
-                    loginRsp.userID = static_cast<uint64_t>(mysql_insert_id(db));
+                    loginRsp.userID = row[1] ? static_cast<uint64_t>(strtoull(row[1], nullptr, 10)) : 0;
                     copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "Login OK");
-                    LOG_INFO("LoginServer auto-create: name=%s userID=%llu",
-                             accName, static_cast<unsigned long long>(loginRsp.userID));
                 }
             }
             if (res)
                 mysql_free_result(res);
         }
-    }
-    else
-    {
-        loginRsp.code = 0;
-        copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "Login OK (no DB)");
     }
 
     m_owner.clientServer().SendMsg(connID, (uint16_t)ClientMsgID::S2C_LOGIN_RSP,

@@ -54,6 +54,7 @@ LoginServer::LoginServer()
     , m_clientServer(m_clientBridge.get())
     , m_registerServer(m_registerBridge.get())
     , m_authService(*this)
+    , m_registerService(*this)
     , m_rechargeService(*this)
     , m_gmService(*this)
 {
@@ -164,6 +165,8 @@ void LoginServer::onClientMessage(ConnID id, uint8_t module, uint8_t sub,
         return;
     if (sub == 0x01)
         m_authService.onClientLogin(id, data, len);
+    else if (sub == 0x03)
+        m_registerService.onClientRegister(id, data, len);
     else if (sub == 0x0B)
         m_authService.onClientZoneList(id, data, len);
 }

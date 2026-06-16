@@ -4,7 +4,7 @@
  *
  * 职责：
  *   - 处理 C2S_ZONE_LIST_REQ（返回 serverlist.xml 区服列表）
- *   - 处理 C2S_LOGIN_REQ（MySQL 校验 / 自动建号）
+ *   - 处理 C2S_LOGIN_REQ（GameUser 账号校验）
  *   - 回复 S2C_LOGIN_RSP
  *   - 成功时经 ZoneInfo + LoginGatewayRegistry 下发 S2C_GATEWAY_INFO
  */

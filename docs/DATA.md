@@ -19,6 +19,7 @@
 
 | 表 | 设计意图 | 读写进程 | 实现状态 |
 |----|----------|----------|----------|
+| **GameUser** | 账号主表（账号/密码哈希/区号/绑定角色） | LoginServer | **已实现** |
 | **CharBase** | 账号+角色合并；`` `binary` `` 存 bag/skills/buffs/quests | RecordServer | **已实现** |
 | **Relation** | 好友/黑名单 JSON + 社交扩展 `` `binary` `` | RecordServer ↔ SessionServer | **已实现** |
 | **Friend** | 双向好友/黑名单行 | — | **仅 DDL** |
@@ -41,7 +42,24 @@
 | `` `binary` `` | 包裹/技能/Buff/任务等序列化 blob |
 | `create_time`, `update_time` | 时间戳 |
 
-**登录语义**：Gateway → Record `REC_LOGIN_VERIFY_REQ` 按 `name`（来自 `Msg_C2S_LoginReq.account`）查找；**password 当前未校验**。
+**登录语义**：角色持久化由 Record 维护；账号密码校验已迁移至 LoginServer `GameUser`（bcrypt）。
+
+### 1.2 GameUser
+
+**读写**：LoginServer（注册/登录）
+
+| 字段 | 说明 |
+|------|------|
+| `accid` | 账号自增主键 |
+| `account` | 账号名，唯一 |
+| `password_hash` | bcrypt 密码哈希 |
+| `user_id` | 绑定角色 ID；注册后默认为 0（未创角） |
+| `gamezone` | 注册时选择的区号 |
+| `create_time`, `update_time` | 时间戳 |
+
+**约束**：
+- LoginServer 仅存哈希，不存明文密码
+- `user_id` 与 `CharBase.user_id`、`Relation.user_id` 对齐
 
 ### 1.3 Relation
 

@@ -46,8 +46,8 @@
 |---------|------|------|--------|------|
 | 0x0001 | C2S_LOGIN_REQ | C→S | `Msg_C2S_LoginReq` | 账号密码（Gateway→Record 验证） |
 | 0x0002 | S2C_LOGIN_RSP | S→C | `Msg_S2C_LoginRsp` | 登录结果 |
-| 0x0003 | C2S_REGISTER_REQ | C→S | — | 注册（enum 占位） |
-| 0x0004 | S2C_REGISTER_RSP | S→C | — | 注册响应 |
+| 0x0003 | C2S_REGISTER_REQ | C→S | `Msg_C2S_RegisterReq` | 注册账号（account/password/confirmPassword/zoneId/gameType） |
+| 0x0004 | S2C_REGISTER_RSP | S→C | `Msg_S2C_RegisterRsp` | 注册结果（含 accid） |
 | 0x0005 | C2S_SELECT_USER_REQ | C→S | — | 选角 |
 | 0x0006 | S2C_USER_LIST | S→C | — | 用户列表 |
 | 0x0007 | C2S_CREATE_USER_REQ | C→S | — | 创角 |

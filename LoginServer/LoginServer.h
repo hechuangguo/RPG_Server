@@ -3,7 +3,8 @@
  * @brief  外联登录服务器 —— 客户端账号校验与网关负载均衡
  *
  * ## 职责
- * - ClientListen：接收 C2S_ZONE_LIST_REQ / C2S_LOGIN_REQ，MySQL 校验后发 S2C_LOGIN_RSP + S2C_GATEWAY_INFO
+ * - ClientListen：接收 C2S_ZONE_LIST_REQ / C2S_REGISTER_REQ / C2S_LOGIN_REQ
+ * - 注册与登录均由 LoginServer 访问 GameUser 账号表
  * - RegisterListen：接收 Gateway LOGIN_GATEWAY_REGISTER / HEARTBEAT，维护网关表
  *
  * ## 部署
@@ -17,6 +18,7 @@
 #include "LoginGatewayRegistry.h"
 #include "ZoneInfoStore.h"
 #include "LoginAuthService.h"
+#include "LoginRegisterService.h"
 #include "LoginRechargeService.h"
 #include "LoginGmService.h"
 #include "../sdk/net/TcpServer.h"
@@ -67,6 +69,7 @@ public:
     MYSQL* db() { return m_db; }
     bool dbRequired() const { return m_dbRequired; }
     LoginAuthService& authService() { return m_authService; }
+    LoginRegisterService& registerService() { return m_registerService; }
     LoginRechargeService& rechargeService() { return m_rechargeService; }
     LoginGmService& gmService() { return m_gmService; }
 
@@ -109,6 +112,7 @@ private:
     LoginGatewayRegistry m_gatewayRegistry; /**< 存活网关表 */
     ZoneInfoStore        m_zoneInfoStore;     /**< serverlist.xml 区服缓存 */
     LoginAuthService     m_authService;     /**< 客户端登录 */
+    LoginRegisterService m_registerService; /**< 客户端注册 */
     LoginRechargeService m_rechargeService; /**< 充值骨架 */
     LoginGmService       m_gmService;       /**< GM 骨架 */
     MYSQL* m_db = nullptr;       /**< 可选 MySQL（与 Record 同库） */
