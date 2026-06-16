@@ -241,6 +241,9 @@ struct Msg_S2S_Heartbeat
     uint32_t onlineCount; /**< Gateway：客户端会话数；其它子服填 0 */
 };
 
+/** @brief v1 心跳体长（seq+timestamp）；兼容未重编、未携带 onlineCount 的子服 */
+constexpr uint16_t S2S_HEARTBEAT_BODY_V1 = 12;
+
 /**
  * @brief 子服务器 → SuperServer: 启动期拉取集群拓扑请求
  *

@@ -188,23 +188,29 @@ void SuperServer::OnRegister(ConnID connID, const char* data, uint16_t len)
 
 void SuperServer::OnHeartbeat(ConnID connID, const char* data, uint16_t len)
 {
+    uint32_t seq = 0;
+    uint32_t onlineCount = 0;
+    if (len >= S2S_HEARTBEAT_BODY_V1)
+    {
+        const auto* hb = reinterpret_cast<const Msg_S2S_Heartbeat*>(data);
+        seq = hb->seq;
+        if (len >= sizeof(Msg_S2S_Heartbeat))
+            onlineCount = hb->onlineCount;
+    }
+
     auto it = m_servers.find(connID);
     if (it != m_servers.end())
     {
         it->second.lastHeartbeat = TimerMgr::NowMs();
-        if (len >= sizeof(Msg_S2S_Heartbeat) &&
-            it->second.type == SubServerType::GATEWAY && it->second.alive)
+        if (it->second.type == SubServerType::GATEWAY && it->second.alive &&
+            len >= sizeof(Msg_S2S_Heartbeat))
         {
-            const auto* hb = reinterpret_cast<const Msg_S2S_Heartbeat*>(data);
-            m_gatewayOnline[it->second.serverID] = hb->onlineCount;
+            m_gatewayOnline[it->second.serverID] = onlineCount;
         }
     }
 
     Msg_S2S_Heartbeat ack{};
-    if (len >= sizeof(Msg_S2S_Heartbeat))
-    {
-        ack.seq = reinterpret_cast<const Msg_S2S_Heartbeat*>(data)->seq;
-    }
+    ack.seq = seq;
     ack.timestamp = TimerMgr::NowMs();
     m_server.SendMsg(connID, (uint16_t)InternalMsgID::S2S_HEARTBEAT_ACK,
                      reinterpret_cast<char*>(&ack), sizeof(ack));
