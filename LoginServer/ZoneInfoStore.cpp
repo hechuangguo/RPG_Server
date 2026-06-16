@@ -13,6 +13,7 @@
 namespace
 {
 constexpr uint64_t ZONE_RUNTIME_STALE_MS = 30000;
+constexpr uint64_t ZONE_STARTUP_GRACE_MS = 60000;
 } // namespace
 
 uint64_t ZoneInfoStore::zoneKey(uint8_t gameType, uint32_t zoneId)
@@ -163,18 +164,29 @@ uint8_t ZoneInfoStore::computeLoadLevel(const ZoneInfoRow& row,
                                         const ZoneRuntimeRow* runtime,
                                         size_t gatewayCount)
 {
+    static const uint64_t processStartMs = TimerMgr::NowMs();
     if (!row.enabled)
         return static_cast<uint8_t>(ZoneLoadLevel::MAINTENANCE);
 
     const uint64_t nowMs = TimerMgr::NowMs();
+    const bool withinStartupGrace =
+        nowMs >= processStartMs && (nowMs - processStartMs <= ZONE_STARTUP_GRACE_MS);
+
     if (!runtime || runtime->lastReportMs == 0 ||
         nowMs < runtime->lastReportMs ||
         nowMs - runtime->lastReportMs > ZONE_RUNTIME_STALE_MS)
     {
+        if (withinStartupGrace)
+            return static_cast<uint8_t>(ZoneLoadLevel::SMOOTH);
         return static_cast<uint8_t>(ZoneLoadLevel::MAINTENANCE);
     }
+
     if (!runtime->alive || gatewayCount == 0)
+    {
+        if (withinStartupGrace && gatewayCount > 0)
+            return static_cast<uint8_t>(ZoneLoadLevel::SMOOTH);
         return static_cast<uint8_t>(ZoneLoadLevel::MAINTENANCE);
+    }
 
     const uint32_t cap = row.maxOnline > 0 ? row.maxOnline : 1;
     const uint64_t pct = (static_cast<uint64_t>(runtime->onlineCount) * 100) / cap;

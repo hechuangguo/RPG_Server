@@ -7,6 +7,7 @@
 #include "LoginServer.h"
 #include "../Common/ClientMsg.h"
 #include "../sdk/log/Logger.h"
+#include "../sdk/timer/TimerMgr.h"
 #include "../sdk/util/PasswordUtil.h"
 #include "../sdk/util/WireStringUtil.h"
 
@@ -63,11 +64,22 @@ void LoginAuthService::onClientZoneList(ConnID connID, const char* data, uint16_
         if (m_owner.zoneInfoStore().getRuntime(row.gameType, row.zoneId, runtime))
             runtimePtr = &runtime;
 
-        const size_t gatewayCount = registry.countForZone(row.zoneId, row.gameType);
+        const size_t registryGatewayCount = registry.countForZone(row.zoneId, row.gameType);
+        const size_t runtimeGatewayCount = runtimePtr ? runtimePtr->gatewayCount : 0;
+        const size_t effectiveGatewayCount =
+            registryGatewayCount > runtimeGatewayCount ? registryGatewayCount : runtimeGatewayCount;
         wire.onlineCount = runtimePtr ? runtimePtr->onlineCount : 0;
         wire.gatewayCount = static_cast<uint8_t>(
-            gatewayCount > 255 ? 255 : gatewayCount);
-        wire.loadLevel = ZoneInfoStore::computeLoadLevel(row, runtimePtr, gatewayCount);
+            effectiveGatewayCount > 255 ? 255 : effectiveGatewayCount);
+        wire.loadLevel = ZoneInfoStore::computeLoadLevel(row, runtimePtr, effectiveGatewayCount);
+        const uint64_t nowMs = TimerMgr::NowMs();
+        const uint64_t runtimeAgeMs = runtimePtr && nowMs >= runtimePtr->lastReportMs
+            ? (nowMs - runtimePtr->lastReportMs) : 0;
+        LOG_DEBUG("区列表判定: zone=%u gameType=%u enabled=%u online=%u registryGateway=%zu runtimeGateway=%zu effectiveGateway=%zu runtimeAlive=%u runtimeAgeMs=%llu loadLevel=%u",
+                  row.zoneId, row.gameType, row.enabled ? 1 : 0, wire.onlineCount,
+                  registryGatewayCount, runtimeGatewayCount, effectiveGatewayCount,
+                  runtimePtr && runtimePtr->alive ? 1 : 0,
+                  static_cast<unsigned long long>(runtimeAgeMs), wire.loadLevel);
         wire.reserved[0] = 0;
         wire.reserved[1] = 0;
     }
@@ -209,9 +221,12 @@ void LoginAuthService::sendGatewayInfo(ConnID connID, int32_t code, const char* 
                 if (zoneStore.getRuntime(gameType, zoneId, runtime))
                     runtimePtr = &runtime;
 
-                const size_t gatewayCount = registry.countForZone(zoneId, gameType);
+                const size_t registryGatewayCount = registry.countForZone(zoneId, gameType);
+                const size_t runtimeGatewayCount = runtimePtr ? runtimePtr->gatewayCount : 0;
+                const size_t effectiveGatewayCount =
+                    registryGatewayCount > runtimeGatewayCount ? registryGatewayCount : runtimeGatewayCount;
                 const uint8_t loadLevel =
-                    ZoneInfoStore::computeLoadLevel(zone, runtimePtr, gatewayCount);
+                    ZoneInfoStore::computeLoadLevel(zone, runtimePtr, effectiveGatewayCount);
                 if (loadLevel == static_cast<uint8_t>(ZoneLoadLevel::MAINTENANCE))
                 {
                     info.code = -1;
