@@ -142,6 +142,37 @@ Gateway **不直连** Login RegisterListen，而是：
 
 经 `EXT_GAMEZONE_FWD` 解包后由 `LoginRechargeService` / `LoginGmService` 处理（当前为骨架）。
 
+### 4.6 Windows 客户端连接检查清单
+
+Windows 客户端连不上 LoginServer 时，**先看 `logs/login.log` 是否出现 `登录客户端连接`**。若无该日志，说明 TCP 未到达服务端（非账号/协议问题）。
+
+| 检查项 | 说明 |
+|--------|------|
+| **地址** | 填 **Linux 服务器局域网 IP**（如 `192.168.65.128`），**勿用** `127.0.0.1`（在 Windows 上指向本机） |
+| **端口** | 登录阶段连 **9010**（LoginServer ClientListen），不是 9005（Gateway） |
+| **LoginServer 已启动** | `./RunServer.sh login`（默认 `./RunServer.sh` 不含 LoginServer） |
+| **防火墙** | Linux `firewall-cmd --list-ports` 需含 `9010/tcp`；云主机安全组入站放行 9010 |
+| **serverlist.xml** | `LoginServer/serverlist.xml` 中 `<Zone ip="..."/>` 须为 **Windows 可达 IP**（登录成功后 `S2C_GATEWAY_INFO` 会下发该区网关地址）；改后重启 LoginServer |
+
+**服务器自检**（在 Linux 上执行）：
+
+```bash
+ss -lntp | grep 9010          # 期望 0.0.0.0:9010
+nc -zv 127.0.0.1 9010         # 本机探测
+nc -zv <服务器局域网IP> 9010   # 局域网 IP 探测
+grep "登录客户端连接" logs/login.log
+```
+
+**Windows 侧**（PowerShell，将 IP 换成服务器实际地址）：
+
+```powershell
+Test-NetConnection -ComputerName 192.168.65.128 -Port 9010
+```
+
+`TcpTestSucceeded : True` 表示网络可达；再连客户端并观察 `logs/login.log` 是否出现 `登录客户端连接`。
+
+**虚拟机 / NAT**：若 Linux 在 VMware/VirtualBox NAT 下，Windows 可能无法直连；改用桥接模式或配置端口转发。
+
 ---
 
 ## 5. LoggerServer

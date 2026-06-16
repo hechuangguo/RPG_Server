@@ -27,3 +27,5 @@ LoggerServer/LoggerServer
 GlobalServer/GlobalServer
 ZoneServer/ZoneServer
 LoginServer/LoginServer
+
+LoginServer/serverlist.xml

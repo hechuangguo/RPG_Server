@@ -9,5 +9,5 @@
 <ServerList>
     <!-- zoneId + gameType 联合唯一；enabled=0 表示维护中（仍下发，客户端置灰） -->
     <Zone zoneId="1" gameType="0" name="RPG一区"
-          ip="192.168.65.128" superPort="9000" enabled="1" maxOnline="2000"/>
+          ip="127.0.0.1" superPort="9000" enabled="1" maxOnline="2000"/>
 </ServerList>
