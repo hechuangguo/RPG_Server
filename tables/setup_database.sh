@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-#  一键初始化 rpg_game 库、rpg_table 账号与表结构
+#  一键初始化三库（rpg_login / rpg_game / rpg_global）、rpg_table 账号与表结构
 #  用法：
 #    ./tables/setup_database.sh              # 提示输入 root 密码
 #    MYSQL_ROOT_PASSWORD=xxx ./tables/setup_database.sh
@@ -20,6 +20,8 @@ DB_PORT=${DB_PORT:-3306}
 DB_NAME=${DB_NAME:-rpg_game}
 DB_USER=${DB_USER:-rpg_table}
 DB_PASS=${DB_PASS:-rpg_table}
+LOGIN_DB_NAME=${LOGIN_DB_NAME:-rpg_login}
+GLOBAL_DB_NAME=${GLOBAL_DB_NAME:-rpg_global}
 
 mysql_root() {
     if [ -n "${MYSQL_ROOT_PASSWORD:-}" ]; then
@@ -45,13 +47,19 @@ if ! mysql_root -e "SELECT 1" >/dev/null 2>&1; then
     exit 1
 fi
 
-echo "[1/3] 创建库 rpg_game 与用户 ${DB_USER} ..."
+echo "[1/5] 创建三库与用户 ${DB_USER} ..."
 mysql_root < "$SCRIPT_DIR/create_user_and_db.sql"
 
-echo "[2/3] 建表 (tables/init.sql) ..."
+echo "[2/5] 建表 (tables/init.sql) ..."
 mysql_root < "$SCRIPT_DIR/init.sql"
 
-echo "[3/3] 验证 ${DB_USER} 可连接 ${DB_NAME} ..."
+echo "[3/5] 验证 ${DB_USER} 可连接 ${DB_NAME}（游戏区 6 表）..."
 mysql_app -e "USE ${DB_NAME}; SHOW TABLES;"
 
-echo "完成。连接信息见 tables/database.credentials，config/config.xml 已对齐。"
+echo "[4/5] 验证 ${DB_USER} 可连接 ${LOGIN_DB_NAME}（登录服 2 表）..."
+mysql_app -e "USE ${LOGIN_DB_NAME}; SHOW TABLES;"
+
+echo "[5/5] 验证 ${DB_USER} 可连接 ${GLOBAL_DB_NAME}（全局服 1 表）..."
+mysql_app -e "USE ${GLOBAL_DB_NAME}; SHOW TABLES;"
+
+echo "完成。区内服见 config/config.xml（${DB_NAME}）；登录服 extern_login.xml（${LOGIN_DB_NAME}）；全局服 extern_global.xml（${GLOBAL_DB_NAME}）。"

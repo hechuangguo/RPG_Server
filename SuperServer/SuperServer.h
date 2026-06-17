@@ -78,15 +78,26 @@ struct UserProxy
     uint32_t gatewayClientConnID; /**< 用户在 GatewayServer 里的客户端连接 ID */
 };
 
+/** @brief Super 登录编排阶段（PendingLogin 状态机） */
+enum class LoginTxnPhase : uint8_t
+{
+    LOAD_USER       = 0, /**< 等待 Record 加载 */
+    RESOLVE_MAP     = 1, /**< 等待 Session 解析地图 */
+    ENTER_SCENE     = 2, /**< 等待 Scene 入场确认 */
+};
+
 /** @brief 登录流程中的待完成上下文 */
 struct PendingLogin
 {
     UserID       userID;               /**< 用户 ID（作为 pending key） */
     ConnID       gatewayConnID;        /**< 发起登录的 Gateway 连接 */
     uint32_t     gatewayClientConnID;  /**< Gateway 内客户端连接 ID */
+    uint64_t     loginTxnId = 0;       /**< 幂等键（与客户端选角一致） */
     ConnID       sceneConnID = INVALID_CONN_ID; /**< 解析 map 后分配的 Scene 连接 */
     uint32_t     mapId = 0;            /**< 用户目标地图 ID */
+    LoginTxnPhase phase = LoginTxnPhase::LOAD_USER; /**< 当前编排阶段 */
     bool         awaitingMapResolve = false; /**< 等待 Session 解析 sceneServerId */
+    uint64_t     startedAtMs = 0;      /**< 事务开始时间（幂等/超时） */
     UserBaseWire userData{};           /**< Record 返回的用户基础数据 */
 };
 
@@ -214,8 +225,8 @@ private:
     /**
      * @brief 处理用户登录请求
      *
-     * GatewayServer 验证账号密码后将结果发给 SuperServer，
-     * SuperServer 负责分配 SceneServer 并通知 RecordServer 加载用户数据。
+     * GatewayServer 选角后进世界时发送 Msg_GW_UserEnterReq，
+     * SuperServer 负责重复登录踢线、加载用户、解析地图并调度 SceneServer。
      */
     void OnUserLoginReq(ConnID connID, const char* data, uint16_t len);
 
@@ -233,6 +244,12 @@ private:
 
     /** @brief 向 Gateway 回登录失败（调度/加载/入场任一步失败） */
     void SendLoginFailToGateway(ConnID gatewayConnID, uint32_t clientConnID, int32_t code);
+
+    /** @brief 重复登录时踢除旧会话（Gateway 断连 + Scene 离场） */
+    void kickExistingUserSession(UserID userID);
+
+    /** @brief 清理超时 pending 登录并回包失败 */
+    void checkPendingLoginTimeouts();
 
     /**
      * @brief 处理踢人请求

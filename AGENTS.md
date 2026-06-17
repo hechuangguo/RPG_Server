@@ -27,7 +27,8 @@
 ## 架构要点（不可违反）
 
 - 单线程 `Poll()`，handler 内不阻塞、不加跨线程共享写
-- 仅 **RecordServer** 访问 MySQL
+- 三库分工：**rpg_login**（LoginServer）、**rpg_game**（Super/Record/Session）、**rpg_global**（GlobalServer）
+- RecordServer 为 **rpg_game** 角色数据主写库；Session 可直连 rpg_game 做本区玩法
 - 全区场景/副本调度在 **SessionServer** `SessionSceneManager`
 - 策划静态数据：**DataDoc Excel** → `./gen_data.sh` → **database/*.lua** → **basefile** 加载
 - MySQL 表结构：**tables/**（入口 `init.sql`，与 `database/` Lua 配表平级）
@@ -67,7 +68,8 @@ docs/LUA.md                      # Lua 绑定与模块
 
 ## 提交前自检
 
-- [ ] 未破坏单线程 / DB 唯一入口 / Session 调度边界
+- [ ] 三库配置与 `tables/init.sql` 一致（login/game/global）
+- [ ] 未破坏单线程 / Session 调度边界 / 三库分工
 - [ ] 新命名与注释符合 `.cursor/rules/*`（`.h` 文件头+API；XML 段/属性；SQL 表/字段 `COMMENT`）
 - [ ] 新增/修改日志均为中文文案，且术语与项目约定一致（如“登录服/网关服/场景服/会话服/存档服/超级服/视野服/全局服/跨区服/日志服”）
 - [ ] 新建或改动的 `.h` 中，**本次新增**符号均有 Doxygen 注释
@@ -79,7 +81,7 @@ docs/LUA.md                      # Lua 绑定与模块
 
 ## 禁止
 
-- 在 Gateway/Scene/Session 等进程直接连 MySQL（除非明确改造架构）
+- Gateway/Scene/AOI 直连 MySQL（Session/Super/Record/Global/Login 按三库分工除外）
 - 客户端消息绕过 Gateway 校验直转 Scene
 - 在 Lua 或 C++ 中复制粘贴大段策划表（应走 DataDoc）
 - 无说明地重命名存量 `OnXxx` / `m_` 前缀符号

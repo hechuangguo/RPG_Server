@@ -5,7 +5,7 @@
  * ## 职责
  * - 排行榜维护（接收经 Super SS_EXTERN_FWD 转发的 GLB_RANK_UPDATE，排序保留前 100 名）
  * - 全区数据同步（GLB_DATA_SYNC 向已连接 inner 连接 fan-out；SyncGlobalData 定时器尚未推送 rank）
- * - HTTP 入站 JSON API（/health、/rank、/getUserList）与可选 HTTP 出站探测
+ * - HTTP 入站 JSON API（/health、/rank；/getUserList 待 rpg_global 玩法接入）
  *
  * ## 连接
  * - 生产路径：SuperServer ExternalServerHub 出站连接 Global；Scene 等经 SS_EXTERN_FWD 访问
@@ -14,7 +14,7 @@
  * ## 特性
  * - 可选服务（ENABLE_GLOBAL=1 或独立启动）
  * - 独立部署，配置见 GlobalServer/extern_global.xml
- * - 可选 MySQL 持久化（getUserList 等 API 依赖）
+ * - 可选 MySQL 持久化（rpg_global，AllLittleThing 等全区表）
  */
 
 #pragma once
@@ -124,7 +124,7 @@ private:
     TcpServer        m_server;      /**< 游戏协议 TCP（Scene 等连接） */
     GlobalHttpServer m_httpServer;  /**< HTTP 入站（9070 等） */
     GlobalHttpClient m_httpClient;  /**< HTTP 出站（extern enabled=1 时） */
-    MYSQL*           m_db = nullptr; /**< 可选 MySQL；API 只读查询 */
+    MYSQL*           m_db = nullptr; /**< rpg_global；全区杂项持久化 */
     std::vector<RankEntry>           m_rank;       /**< 内存排行榜，最多 100 条 */
     std::unordered_map<ConnID, bool> m_innerConns; /**< 游戏区内服连接 */
 };

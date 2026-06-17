@@ -58,8 +58,8 @@ public:
     bool loadFromFile(const char* path);
 
     /**
-     * @brief 从 MySQL 全量加载 ZoneInfo（保留供迁移/工具，LoginServer 启动不调用）
-     * @param db 已连接的 MySQL 句柄
+     * @brief 从 rpg_login.ZoneInfo 全量加载（保留供迁移/工具，LoginServer 启动不调用）
+     * @param db 已连接 rpg_login 的 MySQL 句柄
      * @return 成功 true
      */
     bool loadFromDb(MYSQL* db);

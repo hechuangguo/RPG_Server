@@ -22,6 +22,7 @@
 #include "../Common/ClientMsg.h"
 #include "../sdk/net/MsgId.h"
 #include "SessionUser.h"
+#include <mysql/mysql.h>
 #include <string>
 
 /**
@@ -54,6 +55,9 @@ public:
 
     /** @brief 经 Super 转发到独立外联服 */
     GameZoneExternSender& externSender() { return m_externSender; }
+
+    /** @brief 游戏区 MySQL 句柄（rpg_game）；供本区排行榜等后期玩法直连表 */
+    MYSQL* database() const { return m_db; }
 
     void SendToClient(uint32_t clientConnID, uint8_t module, uint8_t sub,
                       const char* data, uint16_t len);
@@ -146,6 +150,9 @@ private:
     /** @brief 自动保存在线用户的 Session 数据 */
     void AutoSaveAll();
 
+    /** @brief 连接游戏区库 rpg_game（config.xml Database 段） */
+    bool initDatabase(const ServerConfig& cfg);
+
     TcpServer             m_server;       /**< 入站：Gateway / Scene */
     TcpClient             m_superClient;  /**< 出站 SuperServer */
     TcpClient             m_recordClient; /**< 出站 RecordServer（Relation） */
@@ -158,6 +165,7 @@ private:
     bool                  m_relationLoadDone = false;    /**< 同步单用户加载完成 */
     bool                  m_relationLoadOk   = false;    /**< 同步单用户加载成功 */
     RelationRowData       m_relationLoadRow;             /**< 同步加载结果缓存 */
+    MYSQL*                m_db = nullptr;                /**< 游戏区库 rpg_game 直连 */
 
     static SessionServer* s_active;
 };

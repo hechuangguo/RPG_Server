@@ -64,10 +64,21 @@ public:
     /** @brief 按场景实例 ID 查普通地图记录 */
     SessionScene* findNormalScene(uint64_t sceneInstanceId) const;
 
-    /** @brief 按 mapId 解析承载普通地图的 SceneServer（playerCount 最小优先） */
+    /**
+     * @brief 按 mapId 解析承载普通地图的 SceneServer
+     *
+     * 负载策略（场景 LB）：
+     * - 健康过滤：仅 RUNNING 场景且 SceneServer 节点 alive=true
+     * - 评分：同 mapId 下取 playerCount 最小者（最少在线优先）
+     * - 无可用实例时返回 0，由 Super 回登录失败 code=-3
+     */
     uint32_t resolveSceneServerByMapId(uint32_t mapId) const;
 
-    /** @brief 按负载选择 SceneServer（场景数 + 玩家数加权） */
+    /**
+     * @brief 按负载选择 SceneServer（副本/新场景分配）
+     *
+     * 评分：load = sceneCount * 10 + playerCount，取 load 最小且 alive 的节点。
+     */
     uint32_t pickSceneServerId() const;
 
     /** @brief 生成全区唯一副本实例 ID */

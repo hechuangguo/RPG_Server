@@ -17,7 +17,7 @@ Client → GatewayServer ─┬→ SceneServer → AOIServer
 |--------|------|------|------|
 | SuperServer | 9000 | 注册中心、登录调度、外联转发枢纽 | 区内 |
 | SessionServer | 9001 | 社会关系、**全区场景/副本调度** | 区内 |
-| RecordServer | 9002 | MySQL 持久化（唯一写库） | 区内 |
+| RecordServer | 9002 | rpg_game 持久化（角色主写库） | 区内 |
 | AOIServer | 9003 | 9 宫格视野管理 | 区内 |
 | SceneServer | 9004 | 在线逻辑、Lua 脚本、**Scene / CopyScene 实例** | 区内 |
 | GatewayServer | 9005 / 19005 | 客户端接入、**消息校验**、按模块转发 Scene/Session | 区内 |
@@ -192,15 +192,20 @@ sudo dnf install -y gcc-c++ cmake make tar openssl-devel zlib-devel
 
 ### 数据库
 
+三库：`rpg_login`（登录服）、`rpg_game`（区内）、`rpg_global`（全局服）。
+
 ```bash
-# 建库建表（必须）
-mysql -u root -p < tables/init.sql
-# 修改 config/config.xml 中的 Database 密码
+# 建三库建表（推荐）
+./tables/setup_database.sh
+# 修改 config/config.xml、extern_login.xml、extern_global.xml 中的 Database 密码
+
+# 存量升级（rpg_game 含 GameUser/ZoneInfo 时）
+mysql -u root -p < tables/migrate_login_db.sql
 
 # 已有库且 Relation 表无 binary 列时（执行一次）
 mysql -h 127.0.0.1 -u rpg_table -prpg_table rpg_game < tables/alter_relation_add_binary.sql
 
-# 导入测试账号（可选，仅开发环境）
+# 导入测试角色（可选，仅开发环境，写入 rpg_game）
 mysql -u root -p < tables/seed_test_data.sql
 ```
 

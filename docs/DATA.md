@@ -4,29 +4,36 @@
 
 | 轨道 | 路径 | 说明 |
 |------|------|------|
-| MySQL | [`tables/`](../tables/) | 角色、社交、集群拓扑；仅 RecordServer 写游戏数据 |
+| MySQL | [`tables/`](../tables/) | 三库：rpg_login / rpg_game / rpg_global；Record 主写游戏数据 |
 | 策划 Lua | [`DataDoc/`](../DataDoc/) → [`database/`](../database/) | 静态配置，SceneServer Lua 加载 |
 
 脚本说明见 [tables/README.md](../tables/README.md)、[database/README.md](../database/README.md)、[DataDoc/README.md](../DataDoc/README.md)。
 
 ---
 
-## 1. MySQL 表（`tables/init.sql`）
+## 1. MySQL 三库（`tables/init.sql`）
 
-库名默认 `rpg_game`，应用账号 `rpg_table` / `rpg_table`（与 `config/config.xml` 一致）。
+应用账号 `rpg_table` / `rpg_table`（三库均有权限）。
+
+| 库 | 配置来源 | 连接进程 | 表 |
+|----|----------|----------|-----|
+| **rpg_login** | `LoginServer/extern_login.xml` | LoginServer | GameUser, ZoneInfo |
+| **rpg_game** | `config/config.xml` | SuperServer, RecordServer, SessionServer | CharBase, Relation, Friend, Mail, MapInfo, ServerList |
+| **rpg_global** | `GlobalServer/extern_global.xml` | GlobalServer | AllLittleThing |
 
 ### 1.1 总览
 
-| 表 | 设计意图 | 读写进程 | 实现状态 |
-|----|----------|----------|----------|
-| **GameUser** | 账号主表（账号/密码哈希/区号/绑定角色） | LoginServer | **已实现** |
-| **CharBase** | 账号+角色合并；`` `binary` `` 存 bag/skills/buffs/quests | RecordServer | **已实现** |
-| **Relation** | 好友/黑名单 JSON + 社交扩展 `` `binary` `` | RecordServer ↔ SessionServer | **已实现** |
-| **Friend** | 双向好友/黑名单行 | — | **仅 DDL** |
-| **Mail** | 离线邮件 + 附件 | — | **仅 DDL** |
-| **MapInfo** | 每用户每地图 JSON 存档 | — | **仅 DDL** |
-| **ServerList** | 区内 6 服拓扑 | SuperServer 启动只读 | **已实现** |
-| **ZoneInfo** | 登录区入口列表 | LoginServer `ZoneInfoStore` | **已实现** |
+| 表 | 库 | 设计意图 | 读写进程 | 实现状态 |
+|----|-----|----------|----------|----------|
+| **GameUser** | rpg_login | 账号主表（账号/密码哈希/区号/绑定角色） | LoginServer | **已实现** |
+| **ZoneInfo** | rpg_login | 登录区入口参考/种子 | LoginServer `ZoneInfoStore`（运行时读 serverlist.xml） | **已实现** |
+| **CharBase** | rpg_game | 角色基础；`` `binary` `` 存 bag/skills/buffs/quests | RecordServer | **已实现** |
+| **Relation** | rpg_game | 好友/黑名单 JSON + 社交扩展 `` `binary` `` | RecordServer ↔ SessionServer | **已实现** |
+| **Friend** | rpg_game | 双向好友/黑名单行 | — | **仅 DDL** |
+| **Mail** | rpg_game | 离线邮件 + 附件 | — | **仅 DDL** |
+| **MapInfo** | rpg_game | 每用户每地图 JSON 存档 | — | **仅 DDL** |
+| **ServerList** | rpg_game | 区内 6 服拓扑 | SuperServer 启动只读 | **已实现** |
+| **AllLittleThing** | rpg_global | 全区杂项 KV 持久化 | GlobalServer | **仅 DDL** |
 
 ### 1.2 CharBase
 
@@ -100,9 +107,9 @@ Session 启动时会 **阻塞** 直到 Relation 全表预载完成。
 
 `init.sql` 种子写入 6 行默认拓扑（9000–9005）。
 
-### 1.6 ZoneInfo
+### 1.6 ZoneInfo（rpg_login）
 
-**读写**：LoginServer `ZoneInfoStore`（可选 MySQL；60s 周期 reload）
+**读写**：LoginServer `ZoneInfoStore`（运行时读 `serverlist.xml`；`loadFromDb` 工具路径读 rpg_login）
 
 | 字段 | 说明 |
 |------|------|
@@ -110,6 +117,16 @@ Session 启动时会 **阻塞** 直到 Relation 全表预载完成。
 | `game_type` | 游戏产品类型（0=当前 RPG） |
 | `name`, `ip`, `super_port` | 区服展示名与 Super 入口 |
 | `enabled` | 1=可登录，0=维护 |
+
+### 1.7 AllLittleThing（rpg_global）
+
+**读写**：GlobalServer（首期仅 DDL；`thing_key` + `thing_value` MEDIUMBLOB）
+
+| 字段 | 说明 |
+|------|------|
+| `thing_key` | 业务键，全区唯一 |
+| `thing_value` | 序列化 blob（配置/排行榜快照等） |
+| `update_time` | 最后更新时间 |
 
 ---
 
@@ -165,27 +182,36 @@ DataTable.clearCache()  -- 热更前清缓存
 
 ```mermaid
 flowchart LR
-    subgraph persist [MySQL 持久化]
+    subgraph loginDb [rpg_login]
+        GU[GameUser]
+        ZI[ZoneInfo]
+    end
+    subgraph gameDb [rpg_game]
         CB[CharBase]
         REL[Relation]
         SL[ServerList]
-        ZI[ZoneInfo]
     end
+    subgraph globalDb [rpg_global]
+        ALT[AllLittleThing]
+    end
+    REC[RecordServer] --> CB
+    REC --> REL
+    SES[SessionServer] --> gameDb
+    SS[SuperServer] --> SL
+    LS[LoginServer] --> loginDb
+    GLOB[GlobalServer] --> ALT
     subgraph static [Lua 策划表]
         NPC[npc_config]
         QST[quest_config]
     end
-    REC[RecordServer] --> CB
-    REC --> REL
-    SS[SuperServer] --> SL
-    LS[LoginServer] --> ZI
     SceneLua[SceneServer Lua] --> NPC
     SceneLua --> QST
 ```
 
 **原则**：
 
-- 玩家存档变更只经 **RecordServer**
+- 玩家 CharBase 存档变更主经 **RecordServer**；Session 可直连 rpg_game 做本区玩法（如排行榜）
+- 账号数据仅在 **rpg_login**（LoginServer）；全区数据在 **rpg_global**（GlobalServer）
 - 静态数值走 **DataDoc → database/**，不在 C++/Lua 硬编码大表
 - 集群拓扑：**ServerList**（区内）+ **loginserverlist.xml**（外联）
 
@@ -194,8 +220,9 @@ flowchart LR
 ## 4. 初始化命令
 
 ```bash
-./tables/setup_database.sh                    # 推荐：建库建表
-mysql -u root -p < tables/seed_test_data.sql  # 可选：test001/123456
+./tables/setup_database.sh                    # 推荐：三库建表
+# 存量升级（rpg_game 含 GameUser/ZoneInfo）：mysql -u root -p < tables/migrate_login_db.sql
+mysql -u root -p < tables/seed_test_data.sql  # 可选：test001/123456（rpg_game）
 ./gen_data.sh                                 # 策划 Lua
 ```
 

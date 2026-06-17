@@ -25,6 +25,7 @@ void onGatewayRegister(LoginServer& server, ConnID fromConn, const char* data, u
     entry.name = req->name;
     entry.zoneName = req->zoneName;
     entry.lastHeartbeatMs = TimerMgr::NowMs();
+    entry.onlineCount = req->onlineCount;
     server.gatewayRegistry().upsert(entry);
 
     Msg_Login_GatewayRegisterRsp rsp{};
@@ -48,7 +49,14 @@ void onGatewayHeartbeat(LoginServer& server, ConnID fromConn, const char* data, 
         onGatewayRegister(server, fromConn, data, len);
         return;
     }
-    LOG_DEBUG("收到网关心跳: id=%u", req->gatewayServerId);
+    LoginGatewayEntry gw;
+    if (server.gatewayRegistry().pickByServerId(req->gatewayServerId, gw))
+    {
+        gw.onlineCount = req->onlineCount;
+        gw.lastHeartbeatMs = TimerMgr::NowMs();
+        server.gatewayRegistry().upsert(gw);
+    }
+    LOG_DEBUG("收到网关心跳: id=%u online=%u", req->gatewayServerId, req->onlineCount);
 }
 } // namespace
 

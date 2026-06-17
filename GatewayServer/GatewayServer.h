@@ -147,6 +147,24 @@ private:
      */
     void OnClientLogin(ConnID connID, const char* data, uint16_t len);
 
+    /** @brief 处理客户端注册请求（兼容旧网关入口） */
+    void OnClientRegister(ConnID connID, const char* data, uint16_t len);
+
+    /** @brief Gateway 票据鉴权 */
+    void OnGatewayAuth(ConnID connID, const char* data, uint16_t len);
+
+    /** @brief 选择角色进世界 */
+    void OnSelectUser(ConnID connID, const char* data, uint16_t len);
+
+    /** @brief 创建角色 */
+    void OnCreateUser(ConnID connID, const char* data, uint16_t len);
+
+    void OnValidateTokenRsp(ConnID fromConn, const char* data, uint16_t len);
+    void OnListCharactersRsp(ConnID fromConn, const char* data, uint16_t len);
+    void OnCreateCharacterRsp(ConnID fromConn, const char* data, uint16_t len);
+
+    void sendUserListToClient(ConnID clientConn, uint64_t accid, uint32_t zoneId);
+
     /**
      * @brief 处理客户端心跳
      *

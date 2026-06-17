@@ -45,9 +45,9 @@ flowchart LR
 |------|--------|------|
 | `loginserverlist.xml`（项目根） | SuperServer `ExternalServerHub` | Logger/Global/Zone/Login 的 IP:port |
 | `LoggerServer/extern_logger.xml` | LoggerServer | listen 端口、logDir |
-| `GlobalServer/extern_global.xml` | GlobalServer | listen、HTTP、可选 MySQL |
-| `ZoneServer/extern_zone.xml` | ZoneServer | listen、可选 MySQL |
-| `LoginServer/extern_login.xml` | LoginServer | ClientListen、RegisterListen、可选 MySQL |
+| `GlobalServer/extern_global.xml` | GlobalServer | listen、HTTP、rpg_global |
+| `ZoneServer/extern_zone.xml` | ZoneServer | listen（不连 MySQL） |
+| `LoginServer/extern_login.xml` | LoginServer | ClientListen、RegisterListen、rpg_login |
 
 `config/README.md` 也描述了 `config.xml` 与上述文件的关系。
 
@@ -122,8 +122,8 @@ Gateway **不直连** Login RegisterListen，而是：
 |------|------|------|
 | `serverlist.xml` | `LoginServer/serverlist.xml` | 玩家可见游戏区列表；启动加载至 `ZoneInfoStore` |
 | `loginserverlist.xml` | 项目根 | 区内进程连外联 Logger/Global/Zone |
-| MySQL `ServerList` | `tables/init.sql` | Super 区内拓扑 |
-| MySQL `ZoneInfo` | `tables/init.sql` | 参考/种子数据；LoginServer **不再读取** |
+| MySQL `ServerList` | `tables/init.sql`（rpg_game） | Super 区内拓扑 |
+| MySQL `ZoneInfo` | `tables/init.sql`（rpg_login） | 参考/种子；LoginServer 运行时读 serverlist.xml |
 
 - `extern_login.xml` 中 `<ServerList path="..."/>` 指定区列表路径（默认 `LoginServer/serverlist.xml`）
 - `C2S_REGISTER_REQ` / `S2C_REGISTER_RSP`：注册账号（区状态校验、重复校验、返回 accid）
@@ -192,8 +192,8 @@ Test-NetConnection -ComputerName 192.168.65.128 -Port 9010
 |----|------|
 | 启动 | `ENABLE_GLOBAL=1 ./RunServer.sh` |
 | TCP | Super 连接；`GLB_RANK_UPDATE` / `GLB_DATA_SYNC` |
-| HTTP | `GlobalHttpServer` — `/health`、`/rank`、`/getUserList` 等 |
-| MySQL | 可选，HTTP getUserList 依赖 |
+| HTTP | `GlobalHttpServer` — `/health`、`/rank` 等 |
+| MySQL | **rpg_global**（AllLittleThing 等全区表） |
 | 局限 | `SyncGlobalData()` 未向 Scene 推送 rank；`OnDataSync` fan-out 可用 |
 
 **生产路径**：Super `ExternalServerHub`，非 Scene 直连 Global。
@@ -229,13 +229,14 @@ ENABLE_GLOBAL=1 ENABLE_ZONE=1 ./RunServer.sh
 
 ## 9. 与 MySQL 的关系
 
-| 进程 | MySQL |
-|------|-------|
-| SuperServer | 启动只读 `ServerList`（区内拓扑） |
-| RecordServer | 写 CharBase / Relation |
-| LoginServer | 可选：CharBase 验证；区列表来自 `serverlist.xml` |
-| GlobalServer | 可选：HTTP API |
-| ZoneServer | 可选（配置预留） |
-| LoggerServer | 无 |
+| 进程 | 库 | MySQL |
+|------|-----|-------|
+| SuperServer | rpg_game | 启动只读 `ServerList` |
+| RecordServer | rpg_game | 写 CharBase / Relation（主写库） |
+| SessionServer | rpg_game | 直连（本区排行榜等后期玩法） |
+| LoginServer | rpg_login | GameUser 注册/登录；区列表运行时读 `serverlist.xml` |
+| GlobalServer | rpg_global | AllLittleThing 等全区表 |
+| ZoneServer | — | 不连接 MySQL |
+| LoggerServer | — | 无 |
 
 外联服**不在** `ServerList` 表登记。

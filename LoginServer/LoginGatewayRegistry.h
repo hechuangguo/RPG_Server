@@ -25,6 +25,7 @@ struct LoginGatewayEntry
     std::string name;            /**< 网关名称 */
     std::string zoneName;        /**< 区服名 */
     uint64_t lastHeartbeatMs = 0; /**< 最近心跳/注册时间（ms） */
+    uint32_t onlineCount = 0;     /**< 当前客户端会话数（Super/Gateway 上报） */
 };
 
 /**
@@ -68,7 +69,12 @@ public:
     bool pickByServerId(uint32_t gatewayServerId, LoginGatewayEntry& out);
 
     /**
-     * @brief 在指定游戏区内轮询选取网关
+     * @brief 在指定游戏区内按负载选取网关
+     *
+     * 网关 LB 策略：
+     * - 健康过滤：剔除 30s 无心跳节点（pruneStale 后调用）
+     * - 评分：onlineCount 最小优先；并列时区内 round-robin
+     *
      * @param zoneId   游戏区号
      * @param gameType 游戏类型
      * @param out      [out] 选中的网关

@@ -41,7 +41,7 @@ struct ServerConfig
     int         dbPort     = 3306;         /**< MySQL 端口 */
     std::string dbUser     = "root";       /**< MySQL 用户名 */
     std::string dbPass     = "";           /**< MySQL 密码 */
-    std::string dbName     = "rpg_game";   /**< MySQL 数据库名 */
+    std::string dbName     = "rpg_game";   /**< 游戏区库名（区内 Super/Record/Session） */
     // ── SuperServer ──
     std::string superIP    = "127.0.0.1";  /**< SuperServer 监听 IP */
     int         superPort  = 9000;         /**< SuperServer 监听端口 */

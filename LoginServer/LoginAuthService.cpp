@@ -5,9 +5,12 @@
 
 #include "LoginAuthService.h"
 #include "LoginServer.h"
+#include "LoginTokenUtil.h"
 #include "../Common/ClientMsg.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
+#include "../sdk/util/LoginSpawnConfig.h"
+#include "../sdk/util/LoginFlowLog.h"
 #include "../sdk/util/PasswordUtil.h"
 #include "../sdk/util/WireStringUtil.h"
 
@@ -98,6 +101,9 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
 
     Msg_S2C_LoginRsp loginRsp{};
     loginRsp.userID = 0;
+    loginRsp.accid = 0;
+    loginRsp.loginToken[0] = '\0';
+    loginRsp.tokenExpireMs = 0;
 
     if (m_owner.dbRequired() && !m_owner.db())
     {
@@ -127,7 +133,7 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
 
         char sql[384];
         snprintf(sql, sizeof(sql),
-                 "SELECT password_hash, user_id, gamezone FROM GameUser "
+                 "SELECT accid, password_hash, user_id, gamezone FROM GameUser "
                  "WHERE account='%s' LIMIT 1", escAccount);
         if (mysql_query(db, sql) != 0)
         {
@@ -146,8 +152,8 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
             }
             else
             {
-                const char* hash = row[0] ? row[0] : "";
-                const uint32_t gameZone = row[2] ? static_cast<uint32_t>(strtoul(row[2], nullptr, 10)) : 0;
+                const char* hash = row[1] ? row[1] : "";
+                const uint32_t gameZone = row[3] ? static_cast<uint32_t>(strtoul(row[3], nullptr, 10)) : 0;
                 if (!verifyPasswordBcrypt(password, hash))
                 {
                     loginRsp.code = 1;
@@ -161,8 +167,43 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
                 else
                 {
                     loginRsp.code = 0;
-                    loginRsp.userID = row[1] ? static_cast<uint64_t>(strtoull(row[1], nullptr, 10)) : 0;
+                    loginRsp.accid = row[0] ? static_cast<uint64_t>(strtoull(row[0], nullptr, 10)) : 0;
+                    loginRsp.userID = row[2] ? static_cast<uint64_t>(strtoull(row[2], nullptr, 10)) : 0;
                     copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "Login OK");
+
+                    char token[65] = {};
+                    if (!generateLoginToken(token, sizeof(token)))
+                    {
+                        loginRsp.code = -1;
+                        copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "Token generation failed");
+                    }
+                    else
+                    {
+                        char escToken[sizeof(token) * 2 + 1];
+                        mysql_real_escape_string(db, escToken, token, strlen(token));
+                        snprintf(sql, sizeof(sql),
+                                 "DELETE FROM LoginSession WHERE accid=%llu AND zone_id=%u",
+                                 static_cast<unsigned long long>(loginRsp.accid), req->zoneId);
+                        mysql_query(db, sql);
+                        snprintf(sql, sizeof(sql),
+                                 "INSERT INTO LoginSession (token, accid, zone_id, game_type, expire_time) "
+                                 "VALUES ('%s', %llu, %u, %u, DATE_ADD(NOW(), INTERVAL %u SECOND))",
+                                 escToken,
+                                 static_cast<unsigned long long>(loginRsp.accid),
+                                 req->zoneId, req->gameType, LOGIN_TOKEN_TTL_SEC);
+                        if (mysql_query(db, sql) != 0)
+                        {
+                            LOG_ERR("写入 LoginSession 失败: %s", mysql_error(db));
+                            loginRsp.code = -1;
+                            copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "Session write failed");
+                        }
+                        else
+                        {
+                            copyToWire(loginRsp.loginToken, sizeof(loginRsp.loginToken), token);
+                            loginRsp.tokenExpireMs =
+                                TimerMgr::NowMs() + static_cast<uint64_t>(LOGIN_TOKEN_TTL_SEC) * 1000ULL;
+                        }
+                    }
                 }
             }
             if (res)
@@ -177,6 +218,8 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
         LOG_INFO("账号登录成功: connID=%u zone=%u gameType=%u userID=%llu",
                  connID, req->zoneId, req->gameType,
                  static_cast<unsigned long long>(loginRsp.userID));
+        logLoginFlow(LoginFlowPhase::ACCOUNT_LOGIN, loginRsp.accid, loginRsp.userID, connID, 0,
+                     nullptr);
     }
 
     if (loginRsp.code == 0)

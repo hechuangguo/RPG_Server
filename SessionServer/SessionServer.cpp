@@ -27,13 +27,45 @@ SessionServer::SessionServer()
 {
 }
 
-SessionServer::~SessionServer() = default;
+SessionServer::~SessionServer()
+{
+    if (m_db)
+    {
+        mysql_close(m_db);
+        m_db = nullptr;
+    }
+}
+
+bool SessionServer::initDatabase(const ServerConfig& cfg)
+{
+    m_db = mysql_init(nullptr);
+    if (!m_db)
+    {
+        LOG_FATAL("会话服初始化 MySQL 句柄失败");
+        return false;
+    }
+    if (!mysql_real_connect(m_db, cfg.dbHost.c_str(), cfg.dbUser.c_str(), cfg.dbPass.c_str(),
+                            cfg.dbName.c_str(), static_cast<unsigned int>(cfg.dbPort),
+                            nullptr, 0))
+    {
+        LOG_FATAL("会话服连接数据库失败: %s", mysql_error(m_db));
+        mysql_close(m_db);
+        m_db = nullptr;
+        return false;
+    }
+    mysql_set_character_set(m_db, "utf8mb4");
+    LOG_INFO("会话服数据库连接成功: %s:%d/%s",
+             cfg.dbHost.c_str(), cfg.dbPort, cfg.dbName.c_str());
+    return true;
+}
 
 bool SessionServer::Init(const std::string& ip, uint16_t port,
                          const ServerConfig& cfg, const ServerList& list, uint32_t selfId)
 {
     Logger::Instance().SetServerName("SessionServer");
     LOG_INFO("会话服启动中: %s:%d", ip.c_str(), port);
+    if (!initDatabase(cfg))
+        return false;
     if (const ServerEntry* self = list.find(SubServerType::SESSION, selfId))
         m_self = *self;
     m_externSender.setSelfId(m_self.id ? m_self.id : selfId);

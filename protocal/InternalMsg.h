@@ -11,7 +11,7 @@
  * | 0x1F01 ~ 0x1F04    | 注册/心跳（所有服务器共用） |
  * | 0x1001 ~ 0x1003    | SuperServer   |
  * | 0x1101 ~ 0x1105    | SessionServer |
- * | 0x1201 ~ 0x1212    | RecordServer  |
+ * | 0x1201 ~ 0x1213    | RecordServer  |
  * | 0x1301 ~ 0x1306    | SceneServer   |
  * | 0x1401 ~ 0x1405    | GatewayServer |
  * | 0x1501 ~ 0x1504    | AOIServer     |
@@ -110,7 +110,7 @@ enum class InternalMsgID : uint16_t
     SES_RESOLVE_MAP_RSP    = 0x1113, /**< Session → Super: mapId 解析结果 */
 
     // ============================================================
-    //  RecordServer (0x1201 ~ 0x1206)
+    //  RecordServer (0x1201 ~ 0x1213)
     // ============================================================
     REC_LOAD_USER_REQ    = 0x1201,  /**< 从 DB 加载用户数据 */
     REC_LOAD_USER_RSP    = 0x1202,  /**< 用户数据加载响应 */
@@ -124,6 +124,13 @@ enum class InternalMsgID : uint16_t
     REC_RELATION_LOAD_RSP    = 0x120A, /**< RecordServer → SessionServer: 单用户 Relation 响应 */
     REC_RELATION_SAVE_REQ    = 0x120B, /**< SessionServer → RecordServer: 保存 Relation 行 */
     REC_RELATION_SAVE_RSP    = 0x120C, /**< RecordServer → SessionServer: 保存结果 */
+    REC_VALIDATE_TOKEN_REQ   = 0x120D, /**< Gateway → Record: 校验 loginToken */
+    REC_VALIDATE_TOKEN_RSP   = 0x120E, /**< Record → Gateway: 校验结果 */
+    REC_LIST_CHARACTERS_REQ  = 0x120F, /**< Gateway → Record: 角色列表 */
+    REC_LIST_CHARACTERS_RSP  = 0x1210, /**< Record → Gateway: 角色列表（变长） */
+    REC_CREATE_CHARACTER_REQ = 0x1211, /**< Gateway → Record: 创角 */
+    REC_CREATE_CHARACTER_RSP = 0x1212, /**< Record → Gateway: 创角结果 */
+    REC_VERIFY_TOKEN_RSP     = 0x1213, /**< Super → Record: 透传 loginToken 校验结果 */
 
     // ============================================================
     //  SceneServer (0x1301 ~ 0x1306)
@@ -173,7 +180,7 @@ enum class InternalMsgID : uint16_t
     ZONE_FORWARD         = 0x1803,  /**< 跨区转发 */
 
     // ============================================================
-    //  LoginServer (0x1901 ~ 0x1903)
+    //  LoginServer (0x1901 ~ 0x190A)
     // ============================================================
     LOGIN_GATEWAY_REGISTER_REQ = 0x1901, /**< Super → LoginServer: 上报网关 */
     LOGIN_GATEWAY_REGISTER_RSP = 0x1902, /**< LoginServer → Super: 注册确认 */
@@ -181,6 +188,10 @@ enum class InternalMsgID : uint16_t
     LOGIN_RECHARGE_REQ         = 0x1904, /**< 充值请求（骨架，经 SS_EXTERN_FWD） */
     LOGIN_GM_CMD_REQ           = 0x1905, /**< GM 指令（骨架，经 SS_EXTERN_FWD） */
     LOGIN_ZONE_STATUS_REPORT   = 0x1906, /**< Super → LoginServer: 游戏区状态上报 */
+    LOGIN_VERIFY_TOKEN_REQ     = 0x1907, /**< Record → LoginServer: 校验 loginToken */
+    LOGIN_VERIFY_TOKEN_RSP     = 0x1908, /**< LoginServer → Record: loginToken 校验结果 */
+    LOGIN_UPDATE_LAST_USER_REQ = 0x1909, /**< Record → LoginServer: 回填 GameUser.user_id */
+    LOGIN_UPDATE_LAST_USER_RSP = 0x190A, /**< LoginServer → Record: 回填结果（可选） */
 };
 
 /** @brief LoginServer 业务大类（骨架） */
@@ -314,6 +325,95 @@ struct Msg_REC_LoginVerifyRsp
     int32_t  code;           /**< 0=成功, 1=密码错误, -1=服务器错误 */
     uint64_t userID;         /**< 验证通过时的用户 ID */
     uint32_t gatewayConnID;  /**< 回显 GatewayServer 连接 ID */
+};
+
+/**
+ * @brief Gateway → Record: 校验 LoginServer 下发的 loginToken
+ */
+struct Msg_REC_ValidateTokenReq
+{
+    char     loginToken[65]; /**< 票据（64 hex + '\0'） */
+    uint32_t zoneId;         /**< 游戏区号 */
+    uint8_t  gameType;       /**< 游戏类型 */
+    uint8_t  reserved[3];
+    uint32_t gatewayConnID;  /**< Gateway 客户端连接 ID */
+};
+
+/**
+ * @brief Record → Gateway: loginToken 校验响应
+ */
+struct Msg_REC_ValidateTokenRsp
+{
+    int32_t  code;           /**< 0=成功 1=无效或过期 */
+    uint64_t accid;          /**< 账号 ID */
+    uint32_t gatewayConnID;  /**< 回显客户端连接 ID */
+};
+
+/**
+ * @brief Gateway → Record: 按账号+区服拉角色列表
+ */
+struct Msg_REC_ListCharactersReq
+{
+    uint64_t accid;
+    uint32_t zoneId;
+    uint32_t gatewayConnID;
+};
+
+/** @brief 角色列表单条 wire（紧随 Msg_REC_ListCharactersRspHeader） */
+struct Msg_REC_CharacterEntryWire
+{
+    uint64_t userID;
+    char     name[32];
+    uint32_t level;
+    uint8_t  vocation;
+    uint8_t  sex;
+    uint8_t  reserved[2];
+};
+
+/**
+ * @brief Record → Gateway: 角色列表响应头（变长）
+ */
+struct Msg_REC_ListCharactersRspHeader
+{
+    int32_t  code;
+    uint16_t count;
+    uint32_t gatewayConnID;
+};
+static_assert(sizeof(Msg_REC_ListCharactersRspHeader) == 10,
+              "Msg_REC_ListCharactersRspHeader must be packed to 10 bytes");
+
+/**
+ * @brief Gateway → Record: 创建角色
+ */
+struct Msg_REC_CreateCharacterReq
+{
+    uint64_t accid;
+    uint32_t zoneId;
+    char     name[32];
+    uint8_t  vocation;
+    uint8_t  sex;
+    uint8_t  reserved[2];
+    uint32_t gatewayConnID;
+};
+
+/**
+ * @brief Record → Gateway: 创角响应
+ */
+struct Msg_REC_CreateCharacterRsp
+{
+    int32_t  code;           /**< 0=成功 1=名重复 2=达上限 3=名非法 */
+    uint64_t userID;
+    uint32_t gatewayConnID;
+};
+
+/**
+ * @brief Gateway → Super: 选角后进世界（替代旧 LoginVerifyRsp 透传）
+ */
+struct Msg_GW_UserEnterReq
+{
+    uint64_t userID;
+    uint32_t gatewayClientConnID;
+    uint64_t loginTxnId; /**< 登录事务幂等键（与 C2S_SELECT_USER_REQ 一致） */
 };
 
 /**
@@ -487,6 +587,7 @@ struct Msg_Login_GatewayRegister
     uint8_t  reserved[3];     /**< 对齐保留 */
     char     ip[32];          /**< 客户端可连 IP */
     uint16_t port;            /**< 客户端监听端口（如 9005） */
+    uint32_t onlineCount;     /**< 当前客户端会话数（LB 评分用） */
     char     name[32];        /**< 网关名称 */
     char     zoneName[32];    /**< 可选区服名 */
 };
@@ -513,6 +614,47 @@ struct Msg_Login_GatewayRegisterRsp
 {
     int32_t  code;            /**< 0=成功 */
     uint32_t gatewayServerId; /**< 回显网关 ID */
+};
+
+/**
+ * @brief Record → Login: 校验 loginToken（仅 LoginServer 访问 rpg_login）
+ */
+struct Msg_Login_VerifyTokenReq
+{
+    uint32_t requestSeq;    /**< 请求序号（Record 生成，用于路由回包） */
+    char     loginToken[65];/**< 登录票据（64 hex + '\0'） */
+    uint32_t zoneId;        /**< 游戏区号 */
+    uint8_t  gameType;      /**< 游戏类型 */
+    uint8_t  reserved[3];
+};
+
+/**
+ * @brief Login → Record: loginToken 校验回包
+ */
+struct Msg_Login_VerifyTokenRsp
+{
+    uint32_t requestSeq; /**< 回显请求序号 */
+    int32_t  code;       /**< 0=成功 1=无效或过期 */
+    uint64_t accid;      /**< 账号 ID（成功时有效） */
+};
+
+/**
+ * @brief Record → Login: 回填账号最近角色
+ */
+struct Msg_Login_UpdateLastUserReq
+{
+    uint64_t accid;  /**< 账号 ID */
+    uint64_t userID; /**< 最近角色 ID */
+};
+
+/**
+ * @brief Login → Record: 回填最近角色响应（可选）
+ */
+struct Msg_Login_UpdateLastUserRsp
+{
+    int32_t  code;   /**< 0=成功 */
+    uint64_t accid;  /**< 回显账号 */
+    uint64_t userID; /**< 回显角色 */
 };
 
 /**

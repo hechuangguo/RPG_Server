@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   extern_zone.xml — ZoneServer 独立部署配置
-  职责：跨区转发 TCP 监听、进程日志、可选 MySQL。
+  职责：跨区转发 TCP 监听、进程日志。
+  外联服不连接游戏区 MySQL；跨区持久化若需要另建独立库。
   游戏区在 loginserverlist.xml 中配置连接本服务 ip/port。
   修改后需重启 ZoneServer 生效。
 -->
 <ExternServer>
     <Listen ip="0.0.0.0" port="9008"/>
     <LogPath>logs/zone.log</LogPath>
-    <Database host="127.0.0.1" port="3306" user="rpg_table" pass="rpg_table" name="rpg_game"/>
 </ExternServer>

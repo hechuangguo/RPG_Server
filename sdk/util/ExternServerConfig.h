@@ -17,6 +17,9 @@
 
 /**
  * @brief 外联服可选 MySQL 连接参数（与 config.xml Database 段同构）
+ *
+ * 库名约定：LoginServer extern_login.xml → rpg_login；
+ *           GlobalServer extern_global.xml → rpg_global。
  */
 struct DatabaseConfig
 {
@@ -24,7 +27,7 @@ struct DatabaseConfig
     int         port = 3306;         /**< MySQL 端口 */
     std::string user = "root";       /**< 用户名 */
     std::string pass;                /**< 密码 */
-    std::string name = "rpg_game";   /**< 库名 */
+    std::string name = "rpg_game";   /**< 库名（外联服应配置为 rpg_login 或 rpg_global） */
     bool        configured = false;  /**< 存在 <Database> 节点时为 true，Init 须连库成功 */
 };
 

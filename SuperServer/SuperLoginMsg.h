@@ -52,3 +52,15 @@ void SuperLoginOnGatewayRegisterRsp(SuperServer& super, ConnID fromLoginConn,
  */
 void SuperLoginOnGatewayHeartbeat(SuperServer& super, ConnID fromConn,
                                   const char* data, uint16_t len);
+
+/** @brief 转发 Record→Login 票据校验请求 */
+void SuperLoginOnVerifyTokenReq(SuperServer& super, ConnID fromConn,
+                                const char* data, uint16_t len);
+
+/** @brief 回传 Login→Record 票据校验响应 */
+void SuperLoginOnVerifyTokenRsp(SuperServer& super, ConnID fromLoginConn,
+                                const char* data, uint16_t len);
+
+/** @brief 转发 Record→Login 最近角色回填请求 */
+void SuperLoginOnUpdateLastUserReq(SuperServer& super, ConnID fromConn,
+                                   const char* data, uint16_t len);

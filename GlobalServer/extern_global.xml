@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   extern_global.xml — GlobalServer 独立部署配置
-  职责：游戏协议 TCP 监听、进程日志、可选 MySQL、HTTP 入站/出站。
+  职责：游戏协议 TCP 监听、进程日志、全区库 rpg_global、HTTP 入站/出站。
   游戏区在 loginserverlist.xml 中配置连接本服务游戏端口（Listen）。
   修改后需重启 GlobalServer 生效。
 -->
@@ -10,8 +10,8 @@
     <Listen ip="0.0.0.0" port="9007"/>
     <!-- 本进程日志文件（相对 cwd，RunServer.sh 从项目根启动） -->
     <LogPath>logs/global.log</LogPath>
-    <!-- 可选：排行榜等全区数据持久化 -->
-    <Database host="127.0.0.1" port="3306" user="rpg_table" pass="rpg_table" name="rpg_game"/>
+    <!-- 全区库：仅全局服使用，与游戏区 rpg_game 分离 -->
+    <Database host="127.0.0.1" port="3306" user="rpg_table" pass="rpg_table" name="rpg_global"/>
     <Http>
         <!-- HTTP 管理/查询接口（如 /health、/rank） -->
         <Listen ip="0.0.0.0" port="9070"/>

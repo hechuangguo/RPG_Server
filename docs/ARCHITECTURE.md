@@ -9,7 +9,7 @@
 |------|------|
 | 语言 | C++17（核心逻辑）+ Lua 5.4（SceneServer 游戏脚本） |
 | 网络模型 | 单线程 epoll ET + TCP 长连接 |
-| 持久化 | MySQL（RecordServer 直连） |
+| 持久化 | MySQL 三库（rpg_login / rpg_game / rpg_global） |
 | 配置 | XML（tinyxml2 解析） |
 | 构建 | CMake 3.16+，输出至各服务器目录（如 `SuperServer/SuperServer`） |
 
@@ -174,6 +174,7 @@ RPG/
 
 - 出站：SuperServer、RecordServer（`REC_RELATION_*` 读写 Relation）
 - 入站：GatewayServer（`GW_CLIENT_MSG`）、SceneServer（场景/副本登记）
+- **直连 rpg_game**（config.xml）：预留本区排行榜等玩法；Relation 仍经 Record 协议
 - 好友、离线消息、社会关系内存管理；`SessionUser` + `SocialData`（**社交/任务 GW 消息 handler 多为骨架**）
 - 全区场景/副本：`SessionSceneManager` 登记与负载均衡
 
@@ -181,7 +182,7 @@ RPG/
 
 - 出站：SuperServer（注册）
 - 入站：Gateway（登录验证）、Scene（CharBase 存档）、Session（Relation）
-- 唯一直连 MySQL 的进程；账号验证、用户 load/save、Relation 表、定时存档
+- **rpg_game 主写库**：用户 load/save、Relation 表、定时存档
 
 ### AOIServer — 视野管理
 
@@ -205,7 +206,7 @@ RPG/
 
 ### LoginServer — 外联登录与网关列表
 
-- **ClientListen**（默认 9010）：`C2S_LOGIN_REQ` → 可选 MySQL 校验（同 Record `CharBase.name`）→ `S2C_LOGIN_RSP` + `S2C_GATEWAY_INFO`
+- **ClientListen**（默认 9010）：`C2S_LOGIN_REQ` → **rpg_login** `GameUser`（bcrypt）→ `S2C_LOGIN_RSP` + `S2C_GATEWAY_INFO`
 - **RegisterListen**（默认 19010）：Super 代理 Gateway `LOGIN_GATEWAY_REGISTER` / `LOGIN_GATEWAY_HEARTBEAT`（Gateway **不直连** Login）
 - 不向 SuperServer 注册；配置见 `LoginServer/extern_login.xml`
 

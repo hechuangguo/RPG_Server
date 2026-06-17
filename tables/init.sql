@@ -1,20 +1,22 @@
 -- ============================================================
 --  RPG 游戏服务器数据库初始化脚本
---  数据库：rpg_game
+--  三库：rpg_login（登录服）、rpg_game（游戏区）、rpg_global（全局服）
 --  应用账号：rpg_table / rpg_table（见 create_user_and_db.sql、database.credentials）
 --  执行顺序：
 --    1) mysql -u root -p < tables/create_user_and_db.sql
 --    2) mysql -u root -p < tables/init.sql
 --    或 ./tables/setup_database.sh
 --    3) 可选：mysql -u rpg_table -prpg_table rpg_game < tables/seed_test_data.sql
---  说明：
---    1) 角色基础数据统一存储于 CharBase（账号与角色基础属性已合并）
---    2) 包裹/技能/状态/任务等功能数据序列化后存入 CharBase.binary
---    3) 本脚本可重复执行（CREATE TABLE IF NOT EXISTS）
+--  存量升级（rpg_game 含 GameUser/ZoneInfo）：migrate_login_db.sql
+--  说明：本脚本可重复执行（CREATE TABLE IF NOT EXISTS）
 -- ============================================================
 
-CREATE DATABASE IF NOT EXISTS rpg_game DEFAULT CHARACTER SET utf8mb4;
-USE rpg_game;
+-- ============================================================
+-- Part A: rpg_login — LoginServer 专用（账号与区服入口）
+-- ============================================================
+
+CREATE DATABASE IF NOT EXISTS rpg_login DEFAULT CHARACTER SET utf8mb4;
+USE rpg_login;
 
 -- -----------------------------------------------------------
 -- 表：GameUser（账号主表 —— LoginServer 注册/登录真源）
@@ -36,6 +38,50 @@ CREATE TABLE IF NOT EXISTS GameUser (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- -----------------------------------------------------------
+-- 表：ZoneInfo（游戏区入口参考表 —— 多游戏公用）
+-- 设计意图：登记各游戏类型下的可登录区服入口（IP/Super 端口/维护开关）。
+--           game_type 区分游戏产品；zone_id 区分同产品下的游戏区号。
+--           LoginServer 实际读取 LoginServer/serverlist.xml（本表仅作 DB 参考/种子）。
+--           Gateway gatewayServerId 建议与 zone_id 对齐（同 game_type 下）。
+-- -----------------------------------------------------------
+CREATE TABLE IF NOT EXISTS ZoneInfo (
+    zone_id      INT UNSIGNED NOT NULL COMMENT '游戏区号（同 game_type 下唯一，如 1=一区）',
+    game_type    TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '游戏类型（0=当前 RPG，其它值预留给未来游戏）',
+    name         VARCHAR(32) NOT NULL DEFAULT '' COMMENT '区服显示名',
+    ip           VARCHAR(64) NOT NULL DEFAULT '127.0.0.1' COMMENT '入口 IP（VIP 或对外地址）',
+    super_port   SMALLINT UNSIGNED NOT NULL DEFAULT 9000 COMMENT 'SuperServer 端口',
+    enabled      TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '是否可用：1=可登录 0=维护',
+    update_time  DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后更新时间',
+    PRIMARY KEY (game_type, zone_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT INTO ZoneInfo (zone_id, game_type, name, ip, super_port, enabled) VALUES
+    (1, 0, 'RPG一区', '127.0.0.1', 9000, 1)
+ON DUPLICATE KEY UPDATE
+    name=VALUES(name), ip=VALUES(ip),
+    super_port=VALUES(super_port), enabled=VALUES(enabled);
+
+-- -----------------------------------------------------------
+-- 表：LoginSession（Gateway 鉴权票据 —— LoginServer 写入，Record 跨库校验）
+-- 设计意图：登录成功后生成短期一次性 token；Gateway 经 Record 校验后消费。
+-- -----------------------------------------------------------
+CREATE TABLE IF NOT EXISTS LoginSession (
+    token       CHAR(64) PRIMARY KEY COMMENT '登录票据（64 字符 hex）',
+    accid       BIGINT UNSIGNED NOT NULL COMMENT '账号 ID',
+    zone_id     INT UNSIGNED NOT NULL COMMENT '游戏区号',
+    game_type   TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '游戏类型',
+    expire_time DATETIME NOT NULL COMMENT '过期时间',
+    INDEX idx_accid_zone (accid, zone_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ============================================================
+-- Part B: rpg_game — 游戏区专用（Super/Record/Session）
+-- ============================================================
+
+CREATE DATABASE IF NOT EXISTS rpg_game DEFAULT CHARACTER SET utf8mb4;
+USE rpg_game;
+
+-- -----------------------------------------------------------
 -- 表：CharBase（角色基础总表）
 -- 设计意图：将账号与角色基础属性统一为单表，
 --           统一存储角色基础属性与功能序列化二进制数据。
@@ -44,6 +90,8 @@ CREATE TABLE IF NOT EXISTS GameUser (
 -- -----------------------------------------------------------
 CREATE TABLE IF NOT EXISTS CharBase (
     user_id      INT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '角色唯一ID，自增主键',
+    accid        BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '所属账号 ID（关联 rpg_login.GameUser.accid）',
+    gamezone     INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '所属游戏区号',
     name         VARCHAR(32) NOT NULL UNIQUE COMMENT '角色名，全局唯一',
     level        INT UNSIGNED DEFAULT 1 COMMENT '角色等级',
     vocation     TINYINT UNSIGNED DEFAULT 0 COMMENT '职业类型（0=无 1=战士 2=法师 3=弓箭手等）',
@@ -60,7 +108,8 @@ CREATE TABLE IF NOT EXISTS CharBase (
     `binary`     MEDIUMBLOB COMMENT '包裹/技能/Buff/任务等功能数据的二进制序列化集合',
     create_time  DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '角色创建时间',
     update_time  DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后更新时间',
-    INDEX idx_name (name)
+    INDEX idx_name (name),
+    INDEX idx_accid_zone (accid, gamezone)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- -----------------------------------------------------------
@@ -77,7 +126,6 @@ CREATE TABLE IF NOT EXISTS Relation (
     `binary`        MEDIUMBLOB COMMENT '社交扩展数据二进制序列化（申请/缓存等）',
     update_time     DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
 
 -- -----------------------------------------------------------
 -- 表：Friend（好友关系表）
@@ -149,7 +197,6 @@ CREATE TABLE IF NOT EXISTS ServerList (
     PRIMARY KEY (server_type, server_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 游戏区默认拓扑（6 行）；幂等写入，可重复执行
 INSERT INTO ServerList (server_id, server_type, ip, port, name) VALUES
     (1, 0, '127.0.0.1', 9000, 'SuperServer'),
     (1, 1, '127.0.0.1', 9001, 'SessionServer'),
@@ -159,32 +206,27 @@ INSERT INTO ServerList (server_id, server_type, ip, port, name) VALUES
     (1, 5, '127.0.0.1', 9005, 'GatewayServer')
 ON DUPLICATE KEY UPDATE ip=VALUES(ip), port=VALUES(port), name=VALUES(name);
 
--- 清理历史外联服条目（Logger/Global/Zone 已迁移至 loginserverlist.xml）
 DELETE FROM ServerList WHERE server_type IN (6, 7, 8);
 
--- -----------------------------------------------------------
--- 表：ZoneInfo（游戏区入口参考表 —— 多游戏公用）
--- 设计意图：登记各游戏类型下的可登录区服入口（IP/Super 端口/维护开关）。
---           game_type 区分游戏产品；zone_id 区分同产品下的游戏区号。
---           LoginServer 实际读取 LoginServer/serverlist.xml（本表仅作 DB 参考/种子）。
---           Gateway gatewayServerId 建议与 zone_id 对齐（同 game_type 下）。
--- -----------------------------------------------------------
-CREATE TABLE IF NOT EXISTS ZoneInfo (
-    zone_id      INT UNSIGNED NOT NULL COMMENT '游戏区号（同 game_type 下唯一，如 1=一区）',
-    game_type    TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '游戏类型（0=当前 RPG，其它值预留给未来游戏）',
-    name         VARCHAR(32) NOT NULL DEFAULT '' COMMENT '区服显示名',
-    ip           VARCHAR(64) NOT NULL DEFAULT '127.0.0.1' COMMENT '入口 IP（VIP 或对外地址）',
-    super_port   SMALLINT UNSIGNED NOT NULL DEFAULT 9000 COMMENT 'SuperServer 端口',
-    enabled      TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '是否可用：1=可登录 0=维护',
-    update_time  DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后更新时间',
-    PRIMARY KEY (game_type, zone_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+-- ============================================================
+-- Part C: rpg_global — GlobalServer 专用（全区杂项持久化）
+-- ============================================================
 
-INSERT INTO ZoneInfo (zone_id, game_type, name, ip, super_port, enabled) VALUES
-    (1, 0, 'RPG一区', '127.0.0.1', 9000, 1)
-ON DUPLICATE KEY UPDATE
-    name=VALUES(name), ip=VALUES(ip),
-    super_port=VALUES(super_port), enabled=VALUES(enabled);
+CREATE DATABASE IF NOT EXISTS rpg_global DEFAULT CHARACTER SET utf8mb4;
+USE rpg_global;
+
+-- -----------------------------------------------------------
+-- 表：AllLittleThing（全区杂项持久化 —— GlobalServer 读写）
+-- 设计意图：跨游戏区共享的杂项数据（全区配置、排行榜快照、活动状态等）。
+--           thing_key 全区唯一；thing_value 存序列化 blob。
+-- -----------------------------------------------------------
+CREATE TABLE IF NOT EXISTS AllLittleThing (
+    id          BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '自增主键',
+    thing_key   VARCHAR(64) NOT NULL COMMENT '业务键，全区唯一',
+    thing_value MEDIUMBLOB COMMENT '序列化数据',
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后更新时间',
+    UNIQUE KEY uk_thing_key (thing_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- -------------------------------------------------------
 -- 测试种子数据已拆分至 seed_test_data.sql（开发环境按需执行）

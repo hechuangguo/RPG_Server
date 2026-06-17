@@ -12,7 +12,7 @@
 
   使用说明：
     - 本文件由所有服务器进程在启动时读取
-    - Database 段由 RecordServer 直连 MySQL；SuperServer 启动期亦只读加载 ServerList
+    - Database 段指向 rpg_game；SuperServer/RecordServer/SessionServer 直连 MySQL
     - SuperServer 段定义了中心服务器的监听地址，所有子服务器通过 TcpClient 连接
     - Session/Record/AOI/Scene/Gateway 的端口/对端地址来自 DB 的 ServerList 表
       （init.sql），由 SuperServer 启动加载并在子服启动拉取时下发，不再写在本文件
@@ -28,13 +28,13 @@
 
     <!-- ================================================================ -->
     <!--  数据库配置段                                                    -->
-    <!--  用途：提供 MySQL 数据库连接参数，仅由 RecordServer 直接连接      -->
-    <!--        其他服务器通过 RecordServer 代理进行数据读写               -->
+    <!--  用途：游戏区库 rpg_game；Super/Record/Session 直连 MySQL         -->
+    <!--        Gateway/Scene/AOI 不直连；角色主存档仍经 RecordServer     -->
     <!--  host：MySQL 主机地址（IP 或域名）                               -->
     <!--  port：MySQL 端口号，默认 3306                                    -->
     <!--  user：MySQL 登录用户名                                          -->
     <!--  pass：MySQL 登录密码（生产环境部署时必须修改）                    -->
-    <!--  name：数据库名称，需与 tables/init.sql 中库名一致                -->
+    <!--  name：游戏区库名 rpg_game（与 tables/init.sql Part B 一致）      -->
     <!-- ================================================================ -->
     <Database host="127.0.0.1" port="3306" user="rpg_table" pass="rpg_table" name="rpg_game"/>
 

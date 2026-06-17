@@ -5,6 +5,8 @@
 
 #include "LoginGatewayRegistry.h"
 
+#include <climits>
+
 void LoginGatewayRegistry::upsert(const LoginGatewayEntry& entry)
 {
     m_entries[entry.gatewayServerId] = entry;
@@ -71,11 +73,43 @@ bool LoginGatewayRegistry::pickByZone(uint32_t zoneId, uint8_t gameType, LoginGa
     if (zoneIds.empty())
         return false;
 
+    uint32_t bestId = 0;
+    bool hasBest = false;
+    uint32_t bestOnline = UINT32_MAX;
+    for (uint32_t id : zoneIds)
+    {
+        auto it = m_entries.find(id);
+        if (it == m_entries.end())
+            continue;
+        const uint32_t online = it->second.onlineCount;
+        if (online < bestOnline)
+        {
+            bestOnline = online;
+            bestId = id;
+            hasBest = true;
+        }
+    }
+    if (!hasBest)
+        return false;
+
     const uint64_t key = (static_cast<uint64_t>(gameType) << 32) | zoneId;
     size_t& rr = m_zoneRrIndex[key];
-    const uint32_t id = zoneIds[rr % zoneIds.size()];
-    rr = (rr + 1) % zoneIds.size();
-    return pickByServerId(id, out);
+    std::vector<uint32_t> tied;
+    tied.reserve(zoneIds.size());
+    for (uint32_t id : zoneIds)
+    {
+        auto it = m_entries.find(id);
+        if (it != m_entries.end() && it->second.onlineCount == bestOnline)
+            tied.push_back(id);
+    }
+    uint32_t pickId = bestId;
+    if (!tied.empty())
+    {
+        pickId = tied.size() > 1 ? tied[rr % tied.size()] : tied.front();
+        if (tied.size() > 1)
+            rr = (rr + 1) % tied.size();
+    }
+    return pickByServerId(pickId, out);
 }
 
 size_t LoginGatewayRegistry::countForZone(uint32_t zoneId, uint8_t gameType) const

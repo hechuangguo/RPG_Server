@@ -11,6 +11,9 @@
 #include "SuperZoneMsg.h"
 #include "SuperZoneStatusMsg.h"
 #include "../sdk/util/ServerBootstrap.h"
+#include "../sdk/util/LoginSpawnConfig.h"
+#include "../sdk/util/LoginFlowLog.h"
+#include "../sdk/util/LoginEnterErrorCode.h"
 
 #include <cstring>
 #include <vector>
@@ -53,6 +56,7 @@ bool SuperServer::Init(const std::string& ip, uint16_t port, const ServerConfig&
     RegisterHandlers();
 
     TimerMgr::Instance().Register(30000, 30000, [this] { CheckHeartbeat(); });
+    TimerMgr::Instance().Register(10000, 10000, [this] { checkPendingLoginTimeouts(); });
     SuperZoneStatusMsgRegister(*this);
     LOG_INFO("超级服启动完成");
     return true;
@@ -276,33 +280,137 @@ void SuperServer::OnServerListReq(ConnID connID, const char* /*data*/, uint16_t 
 
 void SuperServer::OnUserLoginReq(ConnID connID, const char* data, uint16_t len)
 {
-    if (len < sizeof(Msg_REC_LoginVerifyRsp))
+    if (len < sizeof(Msg_GW_UserEnterReq))
         return;
 
-    const auto* rsp = reinterpret_cast<const Msg_REC_LoginVerifyRsp*>(data);
-    if (rsp->code != 0)
+    const auto* req = reinterpret_cast<const Msg_GW_UserEnterReq*>(data);
+    const UserID userID = req->userID;
+    if (userID == 0)
+    {
+        SendLoginFailToGateway(connID, req->gatewayClientConnID,
+                               static_cast<int32_t>(SuperEnterError::NO_RECORD));
         return;
+    }
+
+    kickExistingUserSession(userID);
+
+    const uint64_t nowMs = TimerMgr::NowMs();
+    auto pendingIt = m_pendingLogins.find(userID);
+    if (pendingIt != m_pendingLogins.end())
+    {
+        const uint64_t ageMs = nowMs - pendingIt->second.startedAtMs;
+        if (ageMs < LOGIN_TXN_LOCK_TIMEOUT_MS)
+        {
+            const bool sameTxnId = req->loginTxnId != 0 &&
+                                   pendingIt->second.loginTxnId == req->loginTxnId;
+            const bool sameClientRetry = req->loginTxnId == 0 &&
+                                         pendingIt->second.gatewayClientConnID ==
+                                             req->gatewayClientConnID;
+            if (sameTxnId || sameClientRetry)
+            {
+                logLoginFlow(LoginFlowPhase::SUPER_ENTER, 0, userID, req->gatewayClientConnID,
+                             0, "幂等重复请求重试，重建事务", req->loginTxnId);
+                m_pendingLogins.erase(pendingIt);
+            }
+            else
+            {
+                SendLoginFailToGateway(connID, req->gatewayClientConnID,
+                                       static_cast<int32_t>(SuperEnterError::TXN_IN_PROGRESS));
+                logLoginFlow(LoginFlowPhase::SUPER_ENTER, 0, userID, req->gatewayClientConnID,
+                             static_cast<int32_t>(SuperEnterError::TXN_IN_PROGRESS),
+                             "重复进世界请求（事务进行中）", req->loginTxnId);
+                return;
+            }
+        }
+        else
+        {
+            SendLoginFailToGateway(pendingIt->second.gatewayConnID,
+                                   pendingIt->second.gatewayClientConnID,
+                                   static_cast<int32_t>(SuperEnterError::TXN_TIMEOUT));
+            m_pendingLogins.erase(pendingIt);
+        }
+    }
 
     PendingLogin pending{};
-    pending.userID = rsp->userID;
+    pending.userID = userID;
     pending.gatewayConnID = connID;
-    pending.gatewayClientConnID = rsp->gatewayConnID;
-    m_pendingLogins[rsp->userID] = pending;
+    pending.gatewayClientConnID = req->gatewayClientConnID;
+    pending.loginTxnId = req->loginTxnId;
+    pending.startedAtMs = nowMs;
+    pending.phase = LoginTxnPhase::LOAD_USER;
+    m_pendingLogins[userID] = pending;
 
-    LOG_INFO("用户登录流程开始: userID=%llu gatewayConn=%u (等待加载与选图)",
-             rsp->userID, connID);
+    logLoginFlow(LoginFlowPhase::SUPER_ENTER, 0, userID, req->gatewayClientConnID, 0,
+                 "开始加载角色", req->loginTxnId);
+
+    if (m_pendingLogins.size() >= LOGIN_FLOW_ALERT_PENDING_COUNT)
+    {
+        LOG_WARN("[登录链路] 待完成登录堆积告警: pending=%zu threshold=%u",
+                 m_pendingLogins.size(), LOGIN_FLOW_ALERT_PENDING_COUNT);
+    }
 
     ConnID recConn = FindSubServer(SubServerType::RECORD);
     if (recConn != INVALID_CONN_ID)
     {
-        UserID uid = rsp->userID;
         m_server.SendMsg(recConn, (uint16_t)InternalMsgID::REC_LOAD_USER_REQ,
-                         reinterpret_cast<char*>(&uid), sizeof(uid));
+                         reinterpret_cast<const char*>(&userID), sizeof(userID));
     }
     else
     {
-        SendLoginFailToGateway(connID, rsp->gatewayConnID, -1);
-        m_pendingLogins.erase(rsp->userID);
+        SendLoginFailToGateway(connID, req->gatewayClientConnID,
+                               static_cast<int32_t>(SuperEnterError::NO_RECORD));
+        m_pendingLogins.erase(userID);
+        logLoginFlow(LoginFlowPhase::SUPER_ENTER, 0, userID, req->gatewayClientConnID,
+                     static_cast<int32_t>(SuperEnterError::NO_RECORD),
+                     "无可用存档服", req->loginTxnId);
+    }
+}
+
+void SuperServer::kickExistingUserSession(UserID userID)
+{
+    auto it = m_users.find(userID);
+    if (it == m_users.end())
+        return;
+
+    const UserProxy proxy = it->second;
+    m_server.SendMsg(proxy.gatewayConnID, (uint16_t)InternalMsgID::GW_KICK_CLIENT,
+                     reinterpret_cast<const char*>(&proxy.gatewayClientConnID),
+                     sizeof(uint32_t));
+    if (proxy.sceneConnID != INVALID_CONN_ID)
+    {
+        m_server.SendMsg(proxy.sceneConnID, (uint16_t)InternalMsgID::SCE_USER_LEAVE,
+                         reinterpret_cast<const char*>(&userID), sizeof(UserID));
+    }
+    m_users.erase(it);
+    logLoginFlow(LoginFlowPhase::SUPER_ENTER, 0, userID, proxy.gatewayClientConnID, 0,
+                 "重复登录踢旧会话");
+}
+
+void SuperServer::checkPendingLoginTimeouts()
+{
+    const uint64_t nowMs = TimerMgr::NowMs();
+    std::vector<UserID> expired;
+    expired.reserve(m_pendingLogins.size());
+
+    for (const auto& [uid, pending] : m_pendingLogins)
+    {
+        if (nowMs - pending.startedAtMs >= LOGIN_TXN_LOCK_TIMEOUT_MS)
+            expired.push_back(uid);
+    }
+
+    for (UserID uid : expired)
+    {
+        auto pit = m_pendingLogins.find(uid);
+        if (pit == m_pendingLogins.end())
+            continue;
+        SendLoginFailToGateway(pit->second.gatewayConnID,
+                               pit->second.gatewayClientConnID,
+                               static_cast<int32_t>(SuperEnterError::TXN_TIMEOUT));
+        logLoginFlow(LoginFlowPhase::SUPER_ENTER, 0, uid,
+                     pit->second.gatewayClientConnID,
+                     static_cast<int32_t>(SuperEnterError::TXN_TIMEOUT),
+                     "登录事务超时回滚", pit->second.loginTxnId);
+        m_pendingLogins.erase(pit);
     }
 }
 
@@ -321,20 +429,25 @@ void SuperServer::OnLoadUserRsp(ConnID /*connID*/, const char* data, uint16_t le
 
     if (hdr->code != 0 || len < sizeof(Msg_REC_LoadUserRsp) + sizeof(UserBaseWire))
     {
-        SendLoginFailToGateway(pit->second.gatewayConnID, pit->second.gatewayClientConnID, hdr->code);
+        const int32_t code = hdr->code != 0
+            ? hdr->code
+            : static_cast<int32_t>(SuperEnterError::LOAD_USER_FAILED);
+        SendLoginFailToGateway(pit->second.gatewayConnID, pit->second.gatewayClientConnID, code);
         m_pendingLogins.erase(pit);
         return;
     }
 
     const auto* wire = reinterpret_cast<const UserBaseWire*>(data + sizeof(Msg_REC_LoadUserRsp));
     pit->second.userData = *wire;
-    pit->second.mapId = wire->mapID ? wire->mapID : 1001;
+    pit->second.mapId = wire->mapID ? wire->mapID : DEFAULT_NEWBIE_MAP_ID;
+    pit->second.phase = LoginTxnPhase::RESOLVE_MAP;
 
     ConnID sesConn = FindSubServer(SubServerType::SESSION);
     if (sesConn == INVALID_CONN_ID)
     {
         LOG_WARN("用户登录失败: 无会话服可选图 userID=%llu", hdr->userID);
-        SendLoginFailToGateway(pit->second.gatewayConnID, pit->second.gatewayClientConnID, -2);
+        SendLoginFailToGateway(pit->second.gatewayConnID, pit->second.gatewayClientConnID,
+                               static_cast<int32_t>(SuperEnterError::NO_SESSION));
         m_pendingLogins.erase(pit);
         return;
     }
@@ -364,7 +477,8 @@ void SuperServer::OnResolveMapRsp(ConnID /*connID*/, const char* data, uint16_t 
     if (rsp->code != 0 || rsp->sceneServerId == 0)
     {
         LOG_WARN("用户登录失败: 地图未注册 map=%u userID=%llu", rsp->mapId, rsp->userID);
-        SendLoginFailToGateway(pending.gatewayConnID, pending.gatewayClientConnID, -3);
+        SendLoginFailToGateway(pending.gatewayConnID, pending.gatewayClientConnID,
+                               static_cast<int32_t>(SuperEnterError::MAP_NOT_REGISTERED));
         m_pendingLogins.erase(pit);
         return;
     }
@@ -373,11 +487,13 @@ void SuperServer::OnResolveMapRsp(ConnID /*connID*/, const char* data, uint16_t 
     if (pending.sceneConnID == INVALID_CONN_ID)
     {
         LOG_WARN("用户登录失败: 场景服未连接 sceneServerId=%u", rsp->sceneServerId);
-        SendLoginFailToGateway(pending.gatewayConnID, pending.gatewayClientConnID, -4);
+        SendLoginFailToGateway(pending.gatewayConnID, pending.gatewayClientConnID,
+                               static_cast<int32_t>(SuperEnterError::SCENE_OFFLINE));
         m_pendingLogins.erase(pit);
         return;
     }
 
+    pending.phase = LoginTxnPhase::ENTER_SCENE;
     sendUserEnterToScene(pending);
 }
 
@@ -450,12 +566,19 @@ void SuperServer::OnUserEnterRsp(ConnID /*connID*/, const char* data, uint16_t l
             gwRsp.sceneServerId = sit->second.serverID;
     }
 
-    auto rit = m_users.find(rsp->userID);
-    if (rit != m_users.end())
+    if (rsp->code == 0)
     {
-        m_server.SendMsg(rit->second.gatewayConnID, (uint16_t)InternalMsgID::GW_USER_LOGIN_RSP,
-                         reinterpret_cast<char*>(&gwRsp), sizeof(gwRsp));
+        logLoginFlow(LoginFlowPhase::SCENE_ENTER, 0, rsp->userID,
+                     rsp->gatewayClientConnID, 0, "进世界成功");
     }
+    else
+    {
+        logLoginFlow(LoginFlowPhase::SCENE_ENTER, 0, rsp->userID,
+                     rsp->gatewayClientConnID, rsp->code, "场景入场失败");
+    }
+
+    m_server.SendMsg(pit->second.gatewayConnID, (uint16_t)InternalMsgID::GW_USER_LOGIN_RSP,
+                     reinterpret_cast<char*>(&gwRsp), sizeof(gwRsp));
 
     if (rsp->code != 0)
     {

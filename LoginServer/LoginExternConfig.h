@@ -26,7 +26,7 @@ struct LoginExternConfig
     uint16_t    registerListenPort = 0;      /**< 网关注册端口（如 19010） */
     std::string logPath = "logs/login.log";  /**< 本进程日志路径 */
     std::string serverListPath = XmlConfig::SERVER_LIST_PATH_DEFAULT; /**< 游戏区列表 serverlist.xml */
-    DatabaseConfig database;                 /**< 可选 MySQL（账号校验） */
+    DatabaseConfig database;                 /**< 账号库 rpg_login（GameUser/ZoneInfo） */
 };
 
 /**

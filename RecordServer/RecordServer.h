@@ -36,6 +36,7 @@
 #include "RecordUser.h"
 #include "RecordUserManager.h"
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include <mysql/mysql.h>
 #include "RelationStore.h"
@@ -140,6 +141,21 @@ private:
     /** @brief Session Relation 保存 */
     void OnRelationSaveReq(ConnID fromConn, const char* data, uint16_t len);
 
+    /** @brief Gateway loginToken 校验 */
+    void OnValidateTokenReq(ConnID fromConn, const char* data, uint16_t len);
+
+    /** @brief LoginServer loginToken 校验回包 */
+    void OnLoginVerifyTokenRsp(ConnID fromConn, const char* data, uint16_t len);
+
+    /** @brief 清理票据校验待回包超时上下文 */
+    void CleanupPendingVerifyTokenTimeout();
+
+    /** @brief Gateway 角色列表 */
+    void OnListCharactersReq(ConnID fromConn, const char* data, uint16_t len);
+
+    /** @brief Gateway 创角 */
+    void OnCreateCharacterReq(ConnID fromConn, const char* data, uint16_t len);
+
     /**
      * @brief 从 MySQL 加载用户数据到内存
      *
@@ -181,6 +197,15 @@ private:
      *       保存成功后将 dirty 重置为 false。
      */
     void AutoSaveAll();
+
+    /** @brief Record 发往 Login 校验票据的待回包上下文 */
+    struct PendingVerifyToken
+    {
+        ConnID replyConn = INVALID_CONN_ID; /**< 需回 REC_VALIDATE_TOKEN_RSP 的连接 */
+        uint32_t gatewayConnID = 0;         /**< Gateway 客户端连接 ID（回显） */
+        uint64_t createdAtMs = 0;           /**< 发起校验时间（超时清理） */
+    };
+
     TcpServer  m_server;          /**< 入站监听（Gateway / Scene / Session / Super） */
     TcpClient  m_superClient;     /**< 出站 SuperServer（注册、心跳） */
     MYSQL*     m_db;              /**< MySQL 连接句柄（全局共享，非线程安全） */
@@ -188,4 +213,6 @@ private:
     ServerEntry m_self;           /**< 本进程在 ServerList 中的拓扑条目（注册上报用） */
     RecordUserManager m_userManager;  /**< Record 用户缓存（userID -> RecordUser） */
     GameZoneExternSender m_externSender; /**< 经 Super 转发 Logger */
+    uint32_t m_loginVerifySeq = 0; /**< LOGIN_VERIFY_TOKEN_REQ 请求序号（发送时前置自增，首包序号为 1） */
+    std::unordered_map<uint32_t, PendingVerifyToken> m_pendingVerifyToken; /**< seq -> 上下文 */
 };

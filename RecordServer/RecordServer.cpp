@@ -4,7 +4,12 @@
  */
 
 #include "RecordServer.h"
+#include "RecordCharService.h"
 #include "../sdk/util/ServerBootstrap.h"
+
+#include <cstring>
+#include <unordered_set>
+#include <vector>
 
 RecordServer::RecordServer()
     : m_server(this)
@@ -12,6 +17,11 @@ RecordServer::RecordServer()
     , m_db(nullptr)
     , m_externSender(m_superClient, SubServerType::RECORD, 0)
 {
+}
+
+namespace
+{
+constexpr uint64_t VERIFY_TOKEN_TIMEOUT_MS = 15000;
 }
 
 RecordServer::~RecordServer()
@@ -48,6 +58,7 @@ bool RecordServer::Init(const std::string& ip, uint16_t port,
 
     TimerMgr::Instance().Register(500, 0, [this] { RegisterToSuper(); });
     TimerMgr::Instance().Register(10000, 10000, [this] { SendHeartbeat(); });
+    TimerMgr::Instance().Register(5000, 5000, [this] { CleanupPendingVerifyTokenTimeout(); });
     // 每 60 秒自动保存所有脏数据
     TimerMgr::Instance().Register(60000, 60000, [this] { AutoSaveAll(); });
     LOG_INFO("存档服启动完成");
@@ -112,6 +123,14 @@ void RecordServer::RegisterHandlers()
                [this](uint32_t c, const char* d, uint16_t l) { OnRelationLoadReq(c, d, l); });
     d.Register((uint16_t)InternalMsgID::REC_RELATION_SAVE_REQ,
                [this](uint32_t c, const char* d, uint16_t l) { OnRelationSaveReq(c, d, l); });
+    d.Register((uint16_t)InternalMsgID::REC_VALIDATE_TOKEN_REQ,
+               [this](uint32_t c, const char* d, uint16_t l) { OnValidateTokenReq(c, d, l); });
+    d.Register((uint16_t)InternalMsgID::REC_VERIFY_TOKEN_RSP,
+               [this](uint32_t c, const char* d, uint16_t l) { OnLoginVerifyTokenRsp(c, d, l); });
+    d.Register((uint16_t)InternalMsgID::REC_LIST_CHARACTERS_REQ,
+               [this](uint32_t c, const char* d, uint16_t l) { OnListCharactersReq(c, d, l); });
+    d.Register((uint16_t)InternalMsgID::REC_CREATE_CHARACTER_REQ,
+               [this](uint32_t c, const char* d, uint16_t l) { OnCreateCharacterReq(c, d, l); });
 }
 
 void RecordServer::RegisterToSuper()
@@ -138,65 +157,16 @@ void RecordServer::SendHeartbeat()
 void RecordServer::OnLoginVerify(ConnID fromConn, const char* data, uint16_t len)
 {
     if (len < sizeof(Msg_REC_LoginVerifyReq))
-    {
         return;
-    }
     const auto* req = reinterpret_cast<const Msg_REC_LoginVerifyReq*>(data);
 
     Msg_REC_LoginVerifyRsp rsp{};
     rsp.gatewayConnID = req->gatewayConnID;
-
-    // account 作为角色名登录；CharBase 无 account/password 列，故按 name 查找。
-    // 用 mysql_real_escape_string 转义，消除 SQL 注入风险（account 为 char[32]）。
-    char accName[sizeof(req->account)];
-    copyToWire(accName, sizeof(accName), req->account);
-    char escName[sizeof(accName) * 2 + 1];
-    mysql_real_escape_string(m_db, escName, accName, strlen(accName));
-
-    char sql[256];
-    snprintf(sql, sizeof(sql),
-             "SELECT user_id FROM CharBase WHERE name='%s' LIMIT 1", escName);
-
-    if (mysql_query(m_db, sql) != 0)
-    {
-        LOG_ERR("数据库查询失败: %s", mysql_error(m_db));
-        rsp.code = -1;
-    }
-    else
-    {
-        MYSQL_RES* res = mysql_store_result(m_db);
-        MYSQL_ROW row = res ? mysql_fetch_row(res) : nullptr;
-        if (row)
-        {
-            rsp.code = 0;
-            rsp.userID = (uint64_t)strtoull(row[0], nullptr, 10);
-        }
-        if (res)
-        {
-            mysql_free_result(res);
-        }
-
-        // 未命中：首登自动建号，其余列走 init.sql 默认值（level=1/map_id=1001/hp=mp=100 等）
-        if (!row)
-        {
-            snprintf(sql, sizeof(sql),
-                     "INSERT INTO CharBase (name) VALUES ('%s')", escName);
-            if (mysql_query(m_db, sql) != 0)
-            {
-                LOG_ERR("自动创建角色失败: %s", mysql_error(m_db));
-                rsp.code = -1;
-            }
-            else
-            {
-                rsp.code = 0;
-                rsp.userID = (uint64_t)mysql_insert_id(m_db);
-                LOG_INFO("创建角色成功: account=%s userID=%llu（首次登录自动创建）",
-                         accName, (unsigned long long)rsp.userID);
-            }
-        }
-    }
+    rsp.code = 1;
     m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::REC_LOGIN_VERIFY_RSP,
                      reinterpret_cast<char*>(&rsp), sizeof(rsp));
+    LOG_WARN("REC_LOGIN_VERIFY 已废弃: conn=%u 请走 LoginServer+Gateway 票据流程",
+             req->gatewayConnID);
 }
 
 void RecordServer::OnLoadUser(ConnID fromConn, const char* data, uint16_t len)
@@ -424,4 +394,123 @@ void RecordServer::AutoSaveAll()
 {
     m_userManager.forEach([this](UserID rid, RecordUser& /*user*/) { SaveUserToDB(rid); });
     LOG_INFO("自动存档完成: 已保存用户=%zu", m_userManager.getUserCount());
+}
+
+void RecordServer::OnValidateTokenReq(ConnID fromConn, const char* data, uint16_t len)
+{
+    if (len < sizeof(Msg_REC_ValidateTokenReq))
+        return;
+    const auto* req = reinterpret_cast<const Msg_REC_ValidateTokenReq*>(data);
+
+    Msg_Login_VerifyTokenReq verifyReq{};
+    verifyReq.requestSeq = ++m_loginVerifySeq;
+    copyToWire(verifyReq.loginToken, sizeof(verifyReq.loginToken), req->loginToken);
+    verifyReq.zoneId = req->zoneId;
+    verifyReq.gameType = req->gameType;
+
+    PendingVerifyToken pending{};
+    pending.replyConn = fromConn;
+    pending.gatewayConnID = req->gatewayConnID;
+    pending.createdAtMs = TimerMgr::NowMs();
+    m_pendingVerifyToken[verifyReq.requestSeq] = pending;
+
+    if (!m_externSender.sendToLoginServer(static_cast<uint16_t>(InternalMsgID::LOGIN_VERIFY_TOKEN_REQ),
+                                          reinterpret_cast<const char*>(&verifyReq), sizeof(verifyReq),
+                                          verifyReq.requestSeq))
+    {
+        m_pendingVerifyToken.erase(verifyReq.requestSeq);
+        Msg_REC_ValidateTokenRsp failRsp{};
+        failRsp.code = 1;
+        failRsp.gatewayConnID = req->gatewayConnID;
+        m_server.SendMsg(fromConn, static_cast<uint16_t>(InternalMsgID::REC_VALIDATE_TOKEN_RSP),
+                         reinterpret_cast<char*>(&failRsp), sizeof(failRsp));
+    }
+}
+
+void RecordServer::OnLoginVerifyTokenRsp(ConnID /*fromConn*/, const char* data, uint16_t len)
+{
+    if (len < sizeof(Msg_Login_VerifyTokenRsp))
+        return;
+    const auto* rsp = reinterpret_cast<const Msg_Login_VerifyTokenRsp*>(data);
+    auto it = m_pendingVerifyToken.find(rsp->requestSeq);
+    if (it == m_pendingVerifyToken.end())
+        return;
+
+    Msg_REC_ValidateTokenRsp out{};
+    out.code = rsp->code;
+    out.accid = rsp->accid;
+    out.gatewayConnID = it->second.gatewayConnID;
+    m_server.SendMsg(it->second.replyConn,
+                     static_cast<uint16_t>(InternalMsgID::REC_VALIDATE_TOKEN_RSP),
+                     reinterpret_cast<char*>(&out), sizeof(out));
+    m_pendingVerifyToken.erase(it);
+}
+
+void RecordServer::CleanupPendingVerifyTokenTimeout()
+{
+    const uint64_t nowMs = TimerMgr::NowMs();
+    if (m_pendingVerifyToken.empty())
+        return;
+
+    std::unordered_set<uint32_t> expiredSeq;
+    for (const auto& [seq, pending] : m_pendingVerifyToken)
+    {
+        if (nowMs - pending.createdAtMs >= VERIFY_TOKEN_TIMEOUT_MS)
+            expiredSeq.insert(seq);
+    }
+
+    for (uint32_t seq : expiredSeq)
+    {
+        auto it = m_pendingVerifyToken.find(seq);
+        if (it == m_pendingVerifyToken.end())
+            continue;
+        Msg_REC_ValidateTokenRsp rsp{};
+        rsp.code = 1;
+        rsp.gatewayConnID = it->second.gatewayConnID;
+        m_server.SendMsg(it->second.replyConn,
+                         static_cast<uint16_t>(InternalMsgID::REC_VALIDATE_TOKEN_RSP),
+                         reinterpret_cast<char*>(&rsp), sizeof(rsp));
+        m_pendingVerifyToken.erase(it);
+        LOG_WARN("票据校验超时已回收: seq=%u", seq);
+    }
+}
+
+void RecordServer::OnListCharactersReq(ConnID fromConn, const char* data, uint16_t len)
+{
+    if (len < sizeof(Msg_REC_ListCharactersReq))
+        return;
+    const auto* req = reinterpret_cast<const Msg_REC_ListCharactersReq*>(data);
+    Msg_REC_ListCharactersRspHeader hdr{};
+    std::vector<Msg_REC_CharacterEntryWire> entries;
+    RecordCharService::listCharacters(m_db, *req, hdr, entries);
+    const size_t bodyLen = sizeof(hdr) + entries.size() * sizeof(Msg_REC_CharacterEntryWire);
+    std::vector<char> body(bodyLen);
+    std::memcpy(body.data(), &hdr, sizeof(hdr));
+    if (!entries.empty())
+    {
+        std::memcpy(body.data() + sizeof(hdr), entries.data(),
+                    entries.size() * sizeof(Msg_REC_CharacterEntryWire));
+    }
+    m_server.SendMsg(fromConn, static_cast<uint16_t>(InternalMsgID::REC_LIST_CHARACTERS_RSP),
+                     body.data(), static_cast<uint16_t>(bodyLen));
+}
+
+void RecordServer::OnCreateCharacterReq(ConnID fromConn, const char* data, uint16_t len)
+{
+    if (len < sizeof(Msg_REC_CreateCharacterReq))
+        return;
+    const auto* req = reinterpret_cast<const Msg_REC_CreateCharacterReq*>(data);
+    Msg_REC_CreateCharacterRsp rsp{};
+    RecordCharService::createCharacter(m_db, *req, rsp);
+    if (rsp.code == 0 && rsp.userID != 0)
+    {
+        Msg_Login_UpdateLastUserReq updateReq{};
+        updateReq.accid = req->accid;
+        updateReq.userID = rsp.userID;
+        m_externSender.sendToLoginServer(
+            static_cast<uint16_t>(InternalMsgID::LOGIN_UPDATE_LAST_USER_REQ),
+            reinterpret_cast<const char*>(&updateReq), sizeof(updateReq));
+    }
+    m_server.SendMsg(fromConn, static_cast<uint16_t>(InternalMsgID::REC_CREATE_CHARACTER_RSP),
+                     reinterpret_cast<char*>(&rsp), sizeof(rsp));
 }

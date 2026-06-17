@@ -8,15 +8,18 @@
 #include "../sdk/net/NetDefine.h"
 #include "../sdk/timer/TimerMgr.h"
 #include <cstdint>
+#include <unordered_set>
 
 /**
  * @brief 客户端连接登录状态
  */
 enum class ClientState : uint8_t
 {
-    CONNECTED  = 0,  /**< TCP 已建立，未登录 */
-    LOGGING    = 1,  /**< 登录验证中 */
-    LOGGED_IN  = 2,  /**< 已登录 */
+    CONNECTED   = 0, /**< TCP 已建立，待 Gateway 票据鉴权 */
+    AUTHING     = 1, /**< 校验 loginToken 中 */
+    ACCOUNT_OK  = 2, /**< 账号已认证，可选角/创角 */
+    ENTERING    = 3, /**< 已选角，Super 进世界中 */
+    IN_WORLD    = 4, /**< 已进入游戏，可转发 Scene 消息 */
 };
 
 /**
@@ -53,11 +56,53 @@ public:
         Base().userID = userId;
     }
 
+    /** @brief 票据鉴权成功后的账号 ID */
+    uint64_t getAccid() const { return accid; }
+
+    /** @brief 绑定账号 ID */
+    void setAccid(uint64_t id) { accid = id; }
+
+    /** @brief 当前游戏区号 */
+    uint32_t getZoneId() const { return zoneId; }
+
+    /** @brief 设置游戏区号 */
+    void setZoneId(uint32_t id) { zoneId = id; }
+
+    /** @brief 游戏类型 */
+    uint8_t getGameType() const { return gameType; }
+
+    /** @brief 设置游戏类型 */
+    void setGameType(uint8_t type) { gameType = type; }
+
     /** @brief 用户所在 SceneServer 实例 ID（ServerList.server_id） */
     uint32_t getSceneServerId() const { return sceneServerId; }
 
     /** @brief 登录调度成功后绑定 Scene 实例 */
     void setSceneServerId(uint32_t serverId) { sceneServerId = serverId; }
+
+    /** @brief 选角时绑定的登录事务幂等键 */
+    uint64_t getLoginTxnId() const { return loginTxnId; }
+
+    /** @brief 设置登录事务幂等键 */
+    void setLoginTxnId(uint64_t txnId) { loginTxnId = txnId; }
+
+    /** @brief 缓存本账号已拉取的角色 ID（选角归属校验） */
+    void setOwnedRoleIds(std::unordered_set<uint64_t> ids) { ownedRoleIds = std::move(ids); }
+
+    /** @brief 角色是否属于当前账号会话 */
+    bool ownsRole(uint64_t roleId) const
+    {
+        return ownedRoleIds.find(roleId) != ownedRoleIds.end();
+    }
+
+    /** @brief 创角成功后追加角色 ID */
+    void addOwnedRole(uint64_t roleId) { ownedRoleIds.insert(roleId); }
+
+    /** @brief 角色列表快照是否可用 */
+    bool isRoleListReady() const { return roleListReady; }
+
+    /** @brief 更新角色列表快照状态 */
+    void setRoleListReady(bool ready) { roleListReady = ready; }
 
     bool sendCmdToMe(uint8_t module, uint8_t sub, const char* data, uint16_t len);
     bool sendCmdToMe(uint16_t flatMsgId, const char* data, uint16_t len);
@@ -78,4 +123,10 @@ private:
     ClientState clientState = ClientState::CONNECTED; /**< 会话状态机状态 */
     uint64_t    lastHeartbeat = 0;                    /**< 最近心跳时间戳（ms） */
     uint32_t    sceneServerId = 0;                    /**< 绑定的 SceneServer 实例 ID */
+    uint64_t    accid = 0;                            /**< 账号 ID（票据鉴权后） */
+    uint32_t    zoneId = 0;                           /**< 游戏区号 */
+    uint8_t     gameType = 0;                         /**< 游戏类型 */
+    uint64_t    loginTxnId = 0;                       /**< 选角进世界事务幂等键 */
+    std::unordered_set<uint64_t> ownedRoleIds;        /**< 本账号已认证角色列表 */
+    bool        roleListReady = false;                /**< 是否拿到有效角色列表快照 */
 };

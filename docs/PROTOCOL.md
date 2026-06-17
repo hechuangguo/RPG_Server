@@ -44,14 +44,15 @@
 
 | 扁平 ID | 名称 | 方向 | 结构体 | 说明 |
 |---------|------|------|--------|------|
-| 0x0001 | C2S_LOGIN_REQ | C→S | `Msg_C2S_LoginReq` | 账号密码（Gateway→Record 验证） |
-| 0x0002 | S2C_LOGIN_RSP | S→C | `Msg_S2C_LoginRsp` | 登录结果 |
+| 0x0001 | C2S_LOGIN_REQ | C→S | `Msg_C2S_LoginReq` | **LoginServer** 账号密码登录 |
+| 0x0002 | S2C_LOGIN_RSP | S→C | `Msg_S2C_LoginRsp` | 登录结果（含 accid/loginToken/tokenExpireMs） |
 | 0x0003 | C2S_REGISTER_REQ | C→S | `Msg_C2S_RegisterReq` | 注册账号（account/password/confirmPassword/zoneId/gameType） |
 | 0x0004 | S2C_REGISTER_RSP | S→C | `Msg_S2C_RegisterRsp` | 注册结果（含 accid） |
-| 0x0005 | C2S_SELECT_USER_REQ | C→S | — | 选角 |
-| 0x0006 | S2C_USER_LIST | S→C | — | 用户列表 |
-| 0x0007 | C2S_CREATE_USER_REQ | C→S | — | 创角 |
-| 0x0008 | S2C_CREATE_USER_RSP | S→C | — | 创角响应 |
+| 0x0005 | C2S_SELECT_USER_REQ | C→S | `Msg_C2S_SelectUserReq` | 选角进世界（Gateway ACCOUNT_OK） |
+| 0x0006 | S2C_USER_LIST | S→C | `Msg_S2C_UserListHeader` + N×`Msg_S2C_UserListEntryWire` | 角色列表（变长） |
+| 0x0007 | C2S_CREATE_USER_REQ | C→S | `Msg_C2S_CreateUserReq` | 创角 |
+| 0x0008 | S2C_CREATE_USER_RSP | S→C | `Msg_S2C_CreateUserRsp` | 创角响应 |
+| 0x000D | C2S_GATEWAY_AUTH_REQ | C→S | `Msg_C2S_GatewayAuthReq` | Gateway 票据鉴权（连 Gateway 首包） |
 | 0x0009 | S2C_ENTER_GAME | S→C | `Msg_S2C_EnterGame` | 进入游戏世界 |
 | 0x000A | S2C_GATEWAY_INFO | S→C | `Msg_S2C_GatewayInfo` | LoginServer 下发网关地址 |
 | 0x000B | C2S_ZONE_LIST_REQ | C→S | `Msg_C2S_ZoneListReq` | LoginServer 请求区列表（空 body 视为全部） |
@@ -97,7 +98,33 @@
 
 **说明**：标「—」的结构体在 enum 中已定义 ID，但 `ClientMsg.h` 尚未提供完整 wire struct；实现时可补全。
 
-### 2.3 Gateway 校验错误码
+### 2.3 登录进场景错误码
+
+定义于 [`sdk/util/LoginEnterErrorCode.h`](../sdk/util/LoginEnterErrorCode.h)：
+
+| 枚举 | 值 | 含义 |
+|------|-----|------|
+| `SuperEnterError::NO_RECORD` | -1 | 无存档服或 userID 非法 |
+| `SuperEnterError::NO_SESSION` | -2 | 无会话服 |
+| `SuperEnterError::MAP_NOT_REGISTERED` | -3 | 地图未注册 |
+| `SuperEnterError::SCENE_OFFLINE` | -4 | 场景服离线 |
+| `SuperEnterError::LOAD_USER_FAILED` | -5 | 加载角色失败 |
+| `SuperEnterError::TXN_TIMEOUT` | -10 | 登录事务超时 |
+| `SuperEnterError::TXN_IN_PROGRESS` | -11 | 同角色事务进行中 |
+
+`C2S_SELECT_USER_REQ.loginTxnId` 与 `Msg_GW_UserEnterReq.loginTxnId` 为幂等键；Super 对相同 txn 的重复请求静默忽略。
+
+`S2C_CREATE_USER_RSP.code` / `REC_CREATE_CHARACTER_RSP.code` 使用 `CreateCharacterError`：
+
+| 值 | 名称 | 含义 |
+|----|------|------|
+| -1 | SYSTEM_ERROR | 系统失败（DB 异常等） |
+| 0 | OK | 创角成功 |
+| 1 | NAME_EXISTS | 角色名重复 |
+| 2 | LIMIT_REACHED | 达每账号每区角色上限 |
+| 3 | INVALID_NAME | 角色名非法 |
+
+### 2.4 Gateway 校验错误码
 
 `Msg_S2C_Error.code` 使用 `GatewayValidateCode`：
 
@@ -135,7 +162,7 @@
 | 0x1F10–0x1F15 | Super 转发 | SS_EXTERN_FWD、EXT_GAMEZONE_FWD、SS_LOGIN_GATEWAY_WRAP |
 | 0x1001–0x1003 | SuperServer | SS_KICK_USER、SS_QUERY_ONLINE |
 | 0x1101–0x1113 | SessionServer | SES_LOAD/SAVE、SES_SCENE_*、SES_COPY_*、SES_RESOLVE_MAP_* |
-| 0x1201–0x120C | RecordServer | REC_LOAD/SAVE、REC_LOGIN_VERIFY、REC_RELATION_* |
+| 0x1201–0x1212 | RecordServer | REC_LOAD/SAVE、REC_VALIDATE_TOKEN、REC_LIST/CREATE_CHARACTER、REC_RELATION_* |
 | 0x1301–0x1306 | SceneServer | SCE_USER_ENTER/LEAVE、SCE_FORWARD_TO_CLIENT |
 | 0x1401–0x1405 | GatewayServer | GW_CLIENT_MSG、GW_SEND_TO_CLIENT、GW_USER_LOGIN_* |
 | 0x1501–0x1506 | AOIServer | AOI_ENTER/LEAVE/MOVE、AOI_VIEW_NOTIFY、AOI_SCENE_* |
@@ -149,20 +176,28 @@
 ```mermaid
 sequenceDiagram
     participant C as Client
+    participant LS as LoginServer
     participant GW as Gateway
     participant REC as Record
     participant SS as Super
+    participant SES as Session
     participant SCE as Scene
-    participant AOI as AOI
 
-    C->>GW: C2S_LOGIN_REQ
-    GW->>REC: REC_LOGIN_VERIFY_REQ
-    REC-->>GW: REC_LOGIN_VERIFY_RSP
-    GW->>SS: GW_USER_LOGIN_REQ
+    C->>LS: C2S_LOGIN_REQ
+    LS-->>C: S2C_LOGIN_RSP(loginToken) + S2C_GATEWAY_INFO
+    C->>GW: C2S_GATEWAY_AUTH_REQ
+    GW->>REC: REC_VALIDATE_TOKEN_REQ
+    REC-->>GW: REC_VALIDATE_TOKEN_RSP(accid)
+    GW->>REC: REC_LIST_CHARACTERS_REQ
+    REC-->>GW: REC_LIST_CHARACTERS_RSP
+    GW-->>C: S2C_USER_LIST
+    C->>GW: C2S_SELECT_USER_REQ
+    GW->>SS: GW_USER_LOGIN_REQ(Msg_GW_UserEnterReq)
     SS->>REC: REC_LOAD_USER_REQ
     REC-->>SS: REC_LOAD_USER_RSP
+    SS->>SES: SES_RESOLVE_MAP_REQ
+    SES-->>SS: SES_RESOLVE_MAP_RSP
     SS->>SCE: SCE_USER_ENTER_REQ
-    SCE->>AOI: AOI_ENTER_REQ
     SCE-->>SS: SCE_USER_ENTER_RSP
     SS-->>GW: GW_USER_LOGIN_RSP
     GW-->>C: S2C_LOGIN_RSP + S2C_ENTER_GAME
