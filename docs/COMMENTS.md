@@ -64,6 +64,22 @@
 
 协议 struct 的字段成员、枚举值列表保持原样；仅 class/struct **内的函数/方法** 适用本规则。
 
+## Common 协议头（RPG_Common）
+
+路径：`Common/` 子模块（`ClientTypes.h`、`*Common.h`、`*Msg.h`、`ClientMsgBody.h`、`NetDefine.h`）。
+
+| 类型 | 要求 |
+|------|------|
+| **文件头** | `@file`、`@brief`；注明对应 `ClientModule`、关联 `*Msg.h` |
+| **XxxMsgSub** | 每个枚举值 `/**< C→S/S→C: 简述；处理方 Login/Gateway/Scene/Session */` |
+| **业务枚举** | 如 `ZoneLoadLevel`、`GatewayValidateCode`：枚举值 `/**< */` |
+| **wire struct** | 块注释：方向、module/sub、触发时机；变长包补充 `完整 body = header + N×Entry` |
+| **wire 字段** | `module`/`sub` 及业务字段均 `/**< */`（协议 struct 不适用「方法间空行」规则） |
+| **占位域** | `PropertyMsg.h` 等：`*Msg.h` 用 `RESERVED` 注释块登记 sub/计划 struct，不新增空 struct |
+| **内联工具** | `userListBodyLen` 等：`@param` / `@return` |
+
+范本：`Common/LoginMsg.h`、`Common/LoginCommon.h`。人类可读工作流见 [`COMMON.md`](COMMON.md) §协议头注释约定。
+
 批量整理存量头文件可运行：[`tools/format_header_methods.py`](../tools/format_header_methods.py)
 
 

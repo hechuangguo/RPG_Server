@@ -42,8 +42,8 @@
 
 - 定义：`sdk/net/NetDefine.h`
 - 工具：`sdk/net/MsgId.h`（`makeMsgId` / `msgModule` / `msgSub`）
-- 客户端模块：`ClientModule` in `Common/ClientMsg.h`
-- 新客户端消息须在 `ClientMsgValidator` 白名单与 `ClientMsgRouter` 中登记路由
+- 客户端模块：`ClientModule` in `Common/ClientTypes.h`
+- 新客户端消息须在 `ClientMsgValidator` 白名单与 `ClientMsgRouter` 中登记路由；协议体写入对应 `XxxCommon.h` / `XxxMsg.h`
 
 ## 常用路径
 
@@ -54,7 +54,10 @@ sdk/net/MsgId.h                  # module/sub 工具
 docs/PROTOCOL.md                 # 协议参考
 docs/SERVERS.md                  # 10 进程说明
 docs/COMMON.md                   # RPG_Common submodule 双端同步
-Common/ClientMsg.h               # ClientModule、ClientMsgID（submodule）
+Common/ClientTypes.h             # ClientModule（submodule）
+Common/ClientMsgBody.h           # body 前缀与 initClientMsg
+Common/LoginMsg.h 等 *Msg.h      # 各域 wire 消息
+Common/*Common.h                  # 各域枚举/常量/辅助结构
 protocal/InternalMsg.h           # Msg_GW_ClientMsg、Msg_GW_SendToClient
 GatewayServer/ClientMsgValidator.h
 GatewayServer/ClientMsgRouter.h
@@ -73,7 +76,7 @@ docs/LUA.md                      # Lua 绑定与模块
 - [ ] 新命名与注释符合 `.cursor/rules/*`（`.h` 文件头+API；XML 段/属性；SQL 表/字段 `COMMENT`）
 - [ ] 新增/修改日志均为中文文案，且术语与项目约定一致（如“登录服/网关服/场景服/会话服/存档服/超级服/视野服/全局服/跨区服/日志服”）
 - [ ] 新建或改动的 `.h` 中，**本次新增**符号均有 Doxygen 注释
-- [ ] 新客户端消息：Validator 规则 + Router 目标 + `ClientMsg.h` 注释
+- [ ] 新客户端消息：Validator 规则 + Router 目标 + `XxxMsgSub` + `XxxMsg.h`（含 body 前缀 module/sub、方向/触发/字段 `/**< */` 注释）
 - [ ] 协议字段用 `WireStringUtil`；线上帧为 6 字节头（非旧 4 字节）
 - [ ] 改策划表已跑 `./gen_data.sh`，未手改 `AUTO-GENERATED` 的 lua
 - [ ] 未提交 `.build/`、`logs/`、`run/`、`.cache/`
