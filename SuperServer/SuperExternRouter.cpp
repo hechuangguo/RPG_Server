@@ -6,6 +6,7 @@
 #include "SuperExternRouter.h"
 #include "SuperServer.h"
 #include "../sdk/util/ExternalServerHub.h"
+#include "../sdk/util/MsgHandlerBinder.h"
 #include "../sdk/log/Logger.h"
 
 #include <cstring>
@@ -22,14 +23,12 @@ SubServerType toSubServerType(uint8_t v)
 void SuperExternMsgRegister(SuperServer& super)
 {
     auto& d = MsgDispatcher::Instance();
-    d.Register(static_cast<uint16_t>(InternalMsgID::SS_EXTERN_FWD_REQ),
-               [&super](uint32_t c, const char* data, uint16_t len) {
-                   SuperExternOnForwardReq(super, c, data, len);
-               });
-    d.Register(static_cast<uint16_t>(InternalMsgID::EXT_GAMEZONE_FWD_RSP),
-               [&super](uint32_t c, const char* data, uint16_t len) {
-                   SuperExternOnForwardRsp(super, c, data, len);
-               });
+    registerInternalFree(d, super,
+                         static_cast<uint16_t>(InternalMsgID::SS_EXTERN_FWD_REQ),
+                         SuperExternOnForwardReq);
+    registerInternalFree(d, super,
+                         static_cast<uint16_t>(InternalMsgID::EXT_GAMEZONE_FWD_RSP),
+                         SuperExternOnForwardRsp);
 }
 
 bool SuperExternSendToExtern(SuperServer& super, SubServerType targetType,

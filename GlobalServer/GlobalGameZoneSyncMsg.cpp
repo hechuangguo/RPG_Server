@@ -11,6 +11,6 @@ void GlobalGameZoneSyncMsgRegister(GlobalServer& server)
     MsgDispatcher::Instance().Register(
         static_cast<uint16_t>(InternalMsgID::GLB_DATA_SYNC),
         [&server](uint32_t c, const char* data, uint16_t len) {
-            server.onDataSyncFromGameZone(c, data, len);
+            server.onDataSync(c, data, len);
         });
 }

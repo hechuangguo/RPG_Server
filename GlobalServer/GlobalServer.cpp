@@ -7,7 +7,7 @@
 #include "../sdk/net/MsgIngress.h"
 
 #include "GlobalHttpApi.h"
-#include "GlobalGameZoneMsg.h"
+#include "GlobalInternMsgRegister.h"
 #include "../sdk/http/HttpCodec.h"
 
 #include <algorithm>
@@ -79,8 +79,8 @@ bool GlobalServer::Init(const ExternServerConfig& cfg)
     if (cfg.httpClient.enabled)
         m_httpClient.connectIfConfigured();
 
-    RegisterHandlers();
-    TimerMgr::Instance().Register(60000, 60000, [this] { SyncGlobalData(); });
+    registerHandlers();
+    TimerMgr::Instance().Register(60000, 60000, [this] { syncGlobalData(); });
     if (cfg.httpClient.enabled && cfg.httpClient.port > 0)
     {
         TimerMgr::Instance().Register(30000, 30000, [this] { probeHttpPeer(); });
@@ -119,9 +119,9 @@ void GlobalServer::OnMessage(ConnID id, uint8_t module, uint8_t sub,
     MsgIngress::dispatchInternal(id, module, sub, data, len);
 }
 
-void GlobalServer::RegisterHandlers()
+void GlobalServer::registerHandlers()
 {
-    GlobalGameZoneMsgRegister(*this);
+    GlobalInternMsgRegister(*this);
 }
 
 std::string GlobalServer::onHttpRequest(ConnID /*connId*/, const HttpRequest& req)
@@ -130,7 +130,7 @@ std::string GlobalServer::onHttpRequest(ConnID /*connId*/, const HttpRequest& re
     return HttpCodec::buildJsonResponse(api.status, api.reason, api.jsonBody);
 }
 
-void GlobalServer::OnRankUpdate(ConnID /*fromConn*/, const char* data, uint16_t len)
+void GlobalServer::onRankUpdate(ConnID /*fromConn*/, const char* data, uint16_t len)
 {
     if (len < sizeof(RankEntry))
         return;
@@ -142,7 +142,7 @@ void GlobalServer::OnRankUpdate(ConnID /*fromConn*/, const char* data, uint16_t 
         m_rank.resize(100);
 }
 
-void GlobalServer::OnDataSync(ConnID /*fromConn*/, const char* data, uint16_t len)
+void GlobalServer::onDataSync(ConnID /*fromConn*/, const char* data, uint16_t len)
 {
     LOG_DEBUG("全局数据同步: len=%d", len);
     for (auto& [cid, alive] : m_innerConns)
@@ -152,7 +152,7 @@ void GlobalServer::OnDataSync(ConnID /*fromConn*/, const char* data, uint16_t le
     }
 }
 
-void GlobalServer::SyncGlobalData()
+void GlobalServer::syncGlobalData()
 {
     LOG_INFO("全局服开始同步排行到所有场景服，排行数量=%zu", m_rank.size());
 }

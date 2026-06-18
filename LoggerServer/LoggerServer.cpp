@@ -21,7 +21,7 @@ bool LoggerServer::Init(const std::string& ip, uint16_t port, const std::string&
         LOG_FATAL("日志服启动失败");
         return false;
     }
-    RegisterHandlers();
+    registerHandlers();
     LOG_INFO("日志服启动完成: %s:%d logDir=%s", ip.c_str(), port, logDir.c_str());
     return true;
 }
@@ -48,12 +48,12 @@ void LoggerServer::OnMessage(ConnID id, uint8_t module, uint8_t sub,
     MsgIngress::dispatchInternal(id, module, sub, data, len);
 }
 
-void LoggerServer::RegisterHandlers()
+void LoggerServer::registerHandlers()
 {
     LoggerInternMsgRegister(*this);
 }
 
-void LoggerServer::OnWriteLog(ConnID /*fromConn*/, const char* data, uint16_t len)
+void LoggerServer::onWriteLog(ConnID /*fromConn*/, const char* data, uint16_t len)
 {
     if (len < sizeof(Msg_Log_WriteReq))
         return;

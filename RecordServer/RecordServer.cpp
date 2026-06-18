@@ -56,13 +56,13 @@ bool RecordServer::Init(const std::string& ip, uint16_t port,
 
     m_superClient.Connect(cfg.superIP, (uint16_t)cfg.superPort);
 
-    RegisterHandlers();
+    registerHandlers();
 
     TimerMgr::Instance().Register(500, 0, [this] { RegisterToSuper(); });
-    TimerMgr::Instance().Register(10000, 10000, [this] { SendHeartbeat(); });
+    TimerMgr::Instance().Register(10000, 10000, [this] { sendHeartbeat(); });
     TimerMgr::Instance().Register(5000, 5000, [this] { CleanupPendingVerifyTokenTimeout(); });
     // 每 60 秒自动保存所有脏数据
-    TimerMgr::Instance().Register(60000, 60000, [this] { AutoSaveAll(); });
+    TimerMgr::Instance().Register(60000, 60000, [this] { autoSaveAll(); });
     LOG_INFO("存档服启动完成");
     return true;
 }
@@ -110,7 +110,7 @@ bool RecordServer::InitDB(const ServerConfig& cfg)
     return true;
 }
 
-void RecordServer::RegisterHandlers()
+void RecordServer::registerHandlers()
 {
     RecordInternMsgRegister(*this);
 }
@@ -127,7 +127,7 @@ void RecordServer::RegisterToSuper()
                           reinterpret_cast<char*>(&reg), sizeof(reg));
 }
 
-void RecordServer::SendHeartbeat()
+void RecordServer::sendHeartbeat()
 {
     Msg_S2S_Heartbeat hb{};
     hb.seq = ++m_hbSeq;
@@ -136,7 +136,7 @@ void RecordServer::SendHeartbeat()
                           reinterpret_cast<char*>(&hb), sizeof(hb));
 }
 
-void RecordServer::OnLoadUser(ConnID fromConn, const char* data, uint16_t len)
+void RecordServer::onLoadUser(ConnID fromConn, const char* data, uint16_t len)
 {
     if (len < sizeof(UserID))
     {
@@ -146,7 +146,7 @@ void RecordServer::OnLoadUser(ConnID fromConn, const char* data, uint16_t len)
 
     if (!m_userManager.contains(rid))
     {
-        LoadUserFromDB(rid);
+        loadUserFromDb(rid);
     }
 
     Msg_REC_LoadUserRsp hdr{};
@@ -185,7 +185,7 @@ void RecordServer::OnLoadUser(ConnID fromConn, const char* data, uint16_t len)
                      buf.data(), (uint16_t)buf.size());
 }
 
-void RecordServer::OnSaveUser(ConnID fromConn, const char* data, uint16_t len)
+void RecordServer::onSaveUser(ConnID fromConn, const char* data, uint16_t len)
 {
     UserID rid = INVALID_USER_ID;
 
@@ -218,7 +218,7 @@ void RecordServer::OnSaveUser(ConnID fromConn, const char* data, uint16_t len)
         return;
     }
 
-    SaveUserToDB(rid);
+    saveUserToDb(rid);
     Msg_REC_LoadUserRsp rsp{};
     rsp.code = 0;
     rsp.userID = rid;
@@ -226,7 +226,7 @@ void RecordServer::OnSaveUser(ConnID fromConn, const char* data, uint16_t len)
                      reinterpret_cast<char*>(&rsp), sizeof(rsp));
 }
 
-void RecordServer::OnRelationPreloadReq(ConnID fromConn, const char* /*data*/, uint16_t /*len*/)
+void RecordServer::onRelationPreloadReq(ConnID fromConn, const char* /*data*/, uint16_t /*len*/)
 {
     RelationStore store(m_db);
     std::vector<RelationRow> rows;
@@ -244,7 +244,7 @@ void RecordServer::OnRelationPreloadReq(ConnID fromConn, const char* /*data*/, u
                      buf.data(), static_cast<uint16_t>(buf.size()));
 }
 
-void RecordServer::OnRelationLoadReq(ConnID fromConn, const char* data, uint16_t len)
+void RecordServer::onRelationLoadReq(ConnID fromConn, const char* data, uint16_t len)
 {
     if (len < sizeof(UserID))
         return;
@@ -262,7 +262,7 @@ void RecordServer::OnRelationLoadReq(ConnID fromConn, const char* data, uint16_t
                      buf.data(), static_cast<uint16_t>(buf.size()));
 }
 
-void RecordServer::OnRelationSaveReq(ConnID fromConn, const char* data, uint16_t len)
+void RecordServer::onRelationSaveReq(ConnID fromConn, const char* data, uint16_t len)
 {
     RelationStore store(m_db);
     RelationRow row;
@@ -282,7 +282,7 @@ void RecordServer::OnRelationSaveReq(ConnID fromConn, const char* data, uint16_t
                      reinterpret_cast<char*>(&rsp), sizeof(rsp));
 }
 
-void RecordServer::LoadUserFromDB(UserID rid)
+void RecordServer::loadUserFromDb(UserID rid)
 {
     char sql[256];
     snprintf(sql, sizeof(sql),
@@ -326,7 +326,7 @@ void RecordServer::LoadUserFromDB(UserID rid)
     }
 }
 
-void RecordServer::SaveUserToDB(UserID rid)
+void RecordServer::saveUserToDb(UserID rid)
 {
     auto user = m_userManager.findUser(rid);
     if (!user)
@@ -357,27 +357,23 @@ void RecordServer::SaveUserToDB(UserID rid)
     }
 }
 
-void RecordServer::AutoSaveAll()
+void RecordServer::autoSaveAll()
 {
-    m_userManager.forEach([this](UserID rid, RecordUser& /*user*/) { SaveUserToDB(rid); });
+    m_userManager.forEach([this](UserID rid, RecordUser& /*user*/) { saveUserToDb(rid); });
     LOG_INFO("自动存档完成: 已保存用户=%zu", m_userManager.getUserCount());
 }
 
-void RecordServer::OnValidateTokenReq(ConnID fromConn, const char* data, uint16_t len)
+void RecordServer::onValidateTokenReq(ConnID fromConn, const Msg_REC_ValidateTokenReq& req)
 {
-    if (len < sizeof(Msg_REC_ValidateTokenReq))
-        return;
-    const auto* req = reinterpret_cast<const Msg_REC_ValidateTokenReq*>(data);
-
     Msg_Login_VerifyTokenReq verifyReq{};
     verifyReq.requestSeq = ++m_loginVerifySeq;
-    copyToWire(verifyReq.loginToken, sizeof(verifyReq.loginToken), req->loginToken);
-    verifyReq.zoneId = req->zoneId;
-    verifyReq.gameType = req->gameType;
+    copyToWire(verifyReq.loginToken, sizeof(verifyReq.loginToken), req.loginToken);
+    verifyReq.zoneId = req.zoneId;
+    verifyReq.gameType = req.gameType;
 
     PendingVerifyToken pending{};
     pending.replyConn = fromConn;
-    pending.gatewayConnID = req->gatewayConnID;
+    pending.gatewayConnID = req.gatewayConnID;
     pending.createdAtMs = TimerMgr::NowMs();
     m_pendingVerifyToken[verifyReq.requestSeq] = pending;
 
@@ -388,24 +384,21 @@ void RecordServer::OnValidateTokenReq(ConnID fromConn, const char* data, uint16_
         m_pendingVerifyToken.erase(verifyReq.requestSeq);
         Msg_REC_ValidateTokenRsp failRsp{};
         failRsp.code = 1;
-        failRsp.gatewayConnID = req->gatewayConnID;
+        failRsp.gatewayConnID = req.gatewayConnID;
         m_server.SendMsg(fromConn, static_cast<uint16_t>(InternalMsgID::REC_VALIDATE_TOKEN_RSP),
                          reinterpret_cast<char*>(&failRsp), sizeof(failRsp));
     }
 }
 
-void RecordServer::OnLoginVerifyTokenRsp(ConnID /*fromConn*/, const char* data, uint16_t len)
+void RecordServer::onLoginVerifyTokenRsp(ConnID /*fromConn*/, const Msg_Login_VerifyTokenRsp& rsp)
 {
-    if (len < sizeof(Msg_Login_VerifyTokenRsp))
-        return;
-    const auto* rsp = reinterpret_cast<const Msg_Login_VerifyTokenRsp*>(data);
-    auto it = m_pendingVerifyToken.find(rsp->requestSeq);
+    auto it = m_pendingVerifyToken.find(rsp.requestSeq);
     if (it == m_pendingVerifyToken.end())
         return;
 
     Msg_REC_ValidateTokenRsp out{};
-    out.code = rsp->code;
-    out.accid = rsp->accid;
+    out.code = rsp.code;
+    out.accid = rsp.accid;
     out.gatewayConnID = it->second.gatewayConnID;
     m_server.SendMsg(it->second.replyConn,
                      static_cast<uint16_t>(InternalMsgID::REC_VALIDATE_TOKEN_RSP),
@@ -442,14 +435,11 @@ void RecordServer::CleanupPendingVerifyTokenTimeout()
     }
 }
 
-void RecordServer::OnListCharactersReq(ConnID fromConn, const char* data, uint16_t len)
+void RecordServer::onListCharactersReq(ConnID fromConn, const Msg_REC_ListCharactersReq& req)
 {
-    if (len < sizeof(Msg_REC_ListCharactersReq))
-        return;
-    const auto* req = reinterpret_cast<const Msg_REC_ListCharactersReq*>(data);
     Msg_REC_ListCharactersRspHeader hdr{};
     std::vector<Msg_REC_CharacterEntryWire> entries;
-    RecordCharService::listCharacters(m_db, *req, hdr, entries);
+    RecordCharService::listCharacters(m_db, req, hdr, entries);
     const size_t bodyLen = sizeof(hdr) + entries.size() * sizeof(Msg_REC_CharacterEntryWire);
     std::vector<char> body(bodyLen);
     std::memcpy(body.data(), &hdr, sizeof(hdr));
@@ -462,17 +452,14 @@ void RecordServer::OnListCharactersReq(ConnID fromConn, const char* data, uint16
                      body.data(), static_cast<uint16_t>(bodyLen));
 }
 
-void RecordServer::OnCreateCharacterReq(ConnID fromConn, const char* data, uint16_t len)
+void RecordServer::onCreateCharacterReq(ConnID fromConn, const Msg_REC_CreateCharacterReq& req)
 {
-    if (len < sizeof(Msg_REC_CreateCharacterReq))
-        return;
-    const auto* req = reinterpret_cast<const Msg_REC_CreateCharacterReq*>(data);
     Msg_REC_CreateCharacterRsp rsp{};
-    RecordCharService::createCharacter(m_db, *req, rsp);
+    RecordCharService::createCharacter(m_db, req, rsp);
     if (rsp.code == 0 && rsp.userID != 0)
     {
         Msg_Login_UpdateLastUserReq updateReq{};
-        updateReq.accid = req->accid;
+        updateReq.accid = req.accid;
         updateReq.userID = rsp.userID;
         m_externSender.sendToLoginServer(
             static_cast<uint16_t>(InternalMsgID::LOGIN_UPDATE_LAST_USER_REQ),

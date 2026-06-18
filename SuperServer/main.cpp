@@ -19,8 +19,8 @@
 #include "../sdk/util/ServerBootstrap.h"
 #include <csignal>
 
-static bool g_running = true;
-void SignalHandler(int) { g_running = false; }
+static bool running = true;
+void SignalHandler(int) { running = false; }
 
 /**
  * @brief 超级服务器启动入口

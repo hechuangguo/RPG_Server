@@ -55,7 +55,7 @@
  * **处理流程**:
  * 1. 解析请求中的 entityID、mapID、坐标等信息，构造 AOIEntity 存入 m_entities。
  * 2. 通过 WorldToGrid() 将世界坐标转换为格子坐标，更新 m_entityGrid 和 m_gridMap。
- * 3. 调用 NotifyViewChange()，向该实体所在 SceneServer 发送 AOI_VIEW_NOTIFY 消息，
+ * 3. 调用 notifyViewChange()，向该实体所在 SceneServer 发送 AOI_VIEW_NOTIFY 消息，
  *    SceneServer 收到后会广播给周围玩家，表示"新实体出现在视野中"。
  *
  * ### AOI_LEAVE（离开视野）
@@ -64,7 +64,7 @@
  * SceneServer 向 AOIServer 发送 AOI_LEAVE_REQ 消息。
  *
  * **处理流程**:
- * 1. 先调用 NotifyViewChange()，通知 SceneServer 该实体已离开视野（enter=false），
+ * 1. 先调用 notifyViewChange()，通知 SceneServer 该实体已离开视野（enter=false），
  *    SceneServer 收到后会向周围玩家广播"实体消失"消息。
  * 2. 然后从 m_gridMap、m_entityGrid、m_entities 三个索引中彻底移除该实体的所有数据。
  *
@@ -180,7 +180,7 @@ public:
 
 private:
     /** @brief 注册 AOI 相关协议处理函数 */
-    void RegisterHandlers();
+    void registerHandlers();
 
     /**
      * @brief 世界坐标 → 格子坐标转换
@@ -221,7 +221,7 @@ private:
      * 触发时机：玩家登录进入场景、NPC 被动态生成等场景。
      * SceneServer 发送 AOI_ENTER_REQ，包含 entityID、mapID 和初始坐标。
      */
-    void OnEnter(ConnID fromConn, const char* data, uint16_t len);
+    void onEnter(ConnID fromConn, const char* data, uint16_t len);
 
     /**
      * @brief 实体离开 AOI
@@ -231,7 +231,7 @@ private:
      * 触发时机：玩家下线、切换场景、NPC 被销毁等场景。
      * SceneServer 发送 AOI_LEAVE_REQ，包含 entityID。
      */
-    void OnLeave(ConnID fromConn, const char* data, uint16_t len);
+    void onLeave(ConnID fromConn, const char* data, uint16_t len);
 
     /**
      * @brief 实体移动更新
@@ -242,13 +242,13 @@ private:
      * 触发时机：玩家在场景中移动时，由 SceneServer 周期性上报坐标。
      * 移动频率通常由客户端的移动同步间隔控制（如每 200ms 一次）。
      */
-    void OnMove(ConnID fromConn, const char* data, uint16_t len);
+    void onMove(ConnID fromConn, const char* data, uint16_t len);
 
     /** @brief SceneServer 注册场景实例到 AOI */
-    void OnSceneRegister(ConnID fromConn, const char* data, uint16_t len);
+    void onSceneRegister(ConnID fromConn, const char* data, uint16_t len);
 
     /** @brief SceneServer 注销场景实例 */
-    void OnSceneUnregister(ConnID fromConn, const char* data, uint16_t len);
+    void onSceneUnregister(ConnID fromConn, const char* data, uint16_t len);
 
     /**
      * @brief 通知 SceneServer 视野变化（实体进入/离开）
@@ -258,13 +258,13 @@ private:
      * SceneServer 收到此通知后，会向该实体 9 宫格邻域内的所有玩家广播
      * "新实体出现"或"实体消失"消息，客户端据此创建/销毁实体表现。
      */
-    void NotifyViewChange(uint64_t entityID, bool enter);
+    void notifyViewChange(uint64_t entityID, bool enter);
 
     /** @brief 向 SuperServer 注册 AOI 节点 */
     void RegisterToSuper();
 
     /** @brief 定时发送 AOI 存活心跳 */
-    void SendHeartbeat();
+    void sendHeartbeat();
     TcpServer  m_server;         /**< 入站监听（SceneServer） */
     TcpClient  m_superClient;    /**< 出站 SuperServer（注册、心跳） */
     uint32_t   m_hbSeq = 0;      /**< 心跳序列号 */

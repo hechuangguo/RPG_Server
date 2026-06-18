@@ -11,19 +11,16 @@
 void AoiInternMsgRegister(AOIServer& server)
 {
     auto& d = MsgDispatcher::Instance();
-    registerInternalRaw(d, &server,
-                        static_cast<uint16_t>(InternalMsgID::AOI_ENTER_REQ),
-                        &AOIServer::OnEnter);
-    registerInternalRaw(d, &server,
-                        static_cast<uint16_t>(InternalMsgID::AOI_LEAVE_REQ),
-                        &AOIServer::OnLeave);
-    registerInternalRaw(d, &server,
-                        static_cast<uint16_t>(InternalMsgID::AOI_MOVE_REQ),
-                        &AOIServer::OnMove);
-    registerInternalRaw(d, &server,
-                        static_cast<uint16_t>(InternalMsgID::AOI_SCENE_REGISTER),
-                        &AOIServer::OnSceneRegister);
-    registerInternalRaw(d, &server,
-                        static_cast<uint16_t>(InternalMsgID::AOI_SCENE_UNREGISTER),
-                        &AOIServer::OnSceneUnregister);
+    registerInternalSized<AOIServer, Msg_AOI_Move>(
+        d, &server, static_cast<uint16_t>(InternalMsgID::AOI_ENTER_REQ), &AOIServer::onEnter);
+    registerInternalSized<AOIServer, uint64_t>(
+        d, &server, static_cast<uint16_t>(InternalMsgID::AOI_LEAVE_REQ), &AOIServer::onLeave);
+    registerInternalSized<AOIServer, Msg_AOI_Move>(
+        d, &server, static_cast<uint16_t>(InternalMsgID::AOI_MOVE_REQ), &AOIServer::onMove);
+    registerInternalSized<AOIServer, Msg_AOI_SceneRegister>(
+        d, &server, static_cast<uint16_t>(InternalMsgID::AOI_SCENE_REGISTER),
+        &AOIServer::onSceneRegister);
+    registerInternalSized<AOIServer, Msg_AOI_SceneUnregister>(
+        d, &server, static_cast<uint16_t>(InternalMsgID::AOI_SCENE_UNREGISTER),
+        &AOIServer::onSceneUnregister);
 }

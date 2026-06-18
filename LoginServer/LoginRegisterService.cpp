@@ -58,7 +58,7 @@ void LoginRegisterService::onClientRegister(ConnID connID, const char* data, uin
 {
     if (len < sizeof(Msg_C2S_RegisterReq))
     {
-        sendRegisterRsp(connID, REGISTER_BAD_PARAM, "bad register payload");
+        sendRegisterRsp(connID, REGISTER_BAD_PARAM, "注册包体非法");
         return;
     }
     const auto* req = reinterpret_cast<const Msg_C2S_RegisterReq*>(data);
@@ -72,29 +72,29 @@ void LoginRegisterService::onClientRegister(ConnID connID, const char* data, uin
 
     if (!isPrintableAscii(account) || !isPrintableAscii(password) || !isPrintableAscii(confirmPassword))
     {
-        sendRegisterRsp(connID, REGISTER_BAD_PARAM, "invalid account or password");
+        sendRegisterRsp(connID, REGISTER_BAD_PARAM, "账号或密码格式非法");
         return;
     }
     if (std::strcmp(password, confirmPassword) != 0)
     {
-        sendRegisterRsp(connID, REGISTER_BAD_PARAM, "password not match");
+        sendRegisterRsp(connID, REGISTER_BAD_PARAM, "两次密码不一致");
         return;
     }
     if (std::strlen(password) < 6)
     {
-        sendRegisterRsp(connID, REGISTER_BAD_PARAM, "password too short");
+        sendRegisterRsp(connID, REGISTER_BAD_PARAM, "密码过短");
         return;
     }
     if (!m_owner.zoneInfoStore().isZoneEnabled(req->gameType, req->zoneId))
     {
-        sendRegisterRsp(connID, REGISTER_ZONE_UNAVAILABLE, "zone unavailable");
+        sendRegisterRsp(connID, REGISTER_ZONE_UNAVAILABLE, "区服不可用");
         return;
     }
 
     MYSQL* db = m_owner.db();
     if (!db)
     {
-        sendRegisterRsp(connID, REGISTER_SERVER_ERROR, "database unavailable");
+        sendRegisterRsp(connID, REGISTER_SERVER_ERROR, "数据库不可用");
         return;
     }
 
@@ -107,7 +107,7 @@ void LoginRegisterService::onClientRegister(ConnID connID, const char* data, uin
     if (mysql_query(db, querySql) != 0)
     {
         LOG_ERR("注册时查询账号失败: %s", mysql_error(db));
-        sendRegisterRsp(connID, REGISTER_SERVER_ERROR, "database error");
+        sendRegisterRsp(connID, REGISTER_SERVER_ERROR, "数据库错误");
         return;
     }
 
@@ -117,7 +117,7 @@ void LoginRegisterService::onClientRegister(ConnID connID, const char* data, uin
     {
         if (res)
             mysql_free_result(res);
-        sendRegisterRsp(connID, REGISTER_ACCOUNT_EXISTS, "account exists");
+        sendRegisterRsp(connID, REGISTER_ACCOUNT_EXISTS, "账号已存在");
         return;
     }
     if (res)
@@ -126,7 +126,7 @@ void LoginRegisterService::onClientRegister(ConnID connID, const char* data, uin
     std::string passwordHash;
     if (!hashPasswordBcrypt(password, passwordHash))
     {
-        sendRegisterRsp(connID, REGISTER_SERVER_ERROR, "hash password failed");
+        sendRegisterRsp(connID, REGISTER_SERVER_ERROR, "密码哈希失败");
         return;
     }
 
@@ -143,16 +143,16 @@ void LoginRegisterService::onClientRegister(ConnID connID, const char* data, uin
     {
         if (mysql_errno(db) == ER_DUP_ENTRY)
         {
-            sendRegisterRsp(connID, REGISTER_ACCOUNT_EXISTS, "account exists");
+            sendRegisterRsp(connID, REGISTER_ACCOUNT_EXISTS, "账号已存在");
             return;
         }
         LOG_ERR("注册写入 GameUser 失败: %s", mysql_error(db));
-        sendRegisterRsp(connID, REGISTER_SERVER_ERROR, "create account failed");
+        sendRegisterRsp(connID, REGISTER_SERVER_ERROR, "创建账号失败");
         return;
     }
 
     const uint64_t accid = static_cast<uint64_t>(mysql_insert_id(db));
-    sendRegisterRsp(connID, REGISTER_OK, "register ok", accid);
+    sendRegisterRsp(connID, REGISTER_OK, "注册成功", accid);
     LOG_INFO("账号注册成功: connID=%u accid=%llu account=%s zone=%u gameType=%u",
              connID, static_cast<unsigned long long>(accid), account, req->zoneId, req->gameType);
 }

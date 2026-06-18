@@ -6,36 +6,37 @@
 #include "RecordInternMsgRegister.h"
 #include "RecordServer.h"
 #include "../sdk/util/MsgHandlerBinder.h"
+#include "../sdk/util/UserBase.h"
 #include "../protocal/InternalMsg.h"
 
 void RecordInternMsgRegister(RecordServer& server)
 {
     auto& d = MsgDispatcher::Instance();
-    registerInternalRaw(d, &server,
-                        static_cast<uint16_t>(InternalMsgID::REC_LOAD_USER_REQ),
-                        &RecordServer::OnLoadUser);
+    registerInternalSized<RecordServer, UserID>(
+        d, &server, static_cast<uint16_t>(InternalMsgID::REC_LOAD_USER_REQ),
+        &RecordServer::onLoadUser);
     registerInternalRaw(d, &server,
                         static_cast<uint16_t>(InternalMsgID::REC_SAVE_USER_REQ),
-                        &RecordServer::OnSaveUser);
+                        &RecordServer::onSaveUser);
     registerInternalRaw(d, &server,
                         static_cast<uint16_t>(InternalMsgID::REC_RELATION_PRELOAD_REQ),
-                        &RecordServer::OnRelationPreloadReq);
-    registerInternalRaw(d, &server,
-                        static_cast<uint16_t>(InternalMsgID::REC_RELATION_LOAD_REQ),
-                        &RecordServer::OnRelationLoadReq);
+                        &RecordServer::onRelationPreloadReq);
+    registerInternalSized<RecordServer, UserID>(
+        d, &server, static_cast<uint16_t>(InternalMsgID::REC_RELATION_LOAD_REQ),
+        &RecordServer::onRelationLoadReq);
     registerInternalRaw(d, &server,
                         static_cast<uint16_t>(InternalMsgID::REC_RELATION_SAVE_REQ),
-                        &RecordServer::OnRelationSaveReq);
-    registerInternalRaw(d, &server,
-                        static_cast<uint16_t>(InternalMsgID::REC_VALIDATE_TOKEN_REQ),
-                        &RecordServer::OnValidateTokenReq);
-    registerInternalRaw(d, &server,
-                        static_cast<uint16_t>(InternalMsgID::REC_VERIFY_TOKEN_RSP),
-                        &RecordServer::OnLoginVerifyTokenRsp);
-    registerInternalRaw(d, &server,
-                        static_cast<uint16_t>(InternalMsgID::REC_LIST_CHARACTERS_REQ),
-                        &RecordServer::OnListCharactersReq);
-    registerInternalRaw(d, &server,
-                        static_cast<uint16_t>(InternalMsgID::REC_CREATE_CHARACTER_REQ),
-                        &RecordServer::OnCreateCharacterReq);
+                        &RecordServer::onRelationSaveReq);
+    registerInternal(d, &server,
+                     static_cast<uint16_t>(InternalMsgID::REC_VALIDATE_TOKEN_REQ),
+                     &RecordServer::onValidateTokenReq);
+    registerInternal(d, &server,
+                     static_cast<uint16_t>(InternalMsgID::REC_VERIFY_TOKEN_RSP),
+                     &RecordServer::onLoginVerifyTokenRsp);
+    registerInternal(d, &server,
+                     static_cast<uint16_t>(InternalMsgID::REC_LIST_CHARACTERS_REQ),
+                     &RecordServer::onListCharactersReq);
+    registerInternal(d, &server,
+                     static_cast<uint16_t>(InternalMsgID::REC_CREATE_CHARACTER_REQ),
+                     &RecordServer::onCreateCharacterReq);
 }

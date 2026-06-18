@@ -4,7 +4,7 @@
  *
  * ## 职责
  * - MySQL 直连：账号验证、用户数据加载/保存
- * - 定时自动存档（每 60 秒 AutoSaveAll）
+ * - 定时自动存档（每 60 秒 autoSaveAll）
  * - 内部通信：出站 SuperServer；入站 Gateway / Scene / Session
  *
  * ## 依赖关系
@@ -99,50 +99,50 @@ private:
     /**
      * @brief 注册消息处理函数
      *
-     * REC_LOAD_USER_REQ    → OnLoadUser（从 DB 加载用户）
-     * REC_SAVE_USER_REQ    → OnSaveUser（保存用户到 DB）
+     * REC_LOAD_USER_REQ    → onLoadUser（从 DB 加载用户）
+     * REC_SAVE_USER_REQ    → onSaveUser（保存用户到 DB）
      */
-    void RegisterHandlers();
+    void registerHandlers();
 
     /** @brief 向 SuperServer 注册 Record 节点 */
     void RegisterToSuper();
 
     /** @brief 定时上报心跳到 SuperServer */
-    void SendHeartbeat();
+    void sendHeartbeat();
 
     /**
      * @brief 加载用户数据
      *
-     * 先从 m_users 缓存查找，未命中则调用 LoadUserFromDB 从 MySQL 加载。
+     * 先从 m_users 缓存查找，未命中则调用 loadUserFromDb 从 MySQL 加载。
      */
-    void OnLoadUser(ConnID fromConn, const char* data, uint16_t len);
+    void onLoadUser(ConnID fromConn, const char* data, uint16_t len);
 
     /** @brief 处理用户保存请求 */
-    void OnSaveUser(ConnID fromConn, const char* data, uint16_t len);
+    void onSaveUser(ConnID fromConn, const char* data, uint16_t len);
 
     /** @brief Session 启动预载 Relation 全表 */
-    void OnRelationPreloadReq(ConnID fromConn, const char* data, uint16_t len);
+    void onRelationPreloadReq(ConnID fromConn, const char* data, uint16_t len);
 
     /** @brief Session 单用户 Relation 加载 */
-    void OnRelationLoadReq(ConnID fromConn, const char* data, uint16_t len);
+    void onRelationLoadReq(ConnID fromConn, const char* data, uint16_t len);
 
     /** @brief Session Relation 保存 */
-    void OnRelationSaveReq(ConnID fromConn, const char* data, uint16_t len);
+    void onRelationSaveReq(ConnID fromConn, const char* data, uint16_t len);
 
     /** @brief Gateway loginToken 校验 */
-    void OnValidateTokenReq(ConnID fromConn, const char* data, uint16_t len);
+    void onValidateTokenReq(ConnID fromConn, const Msg_REC_ValidateTokenReq& req);
 
     /** @brief LoginServer loginToken 校验回包 */
-    void OnLoginVerifyTokenRsp(ConnID fromConn, const char* data, uint16_t len);
+    void onLoginVerifyTokenRsp(ConnID fromConn, const Msg_Login_VerifyTokenRsp& rsp);
 
     /** @brief 清理票据校验待回包超时上下文 */
     void CleanupPendingVerifyTokenTimeout();
 
     /** @brief Gateway 角色列表 */
-    void OnListCharactersReq(ConnID fromConn, const char* data, uint16_t len);
+    void onListCharactersReq(ConnID fromConn, const Msg_REC_ListCharactersReq& req);
 
     /** @brief Gateway 创角 */
-    void OnCreateCharacterReq(ConnID fromConn, const char* data, uint16_t len);
+    void onCreateCharacterReq(ConnID fromConn, const Msg_REC_CreateCharacterReq& req);
 
     /**
      * @brief 从 MySQL 加载用户数据到内存
@@ -165,26 +165,26 @@ private:
      *       | row[10] | mp       | uint32_t  | 当前魔法值（默认 100）|
      *       | row[11] | gold     | uint64_t  | 金币              |
      */
-    void LoadUserFromDB(UserID rid);
+    void loadUserFromDb(UserID rid);
 
     /**
      * @brief 将用户数据写回 MySQL
      *
      * INSERT/UPDATE CharBase（user_id 主键）...
      */
-    void SaveUserToDB(UserID rid);
+    void saveUserToDb(UserID rid);
 
     /**
      * @brief 批量自动存档
      *
-     * 每 60 秒定时触发，遍历所有 m_users 调用 SaveUserToDB。
+     * 每 60 秒定时触发，遍历所有 m_users 调用 saveUserToDb。
      *
      * @note 脏标记检查逻辑：当前实现无条件保存全部用户数据。
      *       若需优化 I/O 开销，可增加脏标记（dirty flag）过滤：
-     *       仅当用户数据被修改（dirty == true）时才执行 SaveUserToDB，
+     *       仅当用户数据被修改（dirty == true）时才执行 saveUserToDb，
      *       保存成功后将 dirty 重置为 false。
      */
-    void AutoSaveAll();
+    void autoSaveAll();
 
     /** @brief Record 发往 Login 校验票据的待回包上下文 */
     struct PendingVerifyToken

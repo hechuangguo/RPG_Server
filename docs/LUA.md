@@ -29,21 +29,19 @@ script/?.lua;script/?/init.lua;database/?.lua;basefile/?.lua
 | `OnTick(nowMs)` | 1s 定时器 | 当前毫秒时间戳 |
 | `OnUserEnter(userID, mapID)` | 用户进入场景 | int, int |
 | `OnUserLeave(userID)` | 用户离开 | int |
-| `OnSkillReq(connID, rawData)` | C2S_SKILL_REQ (0x04/0x01) | connID, binary string |
-| `OnMsg_{MMSS}(connID, data)` | 未在 C++ 硬编码的客户端消息 | 如 `OnMsg_0301` = BAG 0x03 sub 0x01 |
 | `OnNpcTalk(npc, userId, dialogStep, templateId)` | NPC 对话（`callScriptBool` on npc entry） | SceneEntry userdata + ints |
 
-### C++ 硬编码处理的客户端消息
+### C++ 客户端消息（经 MsgIngress）
 
-以下在 `SceneServer::HandleClientMsg` 中 C++ 处理，**不**走 `OnMsg_*`：
+Gateway 校验后，Scene 侧由 `SceneClientMsgRegister` + `ClientMsgDispatcher` 分发（**非** `handleClientMsg` / `OnMsg_*` 回退）：
 
 | module/sub | 处理 |
 |------------|------|
 | 0x01/0x01 | 移动 → AOI |
 | 0x05/0x01 | 地图聊天广播 |
-| 0x04/0x01 | 技能 → `OnSkillReq` |
 | 0x08/0x01 | NPC 对话 → `OnNpcTalk` |
-| 0x0F/0x01 | 心跳响应 |
+
+`skill_mgr.lua`、`OnSkillReq`、`OnMsg_{MMSS}` 等 **未接线**；新增 C2S 须在 `ClientMsg.h` + Validator + Router + `SceneClientMsgRegister`（或 Session，见 [SERVERS.md](SERVERS.md)）登记。
 
 ---
 
@@ -102,7 +100,7 @@ init.lua
 
 ### 4.3 SkillMgr（`scene/skill_mgr.lua`）
 
-处理 `OnSkillReq`；技能表 **硬编码** 在 `SKILL_CONFIG`，未走 DataDoc。
+脚本与 `SKILL_CONFIG` 存在，**C++ 未分发** `C2S_SKILL_REQ`；落地技能玩法须在 Validator + Router + `SceneClientMsgRegister` 接线。
 
 ### 4.4 NpcDialog（`scene/npc_dialog.lua`）
 
@@ -129,18 +127,11 @@ local row = DataTable.getById(npcTable, templateId)
 
 ## 6. 扩展指南
 
-### 6.1 新客户端消息（Scene 侧 Lua 处理）
+### 6.1 新客户端消息（Scene 侧）
 
 1. 在 Gateway 登记 Validator + Router（见 [DEVELOPMENT.md](DEVELOPMENT.md)）
-2. 若不需 C++ 特殊逻辑：在 `init.lua` 或独立模块实现：
-
-```lua
-function OnMsg_0301(connID, data)
-    -- 解析 binary data，send_to_user 回复
-end
-```
-
-函数名规则：`OnMsg_` + 两位十六进制 module + 两位十六进制 sub。
+2. 在 `SceneClientMsgRegister.cpp` 注册 handler，或扩展 `SceneServer` 成员方法 + `registerClient` / `registerClientRawU32`
+3. 需 Lua 时由 C++ handler 调用 `LuaManager::callScript*`（**无** `OnMsg_*` 自动回退）
 
 ### 6.2 新 NPC 对话脚本
 

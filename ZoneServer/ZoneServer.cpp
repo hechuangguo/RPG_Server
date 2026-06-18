@@ -4,7 +4,7 @@
  */
 
 #include "ZoneServer.h"
-#include "ZoneGameZoneMsg.h"
+#include "ZoneInternMsgRegister.h"
 #include "../sdk/net/MsgIngress.h"
 
 ZoneServer::ZoneServer() : m_server(this) {}
@@ -53,7 +53,7 @@ bool ZoneServer::Init(const ExternServerConfig& cfg)
     }
     if (!initDatabase(cfg.database))
         return false;
-    RegisterHandlers();
+    registerHandlers();
     LOG_INFO("跨区服启动完成: %s:%u", cfg.listenIP.c_str(), cfg.listenPort);
     return true;
 }
@@ -86,12 +86,12 @@ void ZoneServer::OnMessage(ConnID id, uint8_t module, uint8_t sub,
     MsgIngress::dispatchInternal(id, module, sub, data, len);
 }
 
-void ZoneServer::RegisterHandlers()
+void ZoneServer::registerHandlers()
 {
-    ZoneGameZoneMsgRegister(*this);
+    ZoneInternMsgRegister(*this);
 }
 
-void ZoneServer::OnCrossReq(ConnID fromConn, const char* data, uint16_t len)
+void ZoneServer::onCrossReq(ConnID fromConn, const char* data, uint16_t len)
 {
     if (len < 12)
         return;
@@ -111,7 +111,7 @@ void ZoneServer::OnCrossReq(ConnID fromConn, const char* data, uint16_t len)
     }
 }
 
-void ZoneServer::OnForward(ConnID /*fromConn*/, const char* /*data*/, uint16_t len)
+void ZoneServer::onForward(ConnID /*fromConn*/, const char* /*data*/, uint16_t len)
 {
     LOG_DEBUG("跨区转发: len=%d", len);
 }

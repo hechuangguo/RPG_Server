@@ -61,10 +61,18 @@ public:
     /** @brief 游戏区 MySQL 句柄（rpg_game）；供本区排行榜等后期玩法直连表 */
     MYSQL* database() const { return m_db; }
 
-    void SendToClient(uint32_t clientConnID, uint8_t module, uint8_t sub,
+    /**
+     * @brief 经 Gateway 入站连接下发客户端消息
+     * @return 成功 true
+     */
+    bool SendToClient(uint32_t clientConnID, uint8_t module, uint8_t sub,
                       const char* data, uint16_t len);
 
-    void SendToClient(uint32_t clientConnID, uint16_t flatMsgId,
+    /**
+     * @brief 经 Gateway 入站连接下发客户端消息（扁平 msgId）
+     * @return 成功 true
+     */
+    bool SendToClient(uint32_t clientConnID, uint16_t flatMsgId,
                       const char* data, uint16_t len);
 
     /** @brief 内部连接建立（SceneServer 等） */
@@ -78,7 +86,7 @@ public:
                    const char* data, uint16_t len) override;
 
     /**
-     * @brief 同步从 Record 加载单用户 Relation（启动期/OnLoadUserReq）
+     * @brief 同步从 Record 加载单用户 Relation（启动期/onLoadUserReq）
      * @param userID 用户 ID
      * @param out    输出行
      * @return 成功 true
@@ -100,46 +108,46 @@ public:
 
 private:
     /** @brief 注册 Session 服间消息处理器 */
-    void RegisterHandlers();
+    void registerHandlers();
 
     /** @brief 向 SuperServer 注册本 Session 节点 */
-    void RegisterToSuper();
+    void registerToSuper();
 
     /** @brief 定时向 SuperServer 发送心跳 */
-    void SendHeartbeat();
+    void sendHeartbeat();
 
     /** @brief 启动期经 Record 预载 Relation */
     bool preloadRelations();
 
     /** @brief Record 预载响应 */
-    void OnRelationPreloadRsp(ConnID fromConn, const char* data, uint16_t len);
+    void onRelationPreloadRsp(ConnID fromConn, const char* data, uint16_t len);
 
     /** @brief Record 单用户加载响应 */
-    void OnRelationLoadRsp(ConnID fromConn, const char* data, uint16_t len);
+    void onRelationLoadRsp(ConnID fromConn, const char* data, uint16_t len);
 
     /** @brief 处理加载用户请求（供登录/切图流程读取 Session 数据） */
-    void OnLoadUserReq(ConnID fromConn, const char* data, uint16_t len);
+    void onLoadUserReq(ConnID fromConn, const char* data, uint16_t len);
 
     /** @brief 处理保存用户请求（落 Session 社交数据） */
-    void OnSaveUserReq(ConnID fromConn, const char* data, uint16_t len);
+    void onSaveUserReq(ConnID fromConn, const char* data, uint16_t len);
 
     /** @brief 处理好友关系变更广播（跨服同步） */
-    void OnFriendUpdate(ConnID fromConn, const char* data, uint16_t len);
+    void onFriendUpdate(ConnID fromConn, const char* data, uint16_t len);
 
     /** @brief SceneServer 注册普通/副本场景 */
-    void OnSceneRegisterReq(ConnID fromConn, const char* data, uint16_t len);
+    void onSceneRegisterReq(ConnID fromConn, const Msg_SES_SceneRegisterReq& req);
 
     /** @brief SceneServer 注销场景实例（普通图或副本） */
-    void OnSceneUnregister(ConnID fromConn, const char* data, uint16_t len);
+    void onSceneUnregister(ConnID fromConn, const Msg_SES_SceneUnregister& req);
 
     /** @brief 副本创建：复用已有或负载均衡分配新副本 */
-    void OnCopyCreateReq(ConnID fromConn, const char* data, uint16_t len);
+    void onCopyCreateReq(ConnID fromConn, const Msg_SES_CopyCreateReq& req);
 
     /** @brief Super 按 mapId 解析 sceneServerId */
-    void OnResolveMapReq(ConnID fromConn, const char* data, uint16_t len);
+    void onResolveMapReq(ConnID fromConn, const Msg_SES_ResolveMapReq& req);
 
     /** @brief 自动保存在线用户的 Session 数据 */
-    void AutoSaveAll();
+    void autoSaveAll();
 
     /** @brief 连接游戏区库 rpg_game（config.xml Database 段） */
     bool initDatabase(const ServerConfig& cfg);

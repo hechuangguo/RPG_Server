@@ -6,6 +6,7 @@
 #include "SuperLoginMsg.h"
 #include "SuperServer.h"
 #include "../sdk/util/ExternalServerHub.h"
+#include "../sdk/util/MsgHandlerBinder.h"
 #include "../sdk/log/Logger.h"
 
 #include <unordered_map>
@@ -19,33 +20,27 @@ std::unordered_map<uint32_t, ConnID> g_recordConnByVerifySeq;
 void SuperLoginMsgRegister(SuperServer& super)
 {
     auto& d = MsgDispatcher::Instance();
-    d.Register(static_cast<uint16_t>(InternalMsgID::SS_LOGIN_GATEWAY_WRAP_REQ),
-               [&super](uint32_t c, const char* data, uint16_t len) {
-                   SuperLoginOnGatewayWrapReq(super, c, data, len);
-               });
-    d.Register(static_cast<uint16_t>(InternalMsgID::LOGIN_GATEWAY_HEARTBEAT),
-               [&super](uint32_t c, const char* data, uint16_t len) {
-                   SuperLoginOnGatewayHeartbeat(super, c, data, len);
-               });
-    d.Register(static_cast<uint16_t>(InternalMsgID::LOGIN_GATEWAY_REGISTER_RSP),
-               [&super](uint32_t c, const char* data, uint16_t len) {
-                   SuperLoginOnGatewayRegisterRsp(super, c, data, len);
-               });
-    d.Register(static_cast<uint16_t>(InternalMsgID::LOGIN_VERIFY_TOKEN_REQ),
-               [&super](uint32_t c, const char* data, uint16_t len) {
-                   SuperLoginOnVerifyTokenReq(super, c, data, len);
-               });
-    d.Register(static_cast<uint16_t>(InternalMsgID::LOGIN_VERIFY_TOKEN_RSP),
-               [&super](uint32_t c, const char* data, uint16_t len) {
-                   SuperLoginOnVerifyTokenRsp(super, c, data, len);
-               });
-    d.Register(static_cast<uint16_t>(InternalMsgID::LOGIN_UPDATE_LAST_USER_REQ),
-               [&super](uint32_t c, const char* data, uint16_t len) {
-                   SuperLoginOnUpdateLastUserReq(super, c, data, len);
-               });
+    registerInternalFree(d, super,
+                         static_cast<uint16_t>(InternalMsgID::SS_LOGIN_GATEWAY_WRAP_REQ),
+                         superLoginOnGatewayWrapReq);
+    registerInternalFree(d, super,
+                         static_cast<uint16_t>(InternalMsgID::LOGIN_GATEWAY_HEARTBEAT),
+                         superLoginOnGatewayHeartbeat);
+    registerInternalFree(d, super,
+                         static_cast<uint16_t>(InternalMsgID::LOGIN_GATEWAY_REGISTER_RSP),
+                         superLoginOnGatewayRegisterRsp);
+    registerInternalFree(d, super,
+                         static_cast<uint16_t>(InternalMsgID::LOGIN_VERIFY_TOKEN_REQ),
+                         superLoginOnVerifyTokenReq);
+    registerInternalFree(d, super,
+                         static_cast<uint16_t>(InternalMsgID::LOGIN_VERIFY_TOKEN_RSP),
+                         superLoginOnVerifyTokenRsp);
+    registerInternalFree(d, super,
+                         static_cast<uint16_t>(InternalMsgID::LOGIN_UPDATE_LAST_USER_REQ),
+                         superLoginOnUpdateLastUserReq);
 }
 
-void SuperLoginOnGatewayWrapReq(SuperServer& super, ConnID fromConn,
+void superLoginOnGatewayWrapReq(SuperServer& super, ConnID fromConn,
                                 const char* data, uint16_t len)
 {
     if (len < sizeof(Msg_SS_LoginGatewayWrap))
@@ -74,7 +69,7 @@ void SuperLoginOnGatewayWrapReq(SuperServer& super, ConnID fromConn,
              wrap->body.gatewayServerId, wrap->gatewayConnID);
 }
 
-void SuperLoginOnGatewayRegisterRsp(SuperServer& super, ConnID /*fromLoginConn*/,
+void superLoginOnGatewayRegisterRsp(SuperServer& super, ConnID /*fromLoginConn*/,
                                     const char* data, uint16_t len)
 {
     if (len < sizeof(Msg_Login_GatewayRegisterRsp))
@@ -96,7 +91,7 @@ void SuperLoginOnGatewayRegisterRsp(SuperServer& super, ConnID /*fromLoginConn*/
         reinterpret_cast<char*>(&rsp), sizeof(rsp));
 }
 
-void SuperLoginOnGatewayHeartbeat(SuperServer& super, ConnID /*fromConn*/,
+void superLoginOnGatewayHeartbeat(SuperServer& super, ConnID /*fromConn*/,
                                   const char* data, uint16_t len)
 {
     TcpClient* login = super.externHub().client(SubServerType::LOGIN);
@@ -107,7 +102,7 @@ void SuperLoginOnGatewayHeartbeat(SuperServer& super, ConnID /*fromConn*/,
                    data, len);
 }
 
-void SuperLoginOnVerifyTokenReq(SuperServer& super, ConnID fromConn,
+void superLoginOnVerifyTokenReq(SuperServer& super, ConnID fromConn,
                                 const char* data, uint16_t len)
 {
     if (len < sizeof(Msg_Login_VerifyTokenReq))
@@ -120,7 +115,7 @@ void SuperLoginOnVerifyTokenReq(SuperServer& super, ConnID fromConn,
     login->SendMsg(static_cast<uint16_t>(InternalMsgID::LOGIN_VERIFY_TOKEN_REQ), data, len);
 }
 
-void SuperLoginOnVerifyTokenRsp(SuperServer& super, ConnID /*fromLoginConn*/,
+void superLoginOnVerifyTokenRsp(SuperServer& super, ConnID /*fromLoginConn*/,
                                 const char* data, uint16_t len)
 {
     if (len < sizeof(Msg_Login_VerifyTokenRsp))
@@ -134,7 +129,7 @@ void SuperLoginOnVerifyTokenRsp(SuperServer& super, ConnID /*fromLoginConn*/,
     g_recordConnByVerifySeq.erase(it);
 }
 
-void SuperLoginOnUpdateLastUserReq(SuperServer& super, ConnID /*fromConn*/,
+void superLoginOnUpdateLastUserReq(SuperServer& super, ConnID /*fromConn*/,
                                    const char* data, uint16_t len)
 {
     TcpClient* login = super.externHub().client(SubServerType::LOGIN);

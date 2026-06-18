@@ -57,8 +57,8 @@ public:
                    const char* data, uint16_t len) override;
 
 private:
-    void RegisterHandlers();
-    void OnWriteLog(ConnID fromConn, const char* data, uint16_t len);
+    void registerHandlers();
+    void onWriteLog(ConnID fromConn, const char* data, uint16_t len);
     static const char* ServerLogBaseName(SubServerType type);
     LogFileWriter& GetWriter(SubServerType type);
 

@@ -11,6 +11,6 @@ void GlobalGameZoneRankMsgRegister(GlobalServer& server)
     MsgDispatcher::Instance().Register(
         static_cast<uint16_t>(InternalMsgID::GLB_RANK_UPDATE),
         [&server](uint32_t c, const char* data, uint16_t len) {
-            server.onRankUpdateFromGameZone(c, data, len);
+            server.onRankUpdate(c, data, len);
         });
 }

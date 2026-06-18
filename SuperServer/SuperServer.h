@@ -148,7 +148,7 @@ public:
     TcpServer& tcpServer() { return m_server; }
 
     /** @brief 查找存活区内服连接 */
-    ConnID findSubServerConn(SubServerType type) { return FindSubServer(type); }
+    ConnID findSubServerConn(SubServerType type) { return findSubServer(type); }
 
     /**
      * @brief 周期汇总 Gateway 在线人数并上报 LoginServer
@@ -172,7 +172,7 @@ public:
     /**
      * @brief 子服务器断开
      *
-     * 移除该服务器的路由表记录，后续 FindSubServer 将返回 INVALID_CONN_ID。
+     * 移除该服务器的路由表记录，后续 findSubServer 将返回 INVALID_CONN_ID。
      */
     void OnDisconnect(ConnID id) override;
 
@@ -184,12 +184,12 @@ private:
     /**
      * @brief 注册所有消息处理函数
      *
-     * S2S_REGISTER_REQ → OnRegister（注册）
-     * S2S_HEARTBEAT    → OnHeartbeat（心跳）
-     * GW_USER_LOGIN_REQ→ OnUserLoginReq（登录调度）
-     * SS_KICK_USER     → OnKickUser（踢人）
+     * S2S_REGISTER_REQ → onRegister（注册）
+     * S2S_HEARTBEAT    → onHeartbeat（心跳）
+     * GW_USER_LOGIN_REQ→ onUserLoginReq（登录调度）
+     * SS_KICK_USER     → onKickUser（踢人）
      */
-    void RegisterHandlers();
+    void registerHandlers();
 
     /**
      * @brief 处理子服务器注册
@@ -197,14 +197,14 @@ private:
      * 收到 Msg_S2S_Register 后记录服务器信息到 m_servers，
      * 并回复 S2S_REGISTER_RSP 确认。
      */
-    void OnRegister(ConnID connID, const char* data, uint16_t len);
+    void onRegister(ConnID connID, const Msg_S2S_Register& req);
 
     /**
      * @brief 处理心跳
      *
      * 更新 lastHeartbeat 时间戳并回复 ACK（含服务器时间）。
      */
-    void OnHeartbeat(ConnID connID, const char* data, uint16_t len);
+    void onHeartbeat(ConnID connID, const char* data, uint16_t len);
 
     /**
      * @brief 处理子服务器的 ServerList 拉取请求
@@ -212,7 +212,7 @@ private:
      * 收到 S2S_SERVERLIST_REQ 后，将缓存的 m_serverList 全量条目打包为
      * S2S_SERVERLIST_RSP（count + count×Msg_ServerEntry）回发请求方。
      */
-    void OnServerListReq(ConnID connID, const char* data, uint16_t len);
+    void onServerListReq(ConnID connID, const char* data, uint16_t len);
 
     /**
      * @brief 启动期直连 MySQL 只读加载 ServerList 到 m_serverList
@@ -229,22 +229,22 @@ private:
      * GatewayServer 选角后进世界时发送 Msg_GW_UserEnterReq，
      * SuperServer 负责重复登录踢线、加载用户、解析地图并调度 SceneServer。
      */
-    void OnUserLoginReq(ConnID connID, const char* data, uint16_t len);
+    void onUserLoginReq(ConnID connID, const Msg_GW_UserEnterReq& req);
 
     /** @brief 处理 RecordServer 的用户加载返回，向 Session 解析 map 后触发入场 */
-    void OnLoadUserRsp(ConnID connID, const char* data, uint16_t len);
+    void onLoadUserRsp(ConnID connID, const char* data, uint16_t len);
 
     /** @brief Session 返回 mapId 对应的 sceneServerId 后继续入场 */
-    void OnResolveMapRsp(ConnID connID, const char* data, uint16_t len);
+    void onResolveMapRsp(ConnID connID, const Msg_SES_ResolveMapRsp& rsp);
 
     /** @brief 加载与 map 解析完成后向 Scene 发送 SCE_USER_ENTER_REQ */
     void sendUserEnterToScene(PendingLogin& pending);
 
     /** @brief 处理 SceneServer 入场返回，给 Gateway 回登录最终结果 */
-    void OnUserEnterRsp(ConnID connID, const char* data, uint16_t len);
+    void onUserEnterRsp(ConnID connID, const Msg_SCE_UserEnterRsp& rsp);
 
     /** @brief 向 Gateway 回登录失败（调度/加载/入场任一步失败） */
-    void SendLoginFailToGateway(ConnID gatewayConnID, uint32_t clientConnID, int32_t code);
+    void sendLoginFailToGateway(ConnID gatewayConnID, uint32_t clientConnID, int32_t code);
 
     /** @brief 重复登录时踢除旧会话（Gateway 断连 + Scene 离场） */
     void kickExistingUserSession(UserID userID);
@@ -257,7 +257,7 @@ private:
      *
      * 通知对应 GatewayServer 踢除指定用户的客户端连接。
      */
-    void OnKickUser(ConnID connID, const char* data, uint16_t len);
+    void onKickUser(ConnID connID, const char* data, uint16_t len);
 
     /**
      * @brief 定期心跳检查
@@ -272,23 +272,23 @@ private:
      * 5. 日志记录超时服务器的 connID 和类型，便于运维排查。
      * 6. 注意：此处仅标记离线（软断开），不主动关闭 TCP 连接。连接的实际
      *    断开由底层网络事件触发 OnDisconnect 回调处理。标记为离线的服务器
-     *    将不会被 FindSubServer 选中，从而实现故障隔离。
+     *    将不会被 findSubServer 选中，从而实现故障隔离。
      */
-    void CheckHeartbeat();
+    void checkHeartbeat();
 
     /**
      * @brief 查找指定类型的子服务器连接
      * @param type 服务器类型
      * @return 找到的连接 ID，未找到返回 INVALID_CONN_ID
      */
-    ConnID FindSubServer(SubServerType type);
+    ConnID findSubServer(SubServerType type);
 
     /**
      * @brief 按 serverID 查找指定类型的子服务器连接
      * @param type 服务器类型
      * @param serverId ServerList 中的 server_id
      */
-    ConnID FindSubServerByServerId(SubServerType type, uint32_t serverId);
+    ConnID findSubServerByServerId(SubServerType type, uint32_t serverId);
 
     /**
      * @brief 选择 SceneServer（负载均衡策略）
@@ -310,10 +310,10 @@ private:
      *
      * @return 选中的 SceneServer 连接 ID，无可用服务器返回 INVALID_CONN_ID
      */
-    ConnID FindSceneServer();
+    ConnID findSceneServer();
 
     /** @brief 从路由表中删除指定连接 */
-    void RemoveSubServer(ConnID connID);
+    void removeSubServer(ConnID connID);
     TcpServer m_server;  /**< 监听所有子服务器的 TCP Server */
     /** @brief 子服务器路由表：connID → 服务器信息 */
     std::unordered_map<ConnID, SubServerInfo> m_servers;

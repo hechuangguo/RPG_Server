@@ -184,8 +184,7 @@ bool SessionUser::sendCmdToMe(uint8_t module, uint8_t sub, const char* data, uin
     SessionServer* server = SessionServer::active();
     if (!server || m_gatewayClientConn == 0)
         return false;
-    server->SendToClient(m_gatewayClientConn, module, sub, data, len);
-    return true;
+    return server->SendToClient(m_gatewayClientConn, module, sub, data, len);
 }
 
 bool SessionUser::sendCmdToMe(uint16_t flatMsgId, const char* data, uint16_t len)

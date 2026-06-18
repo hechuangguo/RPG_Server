@@ -20,6 +20,9 @@ enum class ClientForwardTarget : uint8_t
  * @brief 按 module/sub 决定转发目标
  *
  * 仅已实现且 Validator 白名单内的消息会到达此处；未实现域返回 DROP。
+ *
+ * **Session 客户端上行**：当前 `resolve` **从不**返回 SESSION；会话服仅服间
+ * GW_CLIENT_MSG（SOCIAL/QUEST 等玩法立项后需同步扩展 Router + SessionClientMsgRegister）。
  */
 class ClientMsgRouter
 {

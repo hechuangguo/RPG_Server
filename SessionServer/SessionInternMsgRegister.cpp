@@ -9,6 +9,7 @@
 #include "../sdk/net/GwClientUnwrap.h"
 #include "../sdk/net/MsgIngress.h"
 #include "../sdk/util/MsgHandlerBinder.h"
+#include "../sdk/util/UserBase.h"
 #include "../protocal/InternalMsg.h"
 
 void SessionInternMsgRegister(SessionServer& server)
@@ -19,31 +20,31 @@ void SessionInternMsgRegister(SessionServer& server)
 
     registerInternalRaw(d, &server,
                         static_cast<uint16_t>(InternalMsgID::REC_RELATION_PRELOAD_RSP),
-                        &SessionServer::OnRelationPreloadRsp);
+                        &SessionServer::onRelationPreloadRsp);
     registerInternalRaw(d, &server,
                         static_cast<uint16_t>(InternalMsgID::REC_RELATION_LOAD_RSP),
-                        &SessionServer::OnRelationLoadRsp);
-    registerInternalRaw(d, &server,
-                        static_cast<uint16_t>(InternalMsgID::SES_LOAD_USER_REQ),
-                        &SessionServer::OnLoadUserReq);
-    registerInternalRaw(d, &server,
-                        static_cast<uint16_t>(InternalMsgID::SES_SAVE_USER_REQ),
-                        &SessionServer::OnSaveUserReq);
+                        &SessionServer::onRelationLoadRsp);
+    registerInternalSized<SessionServer, UserID>(
+        d, &server, static_cast<uint16_t>(InternalMsgID::SES_LOAD_USER_REQ),
+        &SessionServer::onLoadUserReq);
+    registerInternalSized<SessionServer, UserID>(
+        d, &server, static_cast<uint16_t>(InternalMsgID::SES_SAVE_USER_REQ),
+        &SessionServer::onSaveUserReq);
     registerInternalRaw(d, &server,
                         static_cast<uint16_t>(InternalMsgID::SES_FRIEND_UPDATE),
-                        &SessionServer::OnFriendUpdate);
-    registerInternalRaw(d, &server,
-                        static_cast<uint16_t>(InternalMsgID::SES_SCENE_REGISTER_REQ),
-                        &SessionServer::OnSceneRegisterReq);
-    registerInternalRaw(d, &server,
-                        static_cast<uint16_t>(InternalMsgID::SES_SCENE_UNREGISTER),
-                        &SessionServer::OnSceneUnregister);
-    registerInternalRaw(d, &server,
-                        static_cast<uint16_t>(InternalMsgID::SES_COPY_CREATE_REQ),
-                        &SessionServer::OnCopyCreateReq);
-    registerInternalRaw(d, &server,
-                        static_cast<uint16_t>(InternalMsgID::SES_RESOLVE_MAP_REQ),
-                        &SessionServer::OnResolveMapReq);
+                        &SessionServer::onFriendUpdate);
+    registerInternal(d, &server,
+                     static_cast<uint16_t>(InternalMsgID::SES_SCENE_REGISTER_REQ),
+                     &SessionServer::onSceneRegisterReq);
+    registerInternal(d, &server,
+                     static_cast<uint16_t>(InternalMsgID::SES_SCENE_UNREGISTER),
+                     &SessionServer::onSceneUnregister);
+    registerInternal(d, &server,
+                     static_cast<uint16_t>(InternalMsgID::SES_COPY_CREATE_REQ),
+                     &SessionServer::onCopyCreateReq);
+    registerInternal(d, &server,
+                     static_cast<uint16_t>(InternalMsgID::SES_RESOLVE_MAP_REQ),
+                     &SessionServer::onResolveMapReq);
 
     registerGwClientUnwrapHandler(d, [&server](ConnID fromConn, const UnwrappedClientMsg& msg) {
         if (fromConn != INVALID_CONN_ID)

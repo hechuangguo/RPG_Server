@@ -4,7 +4,7 @@
  *
  * ## 职责
  * - 排行榜维护（接收经 Super SS_EXTERN_FWD 转发的 GLB_RANK_UPDATE，排序保留前 100 名）
- * - 全区数据同步（GLB_DATA_SYNC 向已连接 inner 连接 fan-out；SyncGlobalData 定时器尚未推送 rank）
+ * - 全区数据同步（GLB_DATA_SYNC 向已连接 inner 连接 fan-out；syncGlobalData 定时器尚未推送 rank）
  * - HTTP 入站 JSON API（/health、/rank；/getUserList 待 rpg_global 玩法接入）
  *
  * ## 连接
@@ -55,6 +55,9 @@ class GlobalServer : public INetCallback, public LazySingleton<GlobalServer>
 {
 public:
     friend class LazySingleton<GlobalServer>;
+    friend void GlobalInternMsgRegister(GlobalServer& server);
+    friend void GlobalGameZoneRankMsgRegister(GlobalServer& server);
+    friend void GlobalGameZoneSyncMsgRegister(GlobalServer& server);
     /** @brief 获取 GlobalServer 单例指针 */
     static GlobalServer* Instance() { return &LazySingleton<GlobalServer>::Instance(); }
 
@@ -75,18 +78,6 @@ public:
     /** @brief 主循环（游戏 TCP + HTTP 入站/出站 + 定时器） */
     void Run();
 
-    /** @brief 游戏区经 Super 转发的排行更新 */
-    void onRankUpdateFromGameZone(ConnID fromConn, const char* data, uint16_t len)
-    {
-        OnRankUpdate(fromConn, data, len);
-    }
-
-    /** @brief 游戏区经 Super 转发的全服同步 */
-    void onDataSyncFromGameZone(ConnID fromConn, const char* data, uint16_t len)
-    {
-        OnDataSync(fromConn, data, len);
-    }
-
     /** @brief SceneServer 等连接建立 */
     void OnConnect(ConnID id) override;
 
@@ -99,7 +90,7 @@ public:
 
 private:
     /** @brief 注册 GlobalServer 的内部协议处理器 */
-    void RegisterHandlers();
+    void registerHandlers();
 
     /** @brief 可选 MySQL 连接（database.configured 时必选成功） */
     bool initDatabase(const DatabaseConfig& dbCfg);
@@ -112,11 +103,11 @@ private:
      */
     std::string onHttpRequest(ConnID connId, const HttpRequest& req);
 
-    void OnRankUpdate(ConnID fromConn, const char* data, uint16_t len);
+    void onRankUpdate(ConnID fromConn, const char* data, uint16_t len);
 
-    void OnDataSync(ConnID fromConn, const char* data, uint16_t len);
+    void onDataSync(ConnID fromConn, const char* data, uint16_t len);
 
-    void SyncGlobalData();
+    void syncGlobalData();
 
     /** @brief 定时向 Http Client 对端发送 GET /health（仅 enabled 时） */
     void probeHttpPeer();

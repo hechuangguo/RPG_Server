@@ -57,11 +57,11 @@ bool SceneServer::Init(const std::string& ip, uint16_t port,
 
     if (!LuaManager::Instance().init())
         LOG_WARN("场景服脚本初始化失败");
-    RegisterHandlers();
+    registerHandlers();
 
-    TimerMgr::Instance().Register(500, 0, [this] { RegisterToSuper(); });
-    TimerMgr::Instance().Register(10000, 10000, [this] { SendHeartbeat(); });
-    TimerMgr::Instance().Register(1000, 1000, [this] { OnTick(); });
+    TimerMgr::Instance().Register(500, 0, [this] { registerToSuper(); });
+    TimerMgr::Instance().Register(10000, 10000, [this] { sendHeartbeat(); });
+    TimerMgr::Instance().Register(1000, 1000, [this] { onTick(); });
 
     LOG_INFO("场景服启动完成: sceneID=%u %s:%d", m_sceneID, ip.c_str(), port);
     return true;
@@ -109,60 +109,58 @@ void SceneServer::OnMessage(ConnID id, uint8_t module, uint8_t sub,
     MsgIngress::dispatchInternal(id, module, sub, data, len);
 }
 
-void SceneServer::RegisterHandlers()
+void SceneServer::registerHandlers()
 {
     SceneInternMsgRegister(*this);
     SceneClientMsgRegister(*this);
 }
 
-void SceneServer::OnUserEnter(ConnID /*fromConn*/, const char* data, uint16_t len)
+void SceneServer::onUserEnter(ConnID /*fromConn*/, const Msg_SCE_UserEnterReq& req)
 {
-    if (len < sizeof(Msg_SCE_UserEnterReq)) return;
-    const auto* req = reinterpret_cast<const Msg_SCE_UserEnterReq*>(data);
     LOG_INFO("用户进入场景: userID=%llu mapID=%u clientConn=%u",
-             req->userID, req->mapID, req->gatewayClientConnID);
+             req.userID, req.mapID, req.gatewayClientConnID);
 
-    uint32_t mapID = req->mapID ? req->mapID : 1001;
+    uint32_t mapID = req.mapID ? req.mapID : 1001;
     auto scene = SceneManager::Instance().findNormalSceneByMapId(mapID);
     if (!scene)
     {
         LOG_WARN("场景服未找到地图: map=%u sceneID=%u", mapID, m_sceneID);
-        SendUserEnterRsp(req, -1);
+        sendUserEnterRsp(&req, -1);
         return;
     }
 
     UserBase base;
-    base.userID = req->userID;
-    base.name = req->name;
-    base.level = req->level;
-    base.vocation = req->vocation;
-    base.sex = req->sex;
+    base.userID = req.userID;
+    base.name = req.name;
+    base.level = req.level;
+    base.vocation = req.vocation;
+    base.sex = req.sex;
     base.mapID = mapID;
-    base.posX = req->x;
-    base.posY = req->y;
-    base.posZ = req->z;
-    base.hp = req->hp;
-    base.maxHP = req->maxHP;
-    base.mp = req->mp;
-    base.maxMP = req->maxMP;
-    base.gold = req->gold;
+    base.posX = req.x;
+    base.posY = req.y;
+    base.posZ = req.z;
+    base.hp = req.hp;
+    base.maxHP = req.maxHP;
+    base.mp = req.mp;
+    base.maxMP = req.maxMP;
+    base.gold = req.gold;
 
     auto user = SceneUser::create(base);
     user->init();
     user->load();
-    user->setGatewayClientConn(req->gatewayClientConnID);
+    user->setGatewayClientConn(req.gatewayClientConnID);
     user->onOnline();
-    SceneUserManager::Instance().addUser(req->userID, user);
-    scene->addPlayer(req->userID);
+    SceneUserManager::Instance().addUser(req.userID, user);
+    scene->addPlayer(req.userID);
 
     m_aoiClient.enterEntity(*user, 0);
 
-    NotifyExistingPlayersOnEnter(*user);
-    SendUserEnterRsp(req, 0);
-    CallLuaOnEnter(req->userID, mapID);
+    notifyExistingPlayersOnEnter(*user);
+    sendUserEnterRsp(&req, 0);
+    callLuaOnEnter(req.userID, mapID);
 }
 
-void SceneServer::SendUserEnterRsp(const Msg_SCE_UserEnterReq* req, int32_t code)
+void SceneServer::sendUserEnterRsp(const Msg_SCE_UserEnterReq* req, int32_t code)
 {
     Msg_SCE_UserEnterRsp rsp{};
     rsp.code = code;
@@ -173,7 +171,7 @@ void SceneServer::SendUserEnterRsp(const Msg_SCE_UserEnterReq* req, int32_t code
                           reinterpret_cast<char*>(&rsp), sizeof(rsp));
 }
 
-void SceneServer::NotifyExistingPlayersOnEnter(const SceneUser& entering)
+void SceneServer::notifyExistingPlayersOnEnter(const SceneUser& entering)
 {
     const auto& base = entering.Base();
     Msg_S2C_SpawnEntity spawn{};
@@ -209,7 +207,7 @@ void SceneServer::NotifyExistingPlayersOnEnter(const SceneUser& entering)
     });
 }
 
-void SceneServer::OnUserLeave(ConnID /*fromConn*/, const char* data, uint16_t len)
+void SceneServer::onUserLeave(ConnID /*fromConn*/, const char* data, uint16_t len)
 {
     if (len < sizeof(UserID)) return;
     UserID uid = *reinterpret_cast<const UserID*>(data);
@@ -227,7 +225,7 @@ void SceneServer::OnUserLeave(ConnID /*fromConn*/, const char* data, uint16_t le
     }
 
     m_aoiClient.leaveEntity(uid);
-    CallLuaOnLeave(uid);
+    callLuaOnLeave(uid);
     SceneUserManager::Instance().removeUser(uid);
     LOG_INFO("用户离开场景: userID=%llu", uid);
 }
@@ -237,7 +235,7 @@ void SceneServer::sendCharBaseToRecord(const SceneUser& user)
     m_recordClient.saveUser(user);
 }
 
-void SceneServer::OnViewNotify(ConnID /*fromConn*/, const char* data, uint16_t len)
+void SceneServer::onViewNotify(ConnID /*fromConn*/, const char* data, uint16_t len)
 {
     if (len == sizeof(Msg_AOI_Move))
     {
@@ -308,7 +306,7 @@ void SceneServer::OnViewNotify(ConnID /*fromConn*/, const char* data, uint16_t l
     }
 }
 
-void SceneServer::OnMoveReq(uint32_t /*clientConnID*/, const char* data, uint16_t len)
+void SceneServer::onMoveReq(uint32_t /*clientConnID*/, const char* data, uint16_t len)
 {
     if (len < sizeof(Msg_C2S_MoveReq)) return;
     const auto* req = reinterpret_cast<const Msg_C2S_MoveReq*>(data);
@@ -323,7 +321,7 @@ void SceneServer::OnMoveReq(uint32_t /*clientConnID*/, const char* data, uint16_
                              req->dir, 0);
 }
 
-void SceneServer::OnChatReq(uint32_t clientConnID, const char* data, uint16_t len)
+void SceneServer::onChatReq(uint32_t clientConnID, const char* data, uint16_t len)
 {
     if (len < sizeof(Msg_C2S_Chat)) return;
     const auto* req = reinterpret_cast<const Msg_C2S_Chat*>(data);
@@ -333,14 +331,14 @@ void SceneServer::OnChatReq(uint32_t clientConnID, const char* data, uint16_t le
     Msg_S2C_Chat notify{};
     notify.fromID = user->GetID();
     notify.channel = req->channel;
-    snprintf(notify.fromName, sizeof(notify.fromName), "%s", user->GetName());
-    snprintf(notify.content, sizeof(notify.content), "%s", req->content);
+    copyToWire(notify.fromName, sizeof(notify.fromName), user->GetName());
+    copyToWire(notify.content, sizeof(notify.content), req->content);
     BroadcastToMap(user->Base().mapID, user->GetID(),
                    Msg_S2C_Chat::kModule, Msg_S2C_Chat::kSub,
                    reinterpret_cast<char*>(&notify), sizeof(notify));
 }
 
-void SceneServer::OnNpcTalkReq(uint32_t clientConnID, const char* data, uint16_t len)
+void SceneServer::onNpcTalkReq(uint32_t clientConnID, const char* data, uint16_t len)
 {
     if (len < sizeof(Msg_C2S_NpcTalkReq))
         return;
@@ -385,24 +383,23 @@ void SceneServer::sendNpcTalkError(uint32_t clientConnID, uint64_t npcId, int32_
                  reinterpret_cast<char*>(&rsp), sizeof(rsp));
 }
 
-void SceneServer::SendToClient(uint32_t clientConnID, uint8_t module, uint8_t sub,
+bool SceneServer::SendToClient(uint32_t clientConnID, uint8_t module, uint8_t sub,
                                const char* data, uint16_t len)
 {
-    if (m_gatewayInboundConn == INVALID_CONN_ID)
-    {
-        LOG_WARN("下发客户端失败: 无网关入站连接 clientConn=%u", clientConnID);
-        return;
-    }
-    sendGwSendToClient(m_server, m_gatewayInboundConn, clientConnID, module, sub, data, len);
+    if (relaySendToClientViaGateway(m_server, m_gatewayInboundConn,
+                                    clientConnID, module, sub, data, len))
+        return true;
+    LOG_WARN("下发客户端失败: 无网关入站连接 clientConn=%u", clientConnID);
+    return false;
 }
 
-void SceneServer::SendToClient(uint32_t clientConnID, uint16_t flatMsgId,
+bool SceneServer::SendToClient(uint32_t clientConnID, uint16_t flatMsgId,
                                const char* data, uint16_t len)
 {
-    SendToClient(clientConnID,
-                 static_cast<uint8_t>(flatMsgId >> 8),
-                 static_cast<uint8_t>(flatMsgId & 0xFF),
-                 data, len);
+    return SendToClient(clientConnID,
+                        static_cast<uint8_t>(flatMsgId >> 8),
+                        static_cast<uint8_t>(flatMsgId & 0xFF),
+                        data, len);
 }
 
 void SceneServer::BroadcastToMap(uint32_t mapID, UserID excludeUserID,
@@ -418,7 +415,7 @@ void SceneServer::BroadcastToMap(uint32_t mapID, UserID excludeUserID,
     });
 }
 
-void SceneServer::CallLuaOnEnter(UserID userID, uint32_t mapID)
+void SceneServer::callLuaOnEnter(UserID userID, uint32_t mapID)
 {
     LuaManager::Instance().callGlobalVoid("OnUserEnter", {
         LuaArg::integer(static_cast<int64_t>(userID)),
@@ -426,14 +423,14 @@ void SceneServer::CallLuaOnEnter(UserID userID, uint32_t mapID)
     });
 }
 
-void SceneServer::CallLuaOnLeave(UserID userID)
+void SceneServer::callLuaOnLeave(UserID userID)
 {
     LuaManager::Instance().callGlobalVoid("OnUserLeave", {
         LuaArg::integer(static_cast<int64_t>(userID)),
     });
 }
 
-void SceneServer::OnTick()
+void SceneServer::onTick()
 {
     uint64_t now = TimerMgr::NowMs();
     SceneUserManager::Instance().forEachMutable([&](UserID /*uid*/, SceneUser& user)
@@ -492,42 +489,37 @@ void SceneServer::onSceneStopped(Scene& scene)
     m_sessionClient.unregisterScene(m_sceneID, scene);
 }
 
-void SceneServer::OnSceneRegisterRsp(ConnID /*fromConn*/, const char* data, uint16_t len)
+void SceneServer::onSceneRegisterRsp(ConnID /*fromConn*/, const char* data, uint16_t len)
 {
     m_sessionClient.onRegisterRsp(data, len);
 }
 
-void SceneServer::OnSaveUserRsp(ConnID /*fromConn*/, const char* data, uint16_t len)
+void SceneServer::onSaveUserRsp(ConnID /*fromConn*/, const char* data, uint16_t len)
 {
     m_recordClient.onSaveRsp(data, len);
 }
 
-void SceneServer::OnCopyCreateRsp(ConnID /*fromConn*/, const char* data, uint16_t len)
+void SceneServer::onCopyCreateRsp(ConnID /*fromConn*/, const Msg_SES_CopyCreateRsp& rsp)
 {
-    if (len < sizeof(Msg_SES_CopyCreateRsp)) return;
-    const auto* rsp = reinterpret_cast<const Msg_SES_CopyCreateRsp*>(data);
     LOG_INFO("副本创建响应: code=%d targetServer=%u instance=%llu reused=%u",
-             rsp->code, rsp->targetSceneServerId, rsp->copyInstanceId, rsp->reused);
+             rsp.code, rsp.targetSceneServerId, rsp.copyInstanceId, rsp.reused);
 }
 
-void SceneServer::OnCopyCreateCmd(ConnID /*fromConn*/, const char* data, uint16_t len)
+void SceneServer::onCopyCreateCmd(ConnID /*fromConn*/, const Msg_SES_CopyCreateCmd& cmd)
 {
-    if (len < sizeof(Msg_SES_CopyCreateCmd)) return;
-    const auto* cmd = reinterpret_cast<const Msg_SES_CopyCreateCmd*>(data);
-
     CopySceneDef def{};
-    def.copyInstanceId = cmd->copyInstanceId;
-    def.copyType = static_cast<CopyType>(cmd->copyType);
-    def.mapId = cmd->mapId;
-    def.ownerId = cmd->ownerId;
-    def.maxPlayer = cmd->maxPlayer;
-    def.mapName = cmd->mapName;
-    def.mapFile = cmd->mapFile;
+    def.copyInstanceId = cmd.copyInstanceId;
+    def.copyType = static_cast<CopyType>(cmd.copyType);
+    def.mapId = cmd.mapId;
+    def.ownerId = cmd.ownerId;
+    def.maxPlayer = cmd.maxPlayer;
+    def.mapName = cmd.mapName;
+    def.mapFile = cmd.mapFile;
 
     if (SceneManager::Instance().createCopyScene(m_sceneID, def))
-        LOG_INFO("本地创建副本成功: instance=%llu", cmd->copyInstanceId);
+        LOG_INFO("本地创建副本成功: instance=%llu", cmd.copyInstanceId);
     else
-        LOG_ERR("本地创建副本失败: instance=%llu", cmd->copyInstanceId);
+        LOG_ERR("本地创建副本失败: instance=%llu", cmd.copyInstanceId);
 }
 
 void SceneServer::fillSpawnFromEntry(const SceneEntry& entry, uint8_t entityType,
@@ -553,7 +545,7 @@ void SceneServer::sendAoiLeave(EntryID entityId)
     m_aoiClient.leaveEntity(entityId);
 }
 
-void SceneServer::RegisterToSuper()
+void SceneServer::registerToSuper()
 {
     Msg_S2S_Register reg{};
     reg.serverType = (uint8_t)SubServerType::SCENE;
@@ -566,7 +558,7 @@ void SceneServer::RegisterToSuper()
                           reinterpret_cast<char*>(&reg), sizeof(reg));
 }
 
-void SceneServer::SendHeartbeat()
+void SceneServer::sendHeartbeat()
 {
     Msg_S2S_Heartbeat hb{};
     hb.seq = ++m_hbSeq;

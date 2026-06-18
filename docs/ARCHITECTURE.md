@@ -280,9 +280,9 @@ flowchart TB
 | `ClientMsgDispatcher` | `sdk/util/ClientMsgDispatcher.h` | 客户端 module/sub 分发（与区内表物理隔离） |
 | `MsgHandlerBinder` | `sdk/util/MsgHandlerBinder.h` | `registerInternal` / `registerClient` 成员绑定 + sizeof 守卫 |
 | `GwClientUnwrap` | `sdk/net/GwClientUnwrap.h` | `GW_CLIENT_MSG` 解包 |
-| `*InternMsgRegister` / `*ClientMsgRegister` | 各服目录 | `RegisterHandlers()` 聚合为 1–2 行 |
+| `*InternMsgRegister` / `*ClientMsgRegister` | 各服目录 | `registerHandlers()` 聚合为 1–2 行 |
 
-各服 `OnMessage` 统一调用 `MsgIngress::dispatchInternal`（Gateway 客户端连接另走 `HandleClientMsg` → Validator → Router）。
+各服 `OnMessage` 统一调用 `MsgIngress::dispatchInternal`（Gateway 客户端连接另走 `handleClientMsg` → Validator → Router）。
 
 ### 消息分发（区内）
 

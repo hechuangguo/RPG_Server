@@ -5,6 +5,7 @@
 
 #include "SceneLoginMsg.h"
 #include "SceneServer.h"
+#include "../sdk/util/MsgHandlerBinder.h"
 #include "../sdk/log/Logger.h"
 #include "../protocal/InternalMsg.h"
 
@@ -26,17 +27,21 @@ void onLoginGmCmd(ConnID fromConn, const char* data, uint16_t len)
     (void)data;
     LOG_DEBUG("场景服收到 LOGIN_GM_CMD_REQ: len=%u（骨架）", len);
 }
+
+void onLoginGmCmdWrapped(SceneServer& /*server*/, ConnID fromConn,
+                         const char* data, uint16_t len)
+{
+    onLoginGmCmd(fromConn, data, len);
+}
 } // namespace
 
 void SceneLoginMsgRegister(SceneServer& server)
 {
     auto& d = MsgDispatcher::Instance();
-    d.Register(static_cast<uint16_t>(InternalMsgID::SS_EXTERN_FWD_RSP),
-               [&server](uint32_t c, const char* data, uint16_t l) {
-                   onExternFwdRsp(server, c, data, l);
-               });
-    d.Register(static_cast<uint16_t>(InternalMsgID::LOGIN_GM_CMD_REQ),
-               [](uint32_t c, const char* data, uint16_t l) {
-                   onLoginGmCmd(c, data, l);
-               });
+    registerInternalFree(d, server,
+                         static_cast<uint16_t>(InternalMsgID::SS_EXTERN_FWD_RSP),
+                         onExternFwdRsp);
+    registerInternalFree(d, server,
+                         static_cast<uint16_t>(InternalMsgID::LOGIN_GM_CMD_REQ),
+                         onLoginGmCmdWrapped);
 }

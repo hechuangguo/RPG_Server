@@ -12,8 +12,8 @@
 void LoggerInternMsgRegister(LoggerServer& server)
 {
     auto& d = MsgDispatcher::Instance();
-    registerInternalRaw(d, &server,
-                        static_cast<uint16_t>(InternalMsgID::LOG_WRITE_REQ),
-                        &LoggerServer::OnWriteLog);
+    registerInternalSized<LoggerServer, Msg_Log_WriteReq>(
+        d, &server, static_cast<uint16_t>(InternalMsgID::LOG_WRITE_REQ),
+        &LoggerServer::onWriteLog);
     LoggerGameZoneMsgRegister(server);
 }

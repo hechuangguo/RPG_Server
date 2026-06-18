@@ -5,6 +5,7 @@
 
 #include "SessionLoginMsg.h"
 #include "SessionServer.h"
+#include "../sdk/util/MsgHandlerBinder.h"
 #include "../sdk/log/Logger.h"
 #include "../protocal/InternalMsg.h"
 
@@ -26,17 +27,21 @@ void onLoginRecharge(ConnID fromConn, const char* data, uint16_t len)
     (void)data;
     LOG_DEBUG("会话服收到 LOGIN_RECHARGE_REQ: len=%u（骨架）", len);
 }
+
+void onLoginRechargeWrapped(SessionServer& /*server*/, ConnID fromConn,
+                            const char* data, uint16_t len)
+{
+    onLoginRecharge(fromConn, data, len);
+}
 } // namespace
 
 void SessionLoginMsgRegister(SessionServer& server)
 {
     auto& d = MsgDispatcher::Instance();
-    d.Register(static_cast<uint16_t>(InternalMsgID::SS_EXTERN_FWD_RSP),
-               [&server](uint32_t c, const char* data, uint16_t l) {
-                   onExternFwdRsp(server, c, data, l);
-               });
-    d.Register(static_cast<uint16_t>(InternalMsgID::LOGIN_RECHARGE_REQ),
-               [](uint32_t c, const char* data, uint16_t l) {
-                   onLoginRecharge(c, data, l);
-               });
+    registerInternalFree(d, server,
+                         static_cast<uint16_t>(InternalMsgID::SS_EXTERN_FWD_RSP),
+                         onExternFwdRsp);
+    registerInternalFree(d, server,
+                         static_cast<uint16_t>(InternalMsgID::LOGIN_RECHARGE_REQ),
+                         onLoginRechargeWrapped);
 }

@@ -82,7 +82,7 @@
 | 0x00 | 0x0B | C2S_ZONE_LIST_REQ | C→S | `Msg_C2S_ZoneListReq` | 已实现 | 区列表请求（LoginServer） |
 | 0x00 | 0x0C | S2C_ZONE_LIST_RSP | S→C | `Msg_S2C_ZoneListRspHeader` + N×Entry | 已实现 | 区列表（变长） |
 | 0x01 | 0x01 | C2S_MOVE_REQ | C→S | `Msg_C2S_MoveReq` | 已实现 | 移动 |
-| 0x01 | 0x02 | S2C_MOVE_NOTIFY | S→C | `Msg_S2C_MoveNotify` | 未实现 | 移动广播（待下发） |
+| 0x01 | 0x02 | S2C_MOVE_NOTIFY | S→C | `Msg_S2C_MoveNotify` | 已实现 | Scene AOI 移动同步广播 |
 | 0x01 | 0x03 | S2C_ENTER_MAP | S→C | — | 未实现 | 由 SpawnEntity 替代 |
 | 0x01 | 0x04 | S2C_LEAVE_MAP | S→C | — | 未实现 | 由 DespawnEntity 替代 |
 | 0x01 | 0x05 | S2C_SPAWN_ENTITY | S→C | `Msg_S2C_SpawnEntity` | 已实现 | 实体进视野 |
@@ -263,13 +263,13 @@ sequenceDiagram
 2. [`Common/XxxMsg.h`](../Common/) — wire struct 首字段 `module`/`sub` + `kModule`/`kSub`；发送前 `initClientMsg`
 3. [`Common/ClientTypes.h`](../Common/ClientTypes.h) — 仅当新增 `ClientModule` 时修改
 3. [`GatewayServer/ClientMsgValidator.h`](../GatewayServer/ClientMsgValidator.h) — 白名单、长度、状态
-4. [`GatewayServer/ClientMsgRouter.h`](../GatewayServer/ClientMsgRouter.h) — LOCAL / SCENE / SESSION
-5. Scene 或 Session — 处理 `GW_CLIENT_MSG`；或 Scene Lua `OnMsg_{MMSS}`
+4. [`GatewayServer/ClientMsgRouter.h`](../GatewayServer/ClientMsgRouter.h) — LOCAL / SCENE / DROP（SESSION 预留，当前未路由）
+5. Scene — `SceneClientMsgRegister` + `ClientMsgDispatcher`；或 Session（须同步 Router）
 
 ### S2S 消息
 
 1. [`protocal/InternalMsg.h`](../protocal/InternalMsg.h) — `InternalMsgID` + struct
-2. 发送方/接收方 `RegisterHandlers()` — `Register(module, sub)` 或扁平 ID
+2. 发送方/接收方 `*InternMsgRegister` — `MsgHandlerBinder`（`registerInternal` / `registerInternalSized`）
 
 ### 定长字符串
 

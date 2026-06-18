@@ -186,8 +186,7 @@ bool SceneUser::sendCmdToMe(uint8_t module, uint8_t sub, const char* data, uint1
 {
     if (gatewayClientConn == 0)
         return false;
-    SceneServer::Instance()->SendToClient(gatewayClientConn, module, sub, data, len);
-    return true;
+    return SceneServer::Instance()->SendToClient(gatewayClientConn, module, sub, data, len);
 }
 
 bool SceneUser::sendCmdToMe(uint16_t flatMsgId, const char* data, uint16_t len)

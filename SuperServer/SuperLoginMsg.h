@@ -30,7 +30,7 @@ void SuperLoginMsgRegister(SuperServer& super);
  * @param data     Msg_SS_LoginGatewayWrap
  * @param len      长度
  */
-void SuperLoginOnGatewayWrapReq(SuperServer& super, ConnID fromConn,
+void superLoginOnGatewayWrapReq(SuperServer& super, ConnID fromConn,
                                 const char* data, uint16_t len);
 
 /**
@@ -40,7 +40,7 @@ void SuperLoginOnGatewayWrapReq(SuperServer& super, ConnID fromConn,
  * @param data          Msg_Login_GatewayRegisterRsp
  * @param len           长度
  */
-void SuperLoginOnGatewayRegisterRsp(SuperServer& super, ConnID fromLoginConn,
+void superLoginOnGatewayRegisterRsp(SuperServer& super, ConnID fromLoginConn,
                                     const char* data, uint16_t len);
 
 /**
@@ -50,17 +50,17 @@ void SuperLoginOnGatewayRegisterRsp(SuperServer& super, ConnID fromLoginConn,
  * @param data     Msg_Login_GatewayRegister 心跳体
  * @param len      长度
  */
-void SuperLoginOnGatewayHeartbeat(SuperServer& super, ConnID fromConn,
+void superLoginOnGatewayHeartbeat(SuperServer& super, ConnID fromConn,
                                   const char* data, uint16_t len);
 
 /** @brief 转发 Record→Login 票据校验请求 */
-void SuperLoginOnVerifyTokenReq(SuperServer& super, ConnID fromConn,
+void superLoginOnVerifyTokenReq(SuperServer& super, ConnID fromConn,
                                 const char* data, uint16_t len);
 
 /** @brief 回传 Login→Record 票据校验响应 */
-void SuperLoginOnVerifyTokenRsp(SuperServer& super, ConnID fromLoginConn,
+void superLoginOnVerifyTokenRsp(SuperServer& super, ConnID fromLoginConn,
                                 const char* data, uint16_t len);
 
 /** @brief 转发 Record→Login 最近角色回填请求 */
-void SuperLoginOnUpdateLastUserReq(SuperServer& super, ConnID fromConn,
+void superLoginOnUpdateLastUserReq(SuperServer& super, ConnID fromConn,
                                    const char* data, uint16_t len);

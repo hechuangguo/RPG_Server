@@ -3,13 +3,9 @@
  */
 
 #include "ZoneGameZoneMsg.h"
-#include "ZoneGameZoneCrossMsg.h"
-#include "ZoneGameZoneForwardMsg.h"
-#include "../sdk/util/GameZoneMsgDispatch.h"
+#include "ZoneInternMsgRegister.h"
 
 void ZoneGameZoneMsgRegister(ZoneServer& server)
 {
-    GameZoneMsgRegisterForwardDispatch();
-    ZoneGameZoneCrossMsgRegister(server);
-    ZoneGameZoneForwardMsgRegister(server);
+    ZoneInternMsgRegister(server);
 }

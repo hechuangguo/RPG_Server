@@ -20,6 +20,7 @@
 #include "../Common/MapDataMsg.h"
 #include "../Common/ClientMsgBody.h"
 #include "../sdk/log/Logger.h"
+#include "../sdk/util/WireStringUtil.h"
 
 extern "C"
 {
@@ -68,7 +69,7 @@ LUA_GLOBAL_FUNC("send_npc_talk_rsp", sendNpcTalkRsp)
     rsp.code = 0;
     rsp.npcId = npcId;
     rsp.dialogStep = dialogStep;
-    snprintf(rsp.text, sizeof(rsp.text), "%s", text);
+    copyToWire(rsp.text, sizeof(rsp.text), text);
     rsp.optionCount = 0;
 
     if (lua_istable(L, 5))
@@ -86,7 +87,7 @@ LUA_GLOBAL_FUNC("send_npc_talk_rsp", sendNpcTalkRsp)
             auto& opt = rsp.options[rsp.optionCount];
             lua_getfield(L, -1, "text");
             if (lua_isstring(L, -1))
-                snprintf(opt.text, sizeof(opt.text), "%s", lua_tostring(L, -1));
+                copyToWire(opt.text, sizeof(opt.text), lua_tostring(L, -1));
             lua_pop(L, 1);
 
             lua_getfield(L, -1, "next");

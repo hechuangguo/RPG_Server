@@ -21,9 +21,9 @@
  * - SceneEntry userdata : entry:getEntryId() 等
  *
  * Lua 回调约定：
- * - OnUserEnter(userID, mapID) : 用户进入场景
- * - OnUserLeave(userID)         : 用户离开场景
- * - OnTick(nowMs)               : 每帧回调
+ * - onUserEnter(userID, mapID) : 用户进入场景
+ * - onUserLeave(userID)         : 用户离开场景
+ * - onTick(nowMs)               : 每帧回调
  */
 
 #pragma once
@@ -78,17 +78,17 @@ public:
     ~SceneServer() = default;
 
     /** @brief 供 ScriptFun 向客户端发消息（扁平 ID，兼容旧脚本） */
-    void sendToClient(uint32_t clientConnId, uint16_t msgId,
+    bool sendToClient(uint32_t clientConnId, uint16_t msgId,
                       const char* data, uint16_t len)
     {
-        SendToClient(clientConnId, msgId, data, len);
+        return SendToClient(clientConnId, msgId, data, len);
     }
 
     /** @brief 供 ScriptFun 向客户端发消息（module/sub） */
-    void sendToClient(uint32_t clientConnId, uint8_t module, uint8_t sub,
+    bool sendToClient(uint32_t clientConnId, uint8_t module, uint8_t sub,
                       const char* data, uint16_t len)
     {
-        SendToClient(clientConnId, module, sub, data, len);
+        return SendToClient(clientConnId, module, sub, data, len);
     }
 
     /**
@@ -111,10 +111,18 @@ public:
     /** @brief 经 Super 转发到独立外联服 */
     GameZoneExternSender& externSender() { return m_externSender; }
 
-    void SendToClient(uint32_t clientConnID, uint8_t module, uint8_t sub,
+    /**
+     * @brief 经 Gateway 入站连接下发客户端消息
+     * @return 成功 true
+     */
+    bool SendToClient(uint32_t clientConnID, uint8_t module, uint8_t sub,
                       const char* data, uint16_t len);
 
-    void SendToClient(uint32_t clientConnID, uint16_t flatMsgId,
+    /**
+     * @brief 经 Gateway 入站连接下发客户端消息（扁平 msgId）
+     * @return 成功 true
+     */
+    bool SendToClient(uint32_t clientConnID, uint16_t flatMsgId,
                       const char* data, uint16_t len);
 
     /** @brief NPC 进入 AOI（创建/复活时由 SceneNpc 调用） */
@@ -123,7 +131,7 @@ public:
     /** @brief NPC 离开 AOI（死亡/销毁时由 SceneNpc 调用） */
     void notifyNpcLeaveAoi(EntryID npcId) { sendAoiLeave(npcId); }
 
-    /** @brief 请求 SessionServer 创建副本（异步，结果见 OnCopyCreateRsp） */
+    /** @brief 请求 SessionServer 创建副本（异步，结果见 onCopyCreateRsp） */
     void requestCreateCopy(CopyType copyType, uint32_t mapId, uint64_t ownerId,
                            const std::string& mapName, const std::string& mapFile,
                            uint32_t maxPlayer = 5);
@@ -140,23 +148,23 @@ public:
 
 private:
     /** @brief 注册 SceneServer 的内部消息处理器 */
-    void RegisterHandlers();
+    void registerHandlers();
 
     /**
      * @brief 用户进入场景
      *
-     * 创建 SceneUser → 加入地图 → 通知 AOI → 回包 GatewayServer → 调用 Lua OnUserEnter。
+     * 创建 SceneUser → 加入地图 → 通知 AOI → 回包 GatewayServer → 调用 Lua onUserEnter。
      */
-    void OnUserEnter(ConnID fromConn, const char* data, uint16_t len);
+    void onUserEnter(ConnID fromConn, const Msg_SCE_UserEnterReq& req);
 
     /** @brief 回 Gateway 的入场结果包 */
-    void SendUserEnterRsp(const Msg_SCE_UserEnterReq* req, int32_t code);
+    void sendUserEnterRsp(const Msg_SCE_UserEnterReq* req, int32_t code);
 
     /** @brief 向新进入玩家补发当前地图已有玩家可见实体 */
-    void NotifyExistingPlayersOnEnter(const SceneUser& entering);
+    void notifyExistingPlayersOnEnter(const SceneUser& entering);
 
     /** @brief 用户离开场景（通知 AOI → 保存到 RecordServer → 调用 Lua → 清理内存） */
-    void OnUserLeave(ConnID fromConn, const char* data, uint16_t len);
+    void onUserLeave(ConnID fromConn, const char* data, uint16_t len);
 
     /** @brief 将 Scene 在线数据转发 RecordServer 写入 CharBase */
     void sendCharBaseToRecord(const SceneUser& user);
@@ -170,7 +178,7 @@ private:
      *   - enter=true：向视野内其他用户广播 SpawnEntity（新实体出现）；
      *   - enter=false：向视野内其他用户广播 DespawnEntity（实体消失）。
      */
-    void OnViewNotify(ConnID fromConn, const char* data, uint16_t len);
+    void onViewNotify(ConnID fromConn, const char* data, uint16_t len);
 
     /**
      * @brief 处理移动请求：坐标验证 → 位置更新 → 通知 AOI
@@ -179,14 +187,14 @@ private:
      * 1. 根据消息中的 userID 查找在线用户，不存在则忽略；
      * 2. 将客户端上报的坐标 (x, y, z) 更新到用户的基础数据中；
      * 3. 构造 AOI 移动消息并转发至 AOIServer，由 AOIServer 计算视野变化
-     *    并回传 OnViewNotify，触发同地图其他客户端的坐标同步。
+     *    并回传 onViewNotify，触发同地图其他客户端的坐标同步。
      *
      * @note 当前未做坐标合法性校验（如移动速度检测），后续可扩展。
      */
-    void OnMoveReq(uint32_t clientConnID, const char* data, uint16_t len);
+    void onMoveReq(uint32_t clientConnID, const char* data, uint16_t len);
 
     /** @brief 处理聊天请求：广播给地图内所有玩家 */
-    void OnChatReq(uint32_t clientConnID, const char* data, uint16_t len);
+    void onChatReq(uint32_t clientConnID, const char* data, uint16_t len);
 
     /**
      * @brief 处理 NPC 对话：callScriptBool → OnNpcTalk → guide.lua 等
@@ -194,7 +202,7 @@ private:
      * 成功时由 Lua send_npc_talk_rsp 下发 S2C_NPC_TALK_RSP；
      * 失败时 C++ 回错误码包。
      */
-    void OnNpcTalkReq(uint32_t clientConnID, const char* data, uint16_t len);
+    void onNpcTalkReq(uint32_t clientConnID, const char* data, uint16_t len);
 
     /** @brief 对话失败回包（code: 1=NPC无效 2=不同地图 3=脚本无响应） */
     void sendNpcTalkError(uint32_t clientConnID, uint64_t npcId, int32_t code);
@@ -221,13 +229,13 @@ private:
                         const char* data, uint16_t len);
 
     /** @brief Lua 回调：用户进入场景 */
-    void CallLuaOnEnter(UserID userID, uint32_t mapID);
+    void callLuaOnEnter(UserID userID, uint32_t mapID);
 
     /** @brief Lua 回调：用户离开场景 */
-    void CallLuaOnLeave(UserID userID);
+    void callLuaOnLeave(UserID userID);
 
-    /** @brief 每帧 Tick（驱动用户/NPC loop + Lua OnTick） */
-    void OnTick();
+    /** @brief 每帧 Tick（驱动用户/NPC loop + Lua onTick） */
+    void onTick();
 
     /** @brief 为已加载地图创建默认 NPC（示例：新手引导官） */
     void initMapNpcs();
@@ -239,16 +247,16 @@ private:
     void onSceneStopped(Scene& scene);
 
     /** @brief 处理 SessionServer 的副本创建应答 */
-    void OnCopyCreateRsp(ConnID fromConn, const char* data, uint16_t len);
+    void onCopyCreateRsp(ConnID fromConn, const Msg_SES_CopyCreateRsp& rsp);
 
     /** @brief 处理 SessionServer 的场景注册应答 */
-    void OnSceneRegisterRsp(ConnID fromConn, const char* data, uint16_t len);
+    void onSceneRegisterRsp(ConnID fromConn, const char* data, uint16_t len);
 
     /** @brief 处理 RecordServer 的存档应答 */
-    void OnSaveUserRsp(ConnID fromConn, const char* data, uint16_t len);
+    void onSaveUserRsp(ConnID fromConn, const char* data, uint16_t len);
 
     /** @brief 处理 SessionServer 下发的副本创建指令 */
-    void OnCopyCreateCmd(ConnID fromConn, const char* data, uint16_t len);
+    void onCopyCreateCmd(ConnID fromConn, const Msg_SES_CopyCreateCmd& cmd);
 
     /** @brief 将 SceneEntry 填入客户端 SpawnEntity 协议 */
     static void fillSpawnFromEntry(const SceneEntry& entry, uint8_t entityType,
@@ -261,10 +269,10 @@ private:
     void sendAoiLeave(EntryID entityId);
 
     /** @brief 向 SuperServer 注册 Scene 节点 */
-    void RegisterToSuper();
+    void registerToSuper();
 
     /** @brief 定时发送 Scene 心跳 */
-    void SendHeartbeat();
+    void sendHeartbeat();
     TcpServer              m_server;          /**< 入站监听（Gateway / Session） */
     SceneUpstreamCallback  m_superUpstreamCb; /**< Super 出站回调（与入站分离） */
     TcpClient              m_superClient;     /**< 出站 SuperServer */

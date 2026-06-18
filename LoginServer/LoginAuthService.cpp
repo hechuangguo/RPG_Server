@@ -108,9 +108,9 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
     if (m_owner.dbRequired() && !m_owner.db())
     {
         loginRsp.code = -1;
-        copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "Login service unavailable");
+        copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "登录服不可用");
         sendClientWire(m_owner.clientServer(), connID, loginRsp);
-        sendGatewayInfo(connID, -1, "No gateway");
+        sendGatewayInfo(connID, -1, "无可用网关");
         return;
     }
 
@@ -123,7 +123,7 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
     if (!db)
     {
         loginRsp.code = -1;
-        copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "Database unavailable");
+        copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "数据库不可用");
     }
     else
     {
@@ -138,7 +138,7 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
         {
             LOG_ERR("查询 GameUser 失败: %s", mysql_error(db));
             loginRsp.code = -1;
-            copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "Database error");
+            copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "数据库错误");
         }
         else
         {
@@ -147,7 +147,7 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
             if (!row)
             {
                 loginRsp.code = 1;
-                copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "Account not found");
+                copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "账号不存在");
             }
             else
             {
@@ -156,25 +156,25 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
                 if (!verifyPasswordBcrypt(password, hash))
                 {
                     loginRsp.code = 1;
-                    copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "Invalid account or password");
+                    copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "账号或密码错误");
                 }
                 else if (gameZone != 0 && gameZone != req->zoneId)
                 {
                     loginRsp.code = 1;
-                    copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "Zone mismatch");
+                    copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "区服不匹配");
                 }
                 else
                 {
                     loginRsp.code = 0;
                     loginRsp.accid = row[0] ? static_cast<uint64_t>(strtoull(row[0], nullptr, 10)) : 0;
                     loginRsp.userID = row[2] ? static_cast<uint64_t>(strtoull(row[2], nullptr, 10)) : 0;
-                    copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "Login OK");
+                    copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "登录成功");
 
                     char token[65] = {};
                     if (!generateLoginToken(token, sizeof(token)))
                     {
                         loginRsp.code = -1;
-                        copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "Token generation failed");
+                        copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "登录票据生成失败");
                     }
                     else
                     {
@@ -194,7 +194,7 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
                         {
                             LOG_ERR("写入 LoginSession 失败: %s", mysql_error(db));
                             loginRsp.code = -1;
-                            copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "Session write failed");
+                            copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "会话写入失败");
                         }
                         else
                         {
@@ -221,9 +221,9 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
     }
 
     if (loginRsp.code == 0)
-        sendGatewayInfo(connID, 0, "OK", req->zoneId, req->gameType);
+        sendGatewayInfo(connID, 0, "成功", req->zoneId, req->gameType);
     else
-        sendGatewayInfo(connID, -1, "Login failed");
+        sendGatewayInfo(connID, -1, "登录失败");
 }
 
 void LoginAuthService::sendGatewayInfo(ConnID connID, int32_t code, const char* msg,
@@ -238,7 +238,7 @@ void LoginAuthService::sendGatewayInfo(ConnID connID, int32_t code, const char* 
         if (zoneId == 0)
         {
             info.code = -1;
-            copyToWire(info.msg, sizeof(info.msg), "Invalid zone");
+            copyToWire(info.msg, sizeof(info.msg), "区服无效");
         }
         else
         {
@@ -249,12 +249,12 @@ void LoginAuthService::sendGatewayInfo(ConnID connID, int32_t code, const char* 
             if (!zoneStore.findZone(gameType, zoneId, zone))
             {
                 info.code = -1;
-                copyToWire(info.msg, sizeof(info.msg), "Zone not found");
+                copyToWire(info.msg, sizeof(info.msg), "区服不存在");
             }
             else if (!zone.enabled)
             {
                 info.code = -1;
-                copyToWire(info.msg, sizeof(info.msg), "Zone maintenance");
+                copyToWire(info.msg, sizeof(info.msg), "区服维护中");
             }
             else
             {
@@ -267,7 +267,7 @@ void LoginAuthService::sendGatewayInfo(ConnID connID, int32_t code, const char* 
                 if (loadLevel == static_cast<uint8_t>(ZoneLoadLevel::MAINTENANCE))
                 {
                     info.code = -1;
-                    copyToWire(info.msg, sizeof(info.msg), "Zone unavailable");
+                    copyToWire(info.msg, sizeof(info.msg), "区服不可用");
                 }
                 else
                 {
@@ -282,7 +282,7 @@ void LoginAuthService::sendGatewayInfo(ConnID connID, int32_t code, const char* 
                     else
                     {
                         info.code = -1;
-                        copyToWire(info.msg, sizeof(info.msg), "No gateway available");
+                        copyToWire(info.msg, sizeof(info.msg), "无可用网关");
                     }
                 }
             }

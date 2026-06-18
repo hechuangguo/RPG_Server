@@ -27,9 +27,9 @@ bool AOIServer::Init(const std::string& ip, uint16_t port,
     ServerBootstrap::bindRemoteLog(m_externSender, SubServerType::AOI);
     if (!m_server.Start(ip, port)) { LOG_FATAL("视野服启动失败"); return false; }
     m_superClient.Connect(cfg.superIP, (uint16_t)cfg.superPort);
-    RegisterHandlers();
+    registerHandlers();
     TimerMgr::Instance().Register(500,   0,     [this]{ RegisterToSuper(); });
-    TimerMgr::Instance().Register(10000, 10000, [this]{ SendHeartbeat(); });
+    TimerMgr::Instance().Register(10000, 10000, [this]{ sendHeartbeat(); });
     LOG_INFO("视野服启动完成: %s:%d", ip.c_str(), port);
     return true;
 }
@@ -60,7 +60,7 @@ void AOIServer::OnMessage(ConnID id, uint8_t module, uint8_t sub,
     MsgIngress::dispatchInternal(id, module, sub, data, len);
 }
 
-void AOIServer::RegisterHandlers()
+void AOIServer::registerHandlers()
 {
     AoiInternMsgRegister(*this);
 }
@@ -88,7 +88,7 @@ std::vector<uint64_t> AOIServer::GetEntitiesInGrid(uint32_t mapID, const Grid& g
     return std::vector<uint64_t>(it->second.begin(), it->second.end());
 }
 
-void AOIServer::OnEnter(ConnID fromConn, const char* data, uint16_t len)
+void AOIServer::onEnter(ConnID fromConn, const char* data, uint16_t len)
 {
     if (len < sizeof(Msg_AOI_Move)) return;
     const auto* req = reinterpret_cast<const Msg_AOI_Move*>(data);
@@ -105,15 +105,15 @@ void AOIServer::OnEnter(ConnID fromConn, const char* data, uint16_t len)
     m_gridMap[key].insert(e.entityID);
     m_entityGrid[e.entityID] = g;
 
-    NotifyViewChange(e.entityID, true);
+    notifyViewChange(e.entityID, true);
     LOG_DEBUG("视野进入: entityID=%llu map=%u (%.1f,%.1f)", e.entityID, e.mapID, e.x, e.z);
 }
 
-void AOIServer::OnLeave(ConnID /*fromConn*/, const char* data, uint16_t len)
+void AOIServer::onLeave(ConnID /*fromConn*/, const char* data, uint16_t len)
 {
     if (len < sizeof(uint64_t)) return;
     uint64_t eid = *reinterpret_cast<const uint64_t*>(data);
-    NotifyViewChange(eid, false);
+    notifyViewChange(eid, false);
     auto it = m_entities.find(eid);
     if (it != m_entities.end())
     {
@@ -126,7 +126,7 @@ void AOIServer::OnLeave(ConnID /*fromConn*/, const char* data, uint16_t len)
     }
 }
 
-void AOIServer::OnMove(ConnID fromConn, const char* data, uint16_t len)
+void AOIServer::onMove(ConnID fromConn, const char* data, uint16_t len)
 {
     if (len < sizeof(Msg_AOI_Move)) return;
     const auto* req = reinterpret_cast<const Msg_AOI_Move*>(data);
@@ -149,7 +149,7 @@ void AOIServer::OnMove(ConnID fromConn, const char* data, uint16_t len)
     m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::AOI_VIEW_NOTIFY, data, len);
 }
 
-void AOIServer::OnSceneRegister(ConnID /*fromConn*/, const char* data, uint16_t len)
+void AOIServer::onSceneRegister(ConnID /*fromConn*/, const char* data, uint16_t len)
 {
     if (len < sizeof(Msg_AOI_SceneRegister)) return;
     const auto* req = reinterpret_cast<const Msg_AOI_SceneRegister*>(data);
@@ -158,7 +158,7 @@ void AOIServer::OnSceneRegister(ConnID /*fromConn*/, const char* data, uint16_t 
              req->sceneInstanceId, req->mapId, req->sceneServerId, req->sceneKind);
 }
 
-void AOIServer::OnSceneUnregister(ConnID /*fromConn*/, const char* data, uint16_t len)
+void AOIServer::onSceneUnregister(ConnID /*fromConn*/, const char* data, uint16_t len)
 {
     if (len < sizeof(Msg_AOI_SceneUnregister)) return;
     const auto* req = reinterpret_cast<const Msg_AOI_SceneUnregister*>(data);
@@ -166,7 +166,7 @@ void AOIServer::OnSceneUnregister(ConnID /*fromConn*/, const char* data, uint16_
     LOG_INFO("视野场景注销: instance=%llu", req->sceneInstanceId);
 }
 
-void AOIServer::NotifyViewChange(uint64_t entityID, bool enter)
+void AOIServer::notifyViewChange(uint64_t entityID, bool enter)
 {
     auto it = m_entities.find(entityID);
     if (it == m_entities.end()) return;
@@ -189,7 +189,7 @@ void AOIServer::RegisterToSuper()
                           reinterpret_cast<char*>(&reg), sizeof(reg));
 }
 
-void AOIServer::SendHeartbeat()
+void AOIServer::sendHeartbeat()
 {
     Msg_S2S_Heartbeat hb{}; hb.seq = ++m_hbSeq; hb.timestamp = TimerMgr::NowMs();
     m_superClient.SendMsg((uint16_t)InternalMsgID::S2S_HEARTBEAT,

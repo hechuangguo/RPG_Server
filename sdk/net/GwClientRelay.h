@@ -67,3 +67,45 @@ inline bool sendGwSendToClient(TcpServer& server, ConnID gatewayConn,
                           static_cast<uint16_t>(InternalMsgID::GW_SEND_TO_CLIENT),
                           buf.data(), static_cast<uint16_t>(buf.size()));
 }
+
+/** @brief GW_SEND_TO_CLIENT 解包结果（body 指向原 buffer 尾部，不拷贝） */
+struct UnwrappedGwSendToClient
+{
+    uint32_t clientConnId = 0;
+    uint8_t  module       = 0;
+    uint8_t  sub          = 0;
+    const char* body      = nullptr;
+    uint16_t bodyLen      = 0;
+};
+
+/**
+ * @brief 解包 GW_SEND_TO_CLIENT（Gateway OnSendToClient 用）
+ * @return 长度合法 true
+ */
+inline bool unwrapGwSendToClient(const char* data, uint16_t len, UnwrappedGwSendToClient& out)
+{
+    if (len < sizeof(Msg_GW_SendToClient))
+        return false;
+    const auto* hdr = reinterpret_cast<const Msg_GW_SendToClient*>(data);
+    if (len < sizeof(Msg_GW_SendToClient) + hdr->dataLen)
+        return false;
+    out.clientConnId = hdr->clientConnID;
+    out.module       = hdr->module;
+    out.sub          = hdr->sub;
+    out.bodyLen      = hdr->dataLen;
+    out.body         = data + sizeof(Msg_GW_SendToClient);
+    return true;
+}
+
+/**
+ * @brief Scene/Session 经已登记 Gateway 入站连接下发客户端
+ * @return gatewayConn 有效且发送成功 true
+ */
+inline bool relaySendToClientViaGateway(TcpServer& server, ConnID gatewayInboundConn,
+                                        uint32_t clientConnId, uint8_t module, uint8_t sub,
+                                        const char* body, uint16_t bodyLen)
+{
+    if (gatewayInboundConn == INVALID_CONN_ID)
+        return false;
+    return sendGwSendToClient(server, gatewayInboundConn, clientConnId, module, sub, body, bodyLen);
+}

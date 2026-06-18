@@ -94,7 +94,7 @@ bool SessionServer::Init(const std::string& ip, uint16_t port,
         return false;
     }
 
-    RegisterHandlers();
+    registerHandlers();
 
     const uint64_t connectDeadline = TimerMgr::NowMs() + 5000;
     while (!m_recordClient.IsConnected() && TimerMgr::NowMs() < connectDeadline)
@@ -112,9 +112,9 @@ bool SessionServer::Init(const std::string& ip, uint16_t port,
         return false;
     }
 
-    TimerMgr::Instance().Register(500, 0, [this] { RegisterToSuper(); });
-    TimerMgr::Instance().Register(10000, 10000, [this] { SendHeartbeat(); });
-    TimerMgr::Instance().Register(60000, 60000, [this] { AutoSaveAll(); });
+    TimerMgr::Instance().Register(500, 0, [this] { registerToSuper(); });
+    TimerMgr::Instance().Register(10000, 10000, [this] { sendHeartbeat(); });
+    TimerMgr::Instance().Register(60000, 60000, [this] { autoSaveAll(); });
     s_active = this;
     LOG_INFO("会话服启动完成（Record + SceneManager）");
     return true;
@@ -208,13 +208,13 @@ bool SessionServer::saveRelation(const RelationRowData& row)
                                   buf.data(), static_cast<uint16_t>(buf.size()));
 }
 
-void SessionServer::RegisterHandlers()
+void SessionServer::registerHandlers()
 {
     SessionInternMsgRegister(*this);
     SessionClientMsgRegister(*this);
 }
 
-void SessionServer::OnRelationPreloadRsp(ConnID /*fromConn*/, const char* data, uint16_t len)
+void SessionServer::onRelationPreloadRsp(ConnID /*fromConn*/, const char* data, uint16_t len)
 {
     if (len < sizeof(Msg_REC_RelationPreloadRsp))
     {
@@ -245,7 +245,7 @@ void SessionServer::OnRelationPreloadRsp(ConnID /*fromConn*/, const char* data, 
     m_relationPreloadDone = true;
 }
 
-void SessionServer::OnRelationLoadRsp(ConnID /*fromConn*/, const char* data, uint16_t len)
+void SessionServer::onRelationLoadRsp(ConnID /*fromConn*/, const char* data, uint16_t len)
 {
     if (len < sizeof(Msg_REC_RelationLoadRsp))
     {
@@ -275,7 +275,7 @@ void SessionServer::OnRelationLoadRsp(ConnID /*fromConn*/, const char* data, uin
     m_relationLoadDone = true;
 }
 
-void SessionServer::RegisterToSuper()
+void SessionServer::registerToSuper()
 {
     Msg_S2S_Register reg{};
     reg.serverType = (uint8_t)SubServerType::SESSION;
@@ -287,7 +287,7 @@ void SessionServer::RegisterToSuper()
                           reinterpret_cast<char*>(&reg), sizeof(reg));
 }
 
-void SessionServer::SendHeartbeat()
+void SessionServer::sendHeartbeat()
 {
     Msg_S2S_Heartbeat hb{};
     hb.seq = ++m_hbSeq;
@@ -296,7 +296,7 @@ void SessionServer::SendHeartbeat()
                           reinterpret_cast<char*>(&hb), sizeof(hb));
 }
 
-void SessionServer::OnLoadUserReq(ConnID fromConn, const char* data, uint16_t len)
+void SessionServer::onLoadUserReq(ConnID fromConn, const char* data, uint16_t len)
 {
     if (len < sizeof(UserID))
         return;
@@ -309,7 +309,7 @@ void SessionServer::OnLoadUserReq(ConnID fromConn, const char* data, uint16_t le
     m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::SES_LOAD_USER_RSP, data, len);
 }
 
-void SessionServer::OnSaveUserReq(ConnID /*fromConn*/, const char* data, uint16_t len)
+void SessionServer::onSaveUserReq(ConnID /*fromConn*/, const char* data, uint16_t len)
 {
     if (len < sizeof(UserID))
         return;
@@ -320,106 +320,91 @@ void SessionServer::OnSaveUserReq(ConnID /*fromConn*/, const char* data, uint16_
     user->save(*this);
 }
 
-void SessionServer::OnFriendUpdate(ConnID /*fromConn*/, const char* /*data*/, uint16_t len)
+void SessionServer::onFriendUpdate(ConnID /*fromConn*/, const char* /*data*/, uint16_t len)
 {
     LOG_DEBUG("好友更新消息长度: len=%d", len);
 }
 
-void SessionServer::OnSceneRegisterReq(ConnID fromConn, const char* data, uint16_t len)
+void SessionServer::onSceneRegisterReq(ConnID fromConn, const Msg_SES_SceneRegisterReq& req)
 {
-    if (len < sizeof(Msg_SES_SceneRegisterReq))
-        return;
-    const auto* req = reinterpret_cast<const Msg_SES_SceneRegisterReq*>(data);
-
-    SessionSceneManager::Instance().registerScene(fromConn, *req);
+    SessionSceneManager::Instance().registerScene(fromConn, req);
 
     Msg_SES_SceneRegisterRsp rsp{};
     rsp.code = 0;
-    rsp.sceneInstanceId = req->sceneInstanceId;
+    rsp.sceneInstanceId = req.sceneInstanceId;
     m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::SES_SCENE_REGISTER_RSP,
                      reinterpret_cast<char*>(&rsp), sizeof(rsp));
 }
 
-void SessionServer::OnSceneUnregister(ConnID /*fromConn*/, const char* data, uint16_t len)
+void SessionServer::onSceneUnregister(ConnID /*fromConn*/, const Msg_SES_SceneUnregister& req)
 {
-    if (len < sizeof(Msg_SES_SceneUnregister))
-        return;
-    const auto* req = reinterpret_cast<const Msg_SES_SceneUnregister*>(data);
-    SessionSceneManager::Instance().unregisterScene(req->sceneInstanceId, req->sceneServerId);
+    SessionSceneManager::Instance().unregisterScene(req.sceneInstanceId, req.sceneServerId);
 }
 
-void SessionServer::OnResolveMapReq(ConnID fromConn, const char* data, uint16_t len)
+void SessionServer::onResolveMapReq(ConnID fromConn, const Msg_SES_ResolveMapReq& req)
 {
-    if (len < sizeof(Msg_SES_ResolveMapReq))
-        return;
-    const auto* req = reinterpret_cast<const Msg_SES_ResolveMapReq*>(data);
-
     Msg_SES_ResolveMapRsp rsp{};
-    rsp.userID = req->userID;
-    rsp.mapId = req->mapId;
-    rsp.sceneServerId = SessionSceneManager::Instance().resolveSceneServerByMapId(req->mapId);
+    rsp.userID = req.userID;
+    rsp.mapId = req.mapId;
+    rsp.sceneServerId = SessionSceneManager::Instance().resolveSceneServerByMapId(req.mapId);
     rsp.code = rsp.sceneServerId != 0 ? 0 : -1;
 
     m_server.SendMsg(fromConn, static_cast<uint16_t>(InternalMsgID::SES_RESOLVE_MAP_RSP),
                      reinterpret_cast<char*>(&rsp), sizeof(rsp));
     LOG_INFO("地图解析结果: user=%llu map=%u -> sceneServerId=%u code=%d",
-             req->userID, req->mapId, rsp.sceneServerId, rsp.code);
+             req.userID, req.mapId, rsp.sceneServerId, rsp.code);
 }
 
-void SessionServer::OnCopyCreateReq(ConnID fromConn, const char* data, uint16_t len)
+void SessionServer::onCopyCreateReq(ConnID fromConn, const Msg_SES_CopyCreateReq& req)
 {
-    if (len < sizeof(Msg_SES_CopyCreateReq))
-        return;
-    const auto* req = reinterpret_cast<const Msg_SES_CopyCreateReq*>(data);
-
-    SessionSceneManager::Instance().bindSceneServer(fromConn, req->reqSceneServerId);
+    SessionSceneManager::Instance().bindSceneServer(fromConn, req.reqSceneServerId);
 
     Msg_SES_CopyCreateRsp rsp{};
     rsp.code = 0;
 
-    const CopyType copyType = static_cast<CopyType>(req->copyType);
+    const CopyType copyType = static_cast<CopyType>(req.copyType);
     SessionCopyScene* existing =
-        SessionSceneManager::Instance().findReusableCopy(copyType, req->mapId, req->ownerId);
+        SessionSceneManager::Instance().findReusableCopy(copyType, req.mapId, req.ownerId);
 
     if (existing)
     {
         rsp.targetSceneServerId = existing->getSceneServerId();
         rsp.copyInstanceId = existing->getCopyInstanceId();
-        rsp.copyType = req->copyType;
-        rsp.mapId = req->mapId;
-        rsp.ownerId = req->ownerId;
+        rsp.copyType = req.copyType;
+        rsp.mapId = req.mapId;
+        rsp.ownerId = req.ownerId;
         rsp.maxPlayer = existing->getMaxPlayer();
         rsp.reused = 1;
-        copyWireField(rsp.mapName, req->mapName);
-        copyWireField(rsp.mapFile, req->mapFile);
+        copyWireField(rsp.mapName, req.mapName);
+        copyWireField(rsp.mapFile, req.mapFile);
     }
     else
     {
         uint32_t targetId = SessionSceneManager::Instance().pickSceneServerId();
         if (targetId == 0)
-            targetId = req->reqSceneServerId;
+            targetId = req.reqSceneServerId;
 
         const uint64_t copyId = SessionSceneManager::Instance().generateCopyInstanceId();
-        SessionSceneManager::Instance().createCopyRecord(targetId, copyId, *req);
+        SessionSceneManager::Instance().createCopyRecord(targetId, copyId, req);
 
         rsp.targetSceneServerId = targetId;
         rsp.copyInstanceId = copyId;
-        rsp.copyType = req->copyType;
-        rsp.mapId = req->mapId;
-        rsp.ownerId = req->ownerId;
-        rsp.maxPlayer = req->maxPlayer;
+        rsp.copyType = req.copyType;
+        rsp.mapId = req.mapId;
+        rsp.ownerId = req.ownerId;
+        rsp.maxPlayer = req.maxPlayer;
         rsp.reused = 0;
-        copyWireField(rsp.mapName, req->mapName);
-        copyWireField(rsp.mapFile, req->mapFile);
+        copyWireField(rsp.mapName, req.mapName);
+        copyWireField(rsp.mapFile, req.mapFile);
 
         Msg_SES_CopyCreateCmd cmd{};
         cmd.copyInstanceId = copyId;
-        cmd.copyType = req->copyType;
-        cmd.mapId = req->mapId;
-        cmd.ownerId = req->ownerId;
-        cmd.maxPlayer = req->maxPlayer;
-        copyWireField(cmd.mapName, req->mapName);
-        copyWireField(cmd.mapFile, req->mapFile);
+        cmd.copyType = req.copyType;
+        cmd.mapId = req.mapId;
+        cmd.ownerId = req.ownerId;
+        cmd.maxPlayer = req.maxPlayer;
+        copyWireField(cmd.mapName, req.mapName);
+        copyWireField(cmd.mapFile, req.mapFile);
 
         ConnID targetConn = SessionSceneManager::Instance().findConnBySceneServerId(targetId);
         if (targetConn != INVALID_CONN_ID)
@@ -438,7 +423,7 @@ void SessionServer::OnCopyCreateReq(ConnID fromConn, const char* data, uint16_t 
                      reinterpret_cast<char*>(&rsp), sizeof(rsp));
 }
 
-void SessionServer::AutoSaveAll()
+void SessionServer::autoSaveAll()
 {
     SessionUserManager::Instance().forEach([this](UserID uid, const std::shared_ptr<SessionUser>& user) {
         (void)uid;
@@ -447,22 +432,21 @@ void SessionServer::AutoSaveAll()
     });
 }
 
-void SessionServer::SendToClient(uint32_t clientConnID, uint8_t module, uint8_t sub,
+bool SessionServer::SendToClient(uint32_t clientConnID, uint8_t module, uint8_t sub,
                                  const char* data, uint16_t len)
 {
-    if (m_gatewayInboundConn == INVALID_CONN_ID)
-    {
-        LOG_WARN("下发客户端失败: 无网关入站连接 clientConn=%u", clientConnID);
-        return;
-    }
-    sendGwSendToClient(m_server, m_gatewayInboundConn, clientConnID, module, sub, data, len);
+    if (relaySendToClientViaGateway(m_server, m_gatewayInboundConn,
+                                    clientConnID, module, sub, data, len))
+        return true;
+    LOG_WARN("下发客户端失败: 无网关入站连接 clientConn=%u", clientConnID);
+    return false;
 }
 
-void SessionServer::SendToClient(uint32_t clientConnID, uint16_t flatMsgId,
+bool SessionServer::SendToClient(uint32_t clientConnID, uint16_t flatMsgId,
                                  const char* data, uint16_t len)
 {
-    SendToClient(clientConnID,
-                 static_cast<uint8_t>(flatMsgId >> 8),
-                 static_cast<uint8_t>(flatMsgId & 0xFF),
-                 data, len);
+    return SendToClient(clientConnID,
+                        static_cast<uint8_t>(flatMsgId >> 8),
+                        static_cast<uint8_t>(flatMsgId & 0xFF),
+                        data, len);
 }

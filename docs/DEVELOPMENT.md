@@ -39,9 +39,11 @@
 
 | 路由目标 | 处理位置 |
 |----------|----------|
-| SCENE | `SceneServer::HandleClientMsg` 或 Lua `OnMsg_{MMSS}` |
-| SESSION | `SessionServer` 的 `GW_CLIENT_MSG` handler |
-| LOCAL | `GatewayServer` 本地 handler |
+| SCENE | `SceneClientMsgRegister` → `ClientMsgDispatcher` → Scene handler |
+| SESSION | **当前未路由**（`ClientMsgRouter` 不返回 SESSION；见 [SERVERS.md](SERVERS.md) § SessionServer） |
+| LOCAL | `LoginClientMsgRegister` 或 Gateway 本地 handler |
+
+各服 `OnMessage` 统一 `MsgIngress::dispatchInternal`；Gateway 客户端连接：`handleClientMsg` → Validator → Router。
 
 Scene Lua 扩展：见 [LUA.md](LUA.md) § 扩展指南。
 
@@ -58,7 +60,7 @@ Scene Lua 扩展：见 [LUA.md](LUA.md) § 扩展指南。
 
 1. [`protocal/InternalMsg.h`](../protocal/InternalMsg.h) — `InternalMsgID` + struct
 2. 发送方构造消息，`TcpClient::SendMsg` 或 `TcpServer::SendMsg`
-3. 接收方 `RegisterHandlers()` — `MsgDispatcher::Register(flatId, handler)`
+3. 接收方 `*InternMsgRegister` — `registerInternal` / `registerInternalSized` / `registerInternalRaw`（见 `sdk/util/MsgHandlerBinder.h`）
 4. 注释：方向、触发时机、payload 布局
 
 ---

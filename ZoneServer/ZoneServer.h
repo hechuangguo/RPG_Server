@@ -38,6 +38,9 @@ class ZoneServer : public INetCallback, public LazySingleton<ZoneServer>
 {
 public:
     friend class LazySingleton<ZoneServer>;
+    friend void ZoneInternMsgRegister(ZoneServer& server);
+    friend void ZoneGameZoneForwardMsgRegister(ZoneServer& server);
+    friend void ZoneGameZoneCrossMsgRegister(ZoneServer& server);
     static ZoneServer* Instance() { return &LazySingleton<ZoneServer>::Instance(); }
 
 private:
@@ -55,16 +58,6 @@ public:
 
     void Run();
 
-    void onCrossReqFromGameZone(ConnID fromConn, const char* data, uint16_t len)
-    {
-        OnCrossReq(fromConn, data, len);
-    }
-
-    void onForwardFromGameZone(ConnID fromConn, const char* data, uint16_t len)
-    {
-        OnForward(fromConn, data, len);
-    }
-
     void OnConnect(ConnID id) override;
 
     void OnDisconnect(ConnID id) override;
@@ -73,13 +66,13 @@ public:
                    const char* data, uint16_t len) override;
 
 private:
-    void RegisterHandlers();
+    void registerHandlers();
 
     bool initDatabase(const DatabaseConfig& dbCfg);
 
-    void OnCrossReq(ConnID fromConn, const char* data, uint16_t len);
+    void onCrossReq(ConnID fromConn, const char* data, uint16_t len);
 
-    void OnForward(ConnID fromConn, const char* data, uint16_t len);
+    void onForward(ConnID fromConn, const char* data, uint16_t len);
 
     TcpServer m_server;
     MYSQL*    m_db = nullptr;

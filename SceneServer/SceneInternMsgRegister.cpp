@@ -9,32 +9,33 @@
 #include "../sdk/net/GwClientUnwrap.h"
 #include "../sdk/net/MsgIngress.h"
 #include "../sdk/util/MsgHandlerBinder.h"
+#include "../sdk/util/UserBase.h"
 #include "../protocal/InternalMsg.h"
 
 void SceneInternMsgRegister(SceneServer& server)
 {
     auto& d = MsgDispatcher::Instance();
-    registerInternalRaw(d, &server,
-                        static_cast<uint16_t>(InternalMsgID::SCE_USER_ENTER_REQ),
-                        &SceneServer::OnUserEnter);
-    registerInternalRaw(d, &server,
-                        static_cast<uint16_t>(InternalMsgID::SCE_USER_LEAVE),
-                        &SceneServer::OnUserLeave);
+    registerInternal(d, &server,
+                     static_cast<uint16_t>(InternalMsgID::SCE_USER_ENTER_REQ),
+                     &SceneServer::onUserEnter);
+    registerInternalSized<SceneServer, UserID>(
+        d, &server, static_cast<uint16_t>(InternalMsgID::SCE_USER_LEAVE),
+        &SceneServer::onUserLeave);
     registerInternalRaw(d, &server,
                         static_cast<uint16_t>(InternalMsgID::AOI_VIEW_NOTIFY),
-                        &SceneServer::OnViewNotify);
+                        &SceneServer::onViewNotify);
     registerInternalRaw(d, &server,
                         static_cast<uint16_t>(InternalMsgID::SES_SCENE_REGISTER_RSP),
-                        &SceneServer::OnSceneRegisterRsp);
+                        &SceneServer::onSceneRegisterRsp);
     registerInternalRaw(d, &server,
                         static_cast<uint16_t>(InternalMsgID::REC_SAVE_USER_RSP),
-                        &SceneServer::OnSaveUserRsp);
-    registerInternalRaw(d, &server,
-                        static_cast<uint16_t>(InternalMsgID::SES_COPY_CREATE_RSP),
-                        &SceneServer::OnCopyCreateRsp);
-    registerInternalRaw(d, &server,
-                        static_cast<uint16_t>(InternalMsgID::SES_COPY_CREATE_CMD),
-                        &SceneServer::OnCopyCreateCmd);
+                        &SceneServer::onSaveUserRsp);
+    registerInternal(d, &server,
+                     static_cast<uint16_t>(InternalMsgID::SES_COPY_CREATE_RSP),
+                     &SceneServer::onCopyCreateRsp);
+    registerInternal(d, &server,
+                     static_cast<uint16_t>(InternalMsgID::SES_COPY_CREATE_CMD),
+                     &SceneServer::onCopyCreateCmd);
 
     registerGwClientUnwrapHandler(d, [](ConnID /*fromConn*/, const UnwrappedClientMsg& msg) {
         MsgIngress::dispatchClient(msg.clientConnId, msg.module, msg.sub,

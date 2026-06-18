@@ -13,26 +13,26 @@ void GatewayInternMsgRegister(GatewayServer& server)
     auto& d = MsgDispatcher::Instance();
     registerInternalRaw(d, &server,
                         static_cast<uint16_t>(InternalMsgID::GW_SEND_TO_CLIENT),
-                        &GatewayServer::OnSendToClient);
-    registerInternalRaw(d, &server,
-                        static_cast<uint16_t>(InternalMsgID::GW_KICK_CLIENT),
-                        &GatewayServer::OnKickClient);
-    registerInternalRaw(d, &server,
-                        static_cast<uint16_t>(InternalMsgID::REC_VALIDATE_TOKEN_RSP),
-                        &GatewayServer::OnValidateTokenRsp);
+                        &GatewayServer::onSendToClient);
+    registerInternalSized<GatewayServer, uint32_t>(
+        d, &server, static_cast<uint16_t>(InternalMsgID::GW_KICK_CLIENT),
+        &GatewayServer::onKickClient);
+    registerInternal(d, &server,
+                     static_cast<uint16_t>(InternalMsgID::REC_VALIDATE_TOKEN_RSP),
+                     &GatewayServer::onValidateTokenRsp);
     registerInternalRaw(d, &server,
                         static_cast<uint16_t>(InternalMsgID::REC_LIST_CHARACTERS_RSP),
-                        &GatewayServer::OnListCharactersRsp);
-    registerInternalRaw(d, &server,
-                        static_cast<uint16_t>(InternalMsgID::REC_CREATE_CHARACTER_RSP),
-                        &GatewayServer::OnCreateCharacterRsp);
-    registerInternalRaw(d, &server,
-                        static_cast<uint16_t>(InternalMsgID::GW_USER_LOGIN_RSP),
-                        &GatewayServer::OnUserLoginRsp);
+                        &GatewayServer::onListCharactersRsp);
+    registerInternal(d, &server,
+                     static_cast<uint16_t>(InternalMsgID::REC_CREATE_CHARACTER_RSP),
+                     &GatewayServer::onCreateCharacterRsp);
+    registerInternal(d, &server,
+                     static_cast<uint16_t>(InternalMsgID::GW_USER_LOGIN_RSP),
+                     &GatewayServer::onUserLoginRsp);
     registerInternalRaw(d, &server,
                         static_cast<uint16_t>(InternalMsgID::S2S_REGISTER_RSP),
                         &GatewayServer::onSuperRegisterRsp);
-    registerInternalRaw(d, &server,
-                        static_cast<uint16_t>(InternalMsgID::SS_LOGIN_GATEWAY_WRAP_RSP),
-                        &GatewayServer::onLoginGatewayWrapRsp);
+    registerInternal(d, &server,
+                     static_cast<uint16_t>(InternalMsgID::SS_LOGIN_GATEWAY_WRAP_RSP),
+                     &GatewayServer::onLoginGatewayWrapRsp);
 }

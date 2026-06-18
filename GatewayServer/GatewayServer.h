@@ -88,7 +88,7 @@ public:
     /**
      * @brief 消息到达回调
      *
-     * 客户端消息走 HandleClientMsg；区内服回包经 MsgDispatcher 处理。
+     * 客户端消息走 handleClientMsg；区内服回包经 MsgDispatcher 处理。
      */
     void OnMessage(ConnID id, uint8_t module, uint8_t sub,
                    const char* data, uint16_t len) override;
@@ -104,7 +104,7 @@ private:
      * - S2S_REGISTER_RSP：Super 注册成功后延迟建立区内出站
      * - SS_LOGIN_GATEWAY_WRAP_RSP：Super 转发 Login 网关注册确认
      */
-    void RegisterHandlers();
+    void registerHandlers();
 
     /** @brief Super 注册成功后连接 Record/Session/全部 Scene */
     void setupUpstreamClients();
@@ -122,35 +122,35 @@ private:
     void onSuperRegisterRsp(ConnID fromConn, const char* data, uint16_t len);
 
     /** @brief Login 网关注册响应（Super 包装） */
-    void onLoginGatewayWrapRsp(ConnID fromConn, const char* data, uint16_t len);
+    void onLoginGatewayWrapRsp(ConnID fromConn, const Msg_SS_LoginGatewayWrapRsp& rsp);
 
     /**
      * @brief 客户端消息处理
      *
      * 根据消息类型分发到对应处理函数：
-     * - C2S_GATEWAY_AUTH_REQ → OnGatewayAuth（票据鉴权）
+     * - C2S_GATEWAY_AUTH_REQ → onGatewayAuth（票据鉴权）
      * - C2S_SELECT_USER_REQ / C2S_CREATE_USER_REQ → 选角/创角
-     * - C2S_HEARTBEAT → OnClientHeartbeat
+     * - C2S_HEARTBEAT → onClientHeartbeat
      * - 场景类消息 → 转发 SceneServer
      */
-    void HandleClientMsg(ConnID connID, uint8_t module, uint8_t sub,
+    void handleClientMsg(ConnID connID, uint8_t module, uint8_t sub,
                          const char* data, uint16_t len);
 
     /** @brief 向客户端回参数/状态校验错误 */
     void sendClientError(ConnID connID, ValidateResult vr);
 
     /** @brief Gateway 票据鉴权 */
-    void OnGatewayAuth(ConnID connID, const char* data, uint16_t len);
+    void onGatewayAuth(ConnID connID, const char* data, uint16_t len);
 
     /** @brief 选择角色进世界 */
-    void OnSelectUser(ConnID connID, const char* data, uint16_t len);
+    void onSelectUser(ConnID connID, const char* data, uint16_t len);
 
     /** @brief 创建角色 */
-    void OnCreateUser(ConnID connID, const char* data, uint16_t len);
+    void onCreateUser(ConnID connID, const char* data, uint16_t len);
 
-    void OnValidateTokenRsp(ConnID fromConn, const char* data, uint16_t len);
-    void OnListCharactersRsp(ConnID fromConn, const char* data, uint16_t len);
-    void OnCreateCharacterRsp(ConnID fromConn, const char* data, uint16_t len);
+    void onValidateTokenRsp(ConnID fromConn, const Msg_REC_ValidateTokenRsp& rsp);
+    void onListCharactersRsp(ConnID fromConn, const char* data, uint16_t len);
+    void onCreateCharacterRsp(ConnID fromConn, const Msg_REC_CreateCharacterRsp& rsp);
 
     void sendUserListToClient(ConnID clientConn, uint64_t accid, uint32_t zoneId);
 
@@ -160,7 +160,7 @@ private:
      * 直接回包客户端 S2C_HEARTBEAT，包含客户端发来的序列号和服务器当前时间，
      * 用于客户端计算 RTT 和维持连接活跃状态。
      */
-    void OnClientHeartbeat(ConnID connID, const char* data, uint16_t len);
+    void onClientHeartbeat(ConnID connID, const char* data, uint16_t len);
 
     /**
      * @brief 处理 SuperServer 登录调度响应
@@ -169,7 +169,7 @@ private:
      * - 成功（rsp->code == 0）：客户端状态设为 LOGGED_IN，发送 S2C_LOGIN_RSP 和 S2C_ENTER_GAME
      * - 失败：状态恢复为 CONNECTED，返回错误信息给客户端
      */
-    void OnUserLoginRsp(ConnID fromConn, const char* data, uint16_t len);
+    void onUserLoginRsp(ConnID fromConn, const Msg_GW_UserLoginRsp& rsp);
 
     /**
      * @brief SceneServer → Gateway → Client 下行消息转发
@@ -177,7 +177,7 @@ private:
      * 接收 GW_SEND_TO_CLIENT 消息，解析内部包格式
      * [clientConnID][module][sub][data...]，提取目标客户端连接 ID 后通过 m_clientServer 下发。
      */
-    void OnSendToClient(ConnID fromConn, const char* data, uint16_t len);
+    void onSendToClient(ConnID fromConn, const char* data, uint16_t len);
 
     /**
      * @brief 踢除指定客户端连接
@@ -185,7 +185,7 @@ private:
      * 接收 GW_KICK_CLIENT 消息，包体为 4 字节的 clientConnID。
      * 主动断开客户端 TCP 连接并从会话表中删除。
      */
-    void OnKickClient(ConnID fromConn, const char* data, uint16_t len);
+    void onKickClient(ConnID fromConn, const char* data, uint16_t len);
 
     /**
      * @brief 将客户端消息打包成内部消息转发给 SceneServer
@@ -204,7 +204,7 @@ private:
      * - lastHeartbeat 距当前时间超过 60 秒的视为超时
      * - 超时客户端被踢除并从会话表中删除
      */
-    void CheckTimeout();
+    void checkTimeout();
 
     /**
      * @brief 向 SuperServer 注册
@@ -213,7 +213,7 @@ private:
      * 告知 SuperServer 本网关的服务器类型、ID、IP 和客户端端口，
      * 用于 SuperServer 统一管理所有子服务器。
      */
-    void RegisterToSuper();
+    void registerToSuper();
 
     /**
      * @brief 向 SuperServer 发送心跳
@@ -222,7 +222,7 @@ private:
      * 携带递增的序列号和服务器时间戳，维持与 SuperServer 的活跃连接。
      * SuperServer 可通过此心跳判断网关是否存活。
      */
-    void SendHeartbeat();
+    void sendHeartbeat();
     // ======================== 成员变量 ========================
     // --- 网络服务 ---
     TcpServer m_clientServer;   /**< 入站：游戏客户端连接 */
