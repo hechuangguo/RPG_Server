@@ -4,9 +4,13 @@
  */
 
 #include "GatewayServer.h"
-#include "../sdk/util/ServerBootstrap.h"
+#include "GatewayInternMsgRegister.h"
+#include "GatewayClientMsgRegister.h"
+#include "../sdk/net/MsgIngress.h"
 #include "../sdk/util/LoginEnterErrorCode.h"
 #include "../sdk/util/LoginFlowLog.h"
+#include "../sdk/net/ClientWireSend.h"
+#include "../sdk/net/GwClientRelay.h"
 
 #include <vector>
 #include <cstdio>
@@ -28,7 +32,7 @@ public:
     void OnMessage(ConnID id, uint8_t module, uint8_t sub,
                    const char* data, uint16_t len) override
     {
-        MsgDispatcher::Instance().Dispatch(id, module, sub, data, len);
+        MsgIngress::dispatchInternal(id, module, sub, data, len);
     }
 };
 
@@ -118,30 +122,13 @@ void GatewayServer::OnMessage(ConnID id, uint8_t module, uint8_t sub,
     if (m_userManager.findUser(id))
         HandleClientMsg(id, module, sub, data, len);
     else
-        MsgDispatcher::Instance().Dispatch(id, module, sub, data, len);
+        MsgIngress::dispatchInternal(id, module, sub, data, len);
 }
 
 void GatewayServer::RegisterHandlers()
 {
-    auto& d = MsgDispatcher::Instance();
-    d.Register((uint16_t)InternalMsgID::GW_SEND_TO_CLIENT,
-        [this](uint32_t c, const char* d, uint16_t l){ OnSendToClient(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::GW_KICK_CLIENT,
-        [this](uint32_t c, const char* d, uint16_t l){ OnKickClient(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::REC_LOGIN_VERIFY_RSP,
-        [this](uint32_t c, const char* d, uint16_t l){ OnLoginVerifyRsp(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::REC_VALIDATE_TOKEN_RSP,
-        [this](uint32_t c, const char* d, uint16_t l){ OnValidateTokenRsp(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::REC_LIST_CHARACTERS_RSP,
-        [this](uint32_t c, const char* d, uint16_t l){ OnListCharactersRsp(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::REC_CREATE_CHARACTER_RSP,
-        [this](uint32_t c, const char* d, uint16_t l){ OnCreateCharacterRsp(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::GW_USER_LOGIN_RSP,
-        [this](uint32_t c, const char* d, uint16_t l){ OnUserLoginRsp(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::S2S_REGISTER_RSP,
-        [this](uint32_t c, const char* d, uint16_t l){ onSuperRegisterRsp(c, d, l); });
-    d.Register(static_cast<uint16_t>(InternalMsgID::SS_LOGIN_GATEWAY_WRAP_RSP),
-        [this](uint32_t c, const char* d, uint16_t l){ onLoginGatewayWrapRsp(c, d, l); });
+    GatewayInternMsgRegister(*this);
+    GatewayClientMsgRegister(*this);
 }
 
 void GatewayServer::onSuperRegisterRsp(ConnID /*fromConn*/, const char* /*data*/, uint16_t /*len*/)
@@ -288,64 +275,26 @@ void GatewayServer::HandleClientMsg(ConnID connID, uint8_t module, uint8_t sub,
     switch (target)
     {
     case ClientForwardTarget::LOCAL:
-        if (module == static_cast<uint8_t>(ClientModule::LOGIN) && sub == 0x0D)
-        {
-            if (user->getClientState() == ClientState::CONNECTED)
-                OnGatewayAuth(connID, data, len);
-        }
-        else if (module == static_cast<uint8_t>(ClientModule::LOGIN) && sub == 0x03)
-        {
-            if (user->getClientState() == ClientState::CONNECTED)
-                OnClientRegister(connID, data, len);
-        }
-        else if (module == static_cast<uint8_t>(ClientModule::LOGIN) && sub == 0x05)
-        {
-            if (user->getClientState() == ClientState::ACCOUNT_OK)
-                OnSelectUser(connID, data, len);
-        }
-        else if (module == static_cast<uint8_t>(ClientModule::LOGIN) && sub == 0x07)
-        {
-            if (user->getClientState() == ClientState::ACCOUNT_OK)
-                OnCreateUser(connID, data, len);
-        }
-        else if (module == static_cast<uint8_t>(ClientModule::LOGIN) && sub == 0x01)
-        {
-            if (user->getClientState() == ClientState::CONNECTED)
-                OnClientLogin(connID, data, len);
-            else
-                sendClientError(connID, ValidateResult::BAD_STATE);
-        }
-        else if (module == static_cast<uint8_t>(ClientModule::SYSTEM) && sub == 0x01)
-        {
-            OnClientHeartbeat(connID, data, len);
-        }
+        if (!MsgIngress::dispatchClient(connID, module, sub, data, len))
+            sendClientError(connID, ValidateResult::UNKNOWN_MSG);
         break;
     case ClientForwardTarget::SCENE:
-        if (user->getClientState() == ClientState::IN_WORLD)
+        if (!m_upstreamReady)
         {
-            if (!m_upstreamReady)
-            {
-                sendClientError(connID, ValidateResult::BAD_STATE);
-                break;
-            }
-            SceneClient* scene = m_scenePool.clientFor(user->getSceneServerId());
-            if (scene && scene->forwardClientMsg(connID, module, sub, data, len))
-                break;
             sendClientError(connID, ValidateResult::BAD_STATE);
+            break;
         }
-        else
-            sendClientError(connID, ValidateResult::BAD_STATE);
+        {
+            SceneClient* scene = m_scenePool.clientFor(user->getSceneServerId());
+            if (!scene || !scene->forwardClientMsg(connID, module, sub, data, len))
+                sendClientError(connID, ValidateResult::BAD_STATE);
+        }
         break;
     case ClientForwardTarget::SESSION:
-        if (user->getClientState() == ClientState::IN_WORLD)
-        {
-            if (!m_upstreamReady)
-                sendClientError(connID, ValidateResult::BAD_STATE);
-            else
-                forwardClientMsg(m_sessionClient, connID, module, sub, data, len);
-        }
-        else
+        if (!m_upstreamReady)
             sendClientError(connID, ValidateResult::BAD_STATE);
+        else
+            forwardClientMsg(m_sessionClient, connID, module, sub, data, len);
         break;
     case ClientForwardTarget::DROP:
     default:
@@ -369,30 +318,7 @@ void GatewayServer::sendClientError(ConnID connID, ValidateResult vr)
     default: break;
     }
     copyToWire(err.msg, sizeof(err.msg), text);
-    m_clientServer.SendMsg(connID,
-                           static_cast<uint8_t>(ClientModule::SYSTEM), 0x05,
-                           reinterpret_cast<char*>(&err), sizeof(err));
-}
-
-void GatewayServer::OnClientLogin(ConnID connID, const char* /*data*/, uint16_t /*len*/)
-{
-    Msg_S2C_LoginRsp loginRsp{};
-    loginRsp.code = 1;
-    copyToWire(loginRsp.msg, sizeof(loginRsp.msg),
-               "请先在 LoginServer 登录并携带 loginToken 连接 Gateway");
-    m_clientServer.SendMsg(connID, (uint16_t)ClientMsgID::S2C_LOGIN_RSP,
-                           reinterpret_cast<char*>(&loginRsp), sizeof(loginRsp));
-    LOG_WARN("客户端直连 Gateway 登录已废弃: conn=%u", connID);
-}
-
-void GatewayServer::OnClientRegister(ConnID connID, const char* /*data*/, uint16_t /*len*/)
-{
-    Msg_S2C_RegisterRsp rsp{};
-    rsp.code = -1;
-    copyToWire(rsp.msg, sizeof(rsp.msg), "请先连接 LoginServer 注册账号");
-    m_clientServer.SendMsg(connID, (uint16_t)ClientMsgID::S2C_REGISTER_RSP,
-                           reinterpret_cast<char*>(&rsp), sizeof(rsp));
-    LOG_WARN("客户端直连 Gateway 注册已废弃: conn=%u", connID);
+    sendClientWire(m_clientServer, connID, err);
 }
 
 void GatewayServer::OnGatewayAuth(ConnID connID, const char* data, uint16_t len)
@@ -494,9 +420,10 @@ void GatewayServer::OnCreateUser(ConnID connID, const char* data, uint16_t len)
     if (!m_recordClient.IsConnected())
     {
         Msg_S2C_CreateUserRsp createRsp{};
+        initClientMsg(createRsp);
         createRsp.code = static_cast<int32_t>(CreateCharacterError::SYSTEM_ERROR);
         copyToWire(createRsp.msg, sizeof(createRsp.msg), "创角服务不可用");
-        m_clientServer.SendMsg(connID, (uint16_t)ClientMsgID::S2C_CREATE_USER_RSP,
+        m_clientServer.SendMsg(connID, Msg_S2C_CreateUserRsp::kModule, Msg_S2C_CreateUserRsp::kSub,
                                reinterpret_cast<char*>(&createRsp), sizeof(createRsp));
         return;
     }
@@ -551,12 +478,13 @@ void GatewayServer::OnValidateTokenRsp(ConnID /*fromConn*/, const char* data, ui
     if (rsp->code != 0)
     {
         Msg_S2C_LoginRsp loginRsp{};
+        initClientMsg(loginRsp);
         loginRsp.code = 1;
         copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "登录票据无效或已过期");
         user->setClientState(ClientState::CONNECTED);
         user->setAccid(0);
         user->setRoleListReady(false);
-        m_clientServer.SendMsg(clientConn, (uint16_t)ClientMsgID::S2C_LOGIN_RSP,
+        m_clientServer.SendMsg(clientConn, Msg_S2C_LoginRsp::kModule, Msg_S2C_LoginRsp::kSub,
                                reinterpret_cast<char*>(&loginRsp), sizeof(loginRsp));
         LOG_WARN("Gateway 票据鉴权失败: conn=%u", clientConn);
         logLoginFlow(LoginFlowPhase::GATEWAY_AUTH, 0, 0, clientConn, rsp->code, nullptr);
@@ -570,13 +498,14 @@ void GatewayServer::OnValidateTokenRsp(ConnID /*fromConn*/, const char* data, ui
     user->setRoleListReady(false);
 
     Msg_S2C_LoginRsp loginRsp{};
+    initClientMsg(loginRsp);
     loginRsp.code = 0;
     loginRsp.userID = 0;
     loginRsp.accid = rsp->accid;
     loginRsp.loginToken[0] = '\0';
     loginRsp.tokenExpireMs = 0;
     copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "网关鉴权成功");
-    m_clientServer.SendMsg(clientConn, (uint16_t)ClientMsgID::S2C_LOGIN_RSP,
+    m_clientServer.SendMsg(clientConn, Msg_S2C_LoginRsp::kModule, Msg_S2C_LoginRsp::kSub,
                            reinterpret_cast<char*>(&loginRsp), sizeof(loginRsp));
 
     sendUserListToClient(clientConn, rsp->accid, user->getZoneId());
@@ -598,9 +527,11 @@ void GatewayServer::OnListCharactersRsp(ConnID /*fromConn*/, const char* data, u
     if (hdr->code != 0)
     {
         Msg_S2C_UserListHeader outHdr{};
+        initClientMsg(outHdr);
         outHdr.code = hdr->code;
         outHdr.count = 0;
-        m_clientServer.SendMsg(clientConn, (uint16_t)ClientMsgID::S2C_USER_LIST,
+        m_clientServer.SendMsg(clientConn, Msg_S2C_UserListHeader::kModule,
+                               Msg_S2C_UserListHeader::kSub,
                                reinterpret_cast<char*>(&outHdr), sizeof(outHdr));
         user->setRoleListReady(false);
         LOG_WARN("角色列表加载失败: conn=%u code=%d", clientConn, hdr->code);
@@ -616,6 +547,7 @@ void GatewayServer::OnListCharactersRsp(ConnID /*fromConn*/, const char* data, u
         return;
 
     Msg_S2C_UserListHeader outHdr{};
+    initClientMsg(outHdr);
     outHdr.code = 0;
     outHdr.count = hdr->count;
     if (entryBytes > (std::numeric_limits<size_t>::max() - sizeof(outHdr)))
@@ -641,7 +573,8 @@ void GatewayServer::OnListCharactersRsp(ConnID /*fromConn*/, const char* data, u
                     data + sizeof(Msg_REC_ListCharactersRspHeader),
                     entryBytes);
     }
-    m_clientServer.SendMsg(clientConn, (uint16_t)ClientMsgID::S2C_USER_LIST,
+    m_clientServer.SendMsg(clientConn, Msg_S2C_UserListHeader::kModule,
+                           Msg_S2C_UserListHeader::kSub,
                            body.data(), static_cast<uint16_t>(bodyLen));
 
     std::unordered_set<uint64_t> roleIds;
@@ -669,6 +602,7 @@ void GatewayServer::OnCreateCharacterRsp(ConnID /*fromConn*/, const char* data, 
     }
 
     Msg_S2C_CreateUserRsp createRsp{};
+    initClientMsg(createRsp);
     createRsp.code = rsp->code;
     createRsp.userID = rsp->userID;
     switch (rsp->code)
@@ -689,7 +623,8 @@ void GatewayServer::OnCreateCharacterRsp(ConnID /*fromConn*/, const char* data, 
         copyToWire(createRsp.msg, sizeof(createRsp.msg), "Create failed");
         break;
     }
-    m_clientServer.SendMsg(clientConn, (uint16_t)ClientMsgID::S2C_CREATE_USER_RSP,
+    m_clientServer.SendMsg(clientConn, Msg_S2C_CreateUserRsp::kModule,
+                           Msg_S2C_CreateUserRsp::kSub,
                            reinterpret_cast<char*>(&createRsp), sizeof(createRsp));
 
     if (rsp->code == static_cast<int32_t>(CreateCharacterError::OK) && rsp->userID != 0)
@@ -706,13 +641,7 @@ void GatewayServer::OnClientHeartbeat(ConnID connID, const char* data, uint16_t 
     if (len >= sizeof(Msg_C2S_Heartbeat))
         rsp.seq = reinterpret_cast<const Msg_C2S_Heartbeat*>(data)->seq;
     rsp.serverTime = TimerMgr::NowMs();
-    m_clientServer.SendMsg(connID, (uint16_t)ClientMsgID::S2C_HEARTBEAT,
-                           reinterpret_cast<char*>(&rsp), sizeof(rsp));
-}
-
-void GatewayServer::OnLoginVerifyRsp(ConnID /*fromConn*/, const char* /*data*/, uint16_t /*len*/)
-{
-    /* 旧 REC_LOGIN_VERIFY 直连登录路径已废弃 */
+    sendClientWire(m_clientServer, connID, rsp);
 }
 
 void GatewayServer::OnUserLoginRsp(ConnID /*fromConn*/, const char* data, uint16_t len)
@@ -724,6 +653,7 @@ void GatewayServer::OnUserLoginRsp(ConnID /*fromConn*/, const char* data, uint16
     if (!user) return;
 
     Msg_S2C_LoginRsp loginRsp{};
+    initClientMsg(loginRsp);
     loginRsp.code   = rsp->code;
     loginRsp.userID = rsp->userID;
     if (rsp->code == 0)
@@ -733,6 +663,7 @@ void GatewayServer::OnUserLoginRsp(ConnID /*fromConn*/, const char* data, uint16
         copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "Login OK");
 
         Msg_S2C_EnterGame enter{};
+        initClientMsg(enter);
         enter.userID = rsp->userID;
         enter.mapID  = rsp->mapID;
         enter.x      = rsp->x;
@@ -745,9 +676,9 @@ void GatewayServer::OnUserLoginRsp(ConnID /*fromConn*/, const char* data, uint16
         enter.maxMP  = rsp->maxMP;
         snprintf(enter.name, sizeof(enter.name), "%s", rsp->name);
 
-        m_clientServer.SendMsg(clientConn, (uint16_t)ClientMsgID::S2C_LOGIN_RSP,
+        m_clientServer.SendMsg(clientConn, Msg_S2C_LoginRsp::kModule, Msg_S2C_LoginRsp::kSub,
                                reinterpret_cast<char*>(&loginRsp), sizeof(loginRsp));
-        m_clientServer.SendMsg(clientConn, (uint16_t)ClientMsgID::S2C_ENTER_GAME,
+        m_clientServer.SendMsg(clientConn, Msg_S2C_EnterGame::kModule, Msg_S2C_EnterGame::kSub,
                                reinterpret_cast<char*>(&enter), sizeof(enter));
         LOG_INFO("进入游戏成功: connID=%u userID=%llu map=%u sceneServerId=%u",
                  clientConn, rsp->userID, rsp->mapID, rsp->sceneServerId);
@@ -756,7 +687,7 @@ void GatewayServer::OnUserLoginRsp(ConnID /*fromConn*/, const char* data, uint16
     {
         user->setClientState(ClientState::ACCOUNT_OK);
         copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "Enter game failed");
-        m_clientServer.SendMsg(clientConn, (uint16_t)ClientMsgID::S2C_LOGIN_RSP,
+        m_clientServer.SendMsg(clientConn, Msg_S2C_LoginRsp::kModule, Msg_S2C_LoginRsp::kSub,
                                reinterpret_cast<char*>(&loginRsp), sizeof(loginRsp));
         LOG_WARN("进入游戏失败: conn=%u userID=%llu code=%d",
                  clientConn, rsp->userID, rsp->code);
@@ -786,16 +717,7 @@ void GatewayServer::forwardClientMsg(TcpClient& target, ConnID connID,
                                      uint8_t module, uint8_t sub,
                                      const char* data, uint16_t len)
 {
-    std::vector<char> buf(sizeof(Msg_GW_ClientMsg) + len);
-    auto* hdr = reinterpret_cast<Msg_GW_ClientMsg*>(buf.data());
-    hdr->clientConnID = connID;
-    hdr->module       = module;
-    hdr->sub          = sub;
-    hdr->dataLen      = len;
-    if (len > 0)
-        memcpy(buf.data() + sizeof(Msg_GW_ClientMsg), data, len);
-    target.SendMsg(static_cast<uint16_t>(InternalMsgID::GW_CLIENT_MSG),
-                   buf.data(), static_cast<uint16_t>(buf.size()));
+    sendGwClientMsg(target, connID, module, sub, data, len);
 }
 
 void GatewayServer::CheckTimeout()

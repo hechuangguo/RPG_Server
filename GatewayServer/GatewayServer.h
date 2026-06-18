@@ -23,7 +23,7 @@
 #include "../sdk/util/ServerList.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
-#include "../Common/ClientMsg.h"
+#include "../Common/LoginMsg.h"
 #include "../protocal/InternalMsg.h"
 #include "GatewayUser.h"
 #include "GatewayUserManager.h"
@@ -40,6 +40,8 @@
  */
 class GatewayServer : public INetCallback, public LazySingleton<GatewayServer>
 {
+    friend void GatewayInternMsgRegister(GatewayServer& server);
+    friend void GatewayClientMsgRegister(GatewayServer& server);
 public:
     friend class LazySingleton<GatewayServer>;
     /** @brief 获取 GatewayServer 单例指针 */
@@ -95,10 +97,9 @@ private:
     /**
      * @brief 注册内部消息处理函数
      *
-     * 注册四个内部消息的处理回调：
+     * 注册内部消息的处理回调：
      * - GW_SEND_TO_CLIENT：SceneServer 发往客户端的下行消息
      * - GW_KICK_CLIENT：主动踢除客户端连接
-     * - REC_LOGIN_VERIFY_RSP：RecordServer 的登录验证响应
      * - GW_USER_LOGIN_RSP：SuperServer 完成登录调度后的响应
      * - S2S_REGISTER_RSP：Super 注册成功后延迟建立区内出站
      * - SS_LOGIN_GATEWAY_WRAP_RSP：Super 转发 Login 网关注册确认
@@ -127,28 +128,16 @@ private:
      * @brief 客户端消息处理
      *
      * 根据消息类型分发到对应处理函数：
-     * - C2S_LOGIN_REQ  → OnClientLogin（登录验证流程，仅 CONNECTED 状态可触发）
-     * - C2S_HEARTBEAT  → OnClientHeartbeat（回包服务器时间）
-     * - 其他消息       → ForwardToScene（将消息转发给 SceneServer，仅 LOGGED_IN 状态可触发）
+     * - C2S_GATEWAY_AUTH_REQ → OnGatewayAuth（票据鉴权）
+     * - C2S_SELECT_USER_REQ / C2S_CREATE_USER_REQ → 选角/创角
+     * - C2S_HEARTBEAT → OnClientHeartbeat
+     * - 场景类消息 → 转发 SceneServer
      */
     void HandleClientMsg(ConnID connID, uint8_t module, uint8_t sub,
                          const char* data, uint16_t len);
 
     /** @brief 向客户端回参数/状态校验错误 */
     void sendClientError(ConnID connID, ValidateResult vr);
-
-    /**
-     * @brief 处理客户端登录请求
-     *
-     * 收到客户端的 C2S_LOGIN_REQ 消息后：
-     * 1. 将客户端状态设为 LOGGING，防止重复登录
-     * 2. 提取账号密码，构造 Msg_REC_LoginVerifyReq
-     * 3. 附上网关侧的 connID，发送给 RecordServer 进行验证
-     */
-    void OnClientLogin(ConnID connID, const char* data, uint16_t len);
-
-    /** @brief 处理客户端注册请求（兼容旧网关入口） */
-    void OnClientRegister(ConnID connID, const char* data, uint16_t len);
 
     /** @brief Gateway 票据鉴权 */
     void OnGatewayAuth(ConnID connID, const char* data, uint16_t len);
@@ -174,15 +163,6 @@ private:
     void OnClientHeartbeat(ConnID connID, const char* data, uint16_t len);
 
     /**
-     * @brief 处理 RecordServer 验证响应
-     *
-     * 接收 REC_LOGIN_VERIFY_RSP 消息后的处理逻辑：
-     * - 验证失败（rsp->code != 0）：回包客户端 S2C_LOGIN_RSP 错误信息，状态恢复为 CONNECTED
-     * - 验证成功（rsp->code == 0）：记录 userID，转发 GW_USER_LOGIN_REQ 给 SuperServer 完成服务器调度
-     */
-    void OnLoginVerifyRsp(ConnID fromConn, const char* data, uint16_t len);
-
-    /**
      * @brief 处理 SuperServer 登录调度响应
      *
      * 接收 GW_USER_LOGIN_RSP 消息后的处理逻辑：
@@ -194,8 +174,8 @@ private:
     /**
      * @brief SceneServer → Gateway → Client 下行消息转发
      *
-     * 接收 GW_SEND_TO_CLIENT 消息，解析内部包格式 [clientConnID(4字节)][msgID(2字节)][data...]，
-     * 提取目标客户端连接 ID 后通过 m_clientServer 发送给对应客户端。
+     * 接收 GW_SEND_TO_CLIENT 消息，解析内部包格式
+     * [clientConnID][module][sub][data...]，提取目标客户端连接 ID 后通过 m_clientServer 下发。
      */
     void OnSendToClient(ConnID fromConn, const char* data, uint16_t len);
 
@@ -210,8 +190,8 @@ private:
     /**
      * @brief 将客户端消息打包成内部消息转发给 SceneServer
      *
-     * 构造 Msg_GW_ClientMsg 头部（包含 clientConnID、msgID、dataLen），
-     * 后接原始客户端消息体，通过 m_sceneClient 发送 GW_CLIENT_MSG 给 SceneServer 进行处理。
+     * 构造 Msg_GW_ClientMsg 头部（含 clientConnID、module、sub、dataLen），
+     * 后接原始客户端消息体，通过 target 发送 GW_CLIENT_MSG。
      */
     void forwardClientMsg(TcpClient& target, ConnID connID,
                           uint8_t module, uint8_t sub,

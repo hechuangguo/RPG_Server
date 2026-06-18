@@ -19,7 +19,7 @@
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
 #include "../protocal/InternalMsg.h"
-#include "../Common/ClientMsg.h"
+#include "../Common/ClientTypes.h"
 #include "../sdk/net/MsgId.h"
 #include "SessionUser.h"
 #include <mysql/mysql.h>
@@ -30,6 +30,8 @@
  */
 class SessionServer : public INetCallback
 {
+    friend void SessionInternMsgRegister(SessionServer& server);
+    friend void SessionClientMsgRegister(SessionServer& server);
 public:
     /** @brief 构造 SessionServer，准备网络与状态容器 */
     SessionServer();
@@ -93,23 +95,12 @@ public:
     /** @brief Init 阶段短循环 poll（仅启动预载/同步加载用） */
     void pollForRelationSync();
 
+    /** @brief 记录网关入站连接（GW_CLIENT_MSG 解包时更新） */
+    void setGatewayInboundConn(ConnID conn);
+
 private:
     /** @brief 注册 Session 服间消息处理器 */
     void RegisterHandlers();
-
-    /**
-     * @brief Gateway 转发的客户端消息（社交/任务等）
-     */
-    /** @brief Gateway 入站连接（下行 GW_SEND_TO_CLIENT） */
-    void OnGatewayClientMsg(ConnID fromConn, const char* data, uint16_t len);
-
-    /** @brief 处理社交类客户端协议（好友/黑名单等） */
-    void handleSocialClientMsg(uint32_t clientConnId, uint8_t sub,
-                               const char* data, uint16_t len);
-
-    /** @brief 处理任务类客户端协议（任务查询/更新） */
-    void handleQuestClientMsg(uint32_t clientConnId, uint8_t sub,
-                              const char* data, uint16_t len);
 
     /** @brief 向 SuperServer 注册本 Session 节点 */
     void RegisterToSuper();

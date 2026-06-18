@@ -6,9 +6,9 @@
 #include "SceneClient.h"
 
 #include "../sdk/log/Logger.h"
+#include "../sdk/net/GwClientRelay.h"
 
 #include <cstring>
-#include <vector>
 
 SceneClient::SceneClient(uint32_t sceneServerId, INetCallback* cb)
     : m_sceneServerId(sceneServerId)
@@ -48,17 +48,7 @@ bool SceneClient::forwardClientMsg(uint32_t clientConnId, uint8_t module, uint8_
         return false;
     }
 
-    std::vector<char> buf(sizeof(Msg_GW_ClientMsg) + len);
-    auto* hdr = reinterpret_cast<Msg_GW_ClientMsg*>(buf.data());
-    hdr->clientConnID = clientConnId;
-    hdr->module = module;
-    hdr->sub = sub;
-    hdr->dataLen = len;
-    if (len > 0)
-        memcpy(buf.data() + sizeof(Msg_GW_ClientMsg), data, len);
-
-    return m_client->SendMsg(static_cast<uint16_t>(InternalMsgID::GW_CLIENT_MSG),
-                             buf.data(), static_cast<uint16_t>(buf.size()));
+    return sendGwClientMsg(*m_client, clientConnId, module, sub, data, len);
 }
 
 bool SceneClient::sendMsg(uint16_t msgId, const char* data, uint16_t len)

@@ -24,8 +24,6 @@
  * - OnUserEnter(userID, mapID) : 用户进入场景
  * - OnUserLeave(userID)         : 用户离开场景
  * - OnTick(nowMs)               : 每帧回调
- * - OnSkillReq(connID, data)    : 技能请求
- * - OnMsg_XXXX(connID, data)    : 自定义消息处理（XXXX 为十六进制 msgID）
  */
 
 #pragma once
@@ -37,7 +35,11 @@
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
 #include "../protocal/InternalMsg.h"
-#include "../Common/ClientMsg.h"
+#include "../Common/LoginMsg.h"
+#include "../Common/MapDataMsg.h"
+#include "../Common/ChatMsg.h"
+#include "../Common/ClientMsgBody.h"
+#include "../sdk/net/GwClientRelay.h"
 #include "../sdk/util/UserWireUtil.h"
 #include "../sdk/util/WireStringUtil.h"
 #include "../sdk/util/Singleton.h"
@@ -61,6 +63,8 @@
  */
 class SceneServer : public INetCallback, public LazySingleton<SceneServer>
 {
+    friend void SceneClientMsgRegister(SceneServer& server);
+    friend void SceneInternMsgRegister(SceneServer& server);
 public:
     friend class LazySingleton<SceneServer>;
     /** @brief 获取 SceneServer 单例指针 */
@@ -73,11 +77,18 @@ private:
 public:
     ~SceneServer() = default;
 
-    /** @brief 供 ScriptFun 向客户端发消息 */
+    /** @brief 供 ScriptFun 向客户端发消息（扁平 ID，兼容旧脚本） */
     void sendToClient(uint32_t clientConnId, uint16_t msgId,
                       const char* data, uint16_t len)
     {
         SendToClient(clientConnId, msgId, data, len);
+    }
+
+    /** @brief 供 ScriptFun 向客户端发消息（module/sub） */
+    void sendToClient(uint32_t clientConnId, uint8_t module, uint8_t sub,
+                      const char* data, uint16_t len)
+    {
+        SendToClient(clientConnId, module, sub, data, len);
     }
 
     /**
@@ -150,9 +161,6 @@ private:
     /** @brief 将 Scene 在线数据转发 RecordServer 写入 CharBase */
     void sendCharBaseToRecord(const SceneUser& user);
 
-    /** @brief 处理 GatewayServer 转发来的客户端消息 */
-    void OnClientMsg(ConnID fromConn, const char* data, uint16_t len);
-
     /**
      * @brief 处理 AOI 视野变化通知
      *
@@ -163,16 +171,6 @@ private:
      *   - enter=false：向视野内其他用户广播 DespawnEntity（实体消失）。
      */
     void OnViewNotify(ConnID fromConn, const char* data, uint16_t len);
-
-    /**
-     * @brief 客户端消息分发路由
-     *
-     * 采用 switch-case 路由策略：已知协议号直接映射到对应的处理函数，
-     * 未知协议号统一委派给 Lua 脚本处理（OnMsg_XXXX）。
-     * 路由优先级：C++ 原生处理 > Lua 脚本扩展处理。
-     */
-    void HandleClientMsg(uint32_t clientConnID, uint8_t module, uint8_t sub,
-                         const char* data, uint16_t len);
 
     /**
      * @brief 处理移动请求：坐标验证 → 位置更新 → 通知 AOI
@@ -190,9 +188,6 @@ private:
     /** @brief 处理聊天请求：广播给地图内所有玩家 */
     void OnChatReq(uint32_t clientConnID, const char* data, uint16_t len);
 
-    /** @brief 处理技能请求：委派 Lua 处理 */
-    void OnSkillReq(uint32_t clientConnID, const char* data, uint16_t len);
-
     /**
      * @brief 处理 NPC 对话：callScriptBool → OnNpcTalk → guide.lua 等
      *
@@ -203,9 +198,6 @@ private:
 
     /** @brief 对话失败回包（code: 1=NPC无效 2=不同地图 3=脚本无响应） */
     void sendNpcTalkError(uint32_t clientConnID, uint64_t npcId, int32_t code);
-
-    /** @brief 处理心跳请求：回包服务器时间 */
-    void OnHeartbeatReq(uint32_t clientConnID, const char* data, uint16_t len);
 
     /**
      * @brief 广播消息给指定地图内的所有用户（可排除指定用户）
@@ -219,29 +211,20 @@ private:
      *
      * @param mapID          目标地图 ID，0 表示所有地图
      * @param excludeUserID  需要排除的用户 ID
-     * @param msgID          消息协议号
+     * @param module         消息 module
+     * @param sub            消息 sub
      * @param data           消息体指针
      * @param len            消息体长度
      */
     void BroadcastToMap(uint32_t mapID, UserID excludeUserID,
-                        uint16_t msgID, const char* data, uint16_t len);
+                        uint8_t module, uint8_t sub,
+                        const char* data, uint16_t len);
 
     /** @brief Lua 回调：用户进入场景 */
     void CallLuaOnEnter(UserID userID, uint32_t mapID);
 
     /** @brief Lua 回调：用户离开场景 */
     void CallLuaOnLeave(UserID userID);
-
-    /**
-     * @brief Lua 回调：通用消息处理（OnMsg_XXXX）
-     *
-     * 根据 msgID 拼全局函数名；connID + 二进制 data 作为参数。
-     */
-    void CallLuaMsgHandler(uint32_t connID, uint8_t module, uint8_t sub,
-                           const char* data, uint16_t len);
-
-    /** @brief Lua 回调：技能请求 */
-    void CallLuaSkillHandler(uint32_t connID, const char* data, uint16_t len);
 
     /** @brief 每帧 Tick（驱动用户/NPC loop + Lua OnTick） */
     void OnTick();

@@ -6,13 +6,16 @@
 #include "LoginAuthService.h"
 #include "LoginServer.h"
 #include "LoginTokenUtil.h"
-#include "../Common/ClientMsg.h"
+#include "../Common/LoginMsg.h"
+#include "../Common/ClientMsgBody.h"
+#include "../Common/ZoneMsg.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
 #include "../sdk/util/LoginSpawnConfig.h"
 #include "../sdk/util/LoginFlowLog.h"
 #include "../sdk/util/PasswordUtil.h"
 #include "../sdk/util/WireStringUtil.h"
+#include "../sdk/net/ClientWireSend.h"
 
 #include <cstring>
 #include <vector>
@@ -32,12 +35,14 @@ void LoginAuthService::onClientZoneList(ConnID connID, const char* data, uint16_
     m_owner.zoneInfoStore().listAll(zones, gameTypeFilter);
 
     Msg_S2C_ZoneListRspHeader header{};
+    initClientMsg(header);
     if (zones.size() > MAX_ZONE_LIST_ENTRIES)
     {
         header.code = -1;
         header.count = 0;
         LOG_ERR("区列表条目过多: %zu（上限 %u）", zones.size(), MAX_ZONE_LIST_ENTRIES);
-        m_owner.clientServer().SendMsg(connID, (uint16_t)ClientMsgID::S2C_ZONE_LIST_RSP,
+        m_owner.clientServer().SendMsg(connID, Msg_S2C_ZoneListRspHeader::kModule,
+                                       Msg_S2C_ZoneListRspHeader::kSub,
                                        reinterpret_cast<char*>(&header), sizeof(header));
         return;
     }
@@ -62,32 +67,26 @@ void LoginAuthService::onClientZoneList(ConnID connID, const char* data, uint16_
         copyToWire(wire.ip, sizeof(wire.ip), row.ip.c_str());
         wire.superPort = row.superPort;
 
+        ZoneInfoStore::fillGatewayLoadFields(row, m_owner.zoneInfoStore(),
+                                             registry.countForZone(row.zoneId, row.gameType),
+                                             wire.onlineCount, wire.gatewayCount, wire.loadLevel);
+        const uint64_t nowMs = TimerMgr::NowMs();
         ZoneRuntimeRow runtime;
         const ZoneRuntimeRow* runtimePtr = nullptr;
         if (m_owner.zoneInfoStore().getRuntime(row.gameType, row.zoneId, runtime))
             runtimePtr = &runtime;
-
-        const size_t registryGatewayCount = registry.countForZone(row.zoneId, row.gameType);
-        const size_t runtimeGatewayCount = runtimePtr ? runtimePtr->gatewayCount : 0;
-        const size_t effectiveGatewayCount =
-            registryGatewayCount > runtimeGatewayCount ? registryGatewayCount : runtimeGatewayCount;
-        wire.onlineCount = runtimePtr ? runtimePtr->onlineCount : 0;
-        wire.gatewayCount = static_cast<uint8_t>(
-            effectiveGatewayCount > 255 ? 255 : effectiveGatewayCount);
-        wire.loadLevel = ZoneInfoStore::computeLoadLevel(row, runtimePtr, effectiveGatewayCount);
-        const uint64_t nowMs = TimerMgr::NowMs();
         const uint64_t runtimeAgeMs = runtimePtr && nowMs >= runtimePtr->lastReportMs
             ? (nowMs - runtimePtr->lastReportMs) : 0;
-        LOG_DEBUG("区列表判定: zone=%u gameType=%u enabled=%u online=%u registryGateway=%zu runtimeGateway=%zu effectiveGateway=%zu runtimeAlive=%u runtimeAgeMs=%llu loadLevel=%u",
-                  row.zoneId, row.gameType, row.enabled ? 1 : 0, wire.onlineCount,
-                  registryGatewayCount, runtimeGatewayCount, effectiveGatewayCount,
+        LOG_DEBUG("区列表判定: zone=%u gameType=%u enabled=%u online=%u gateway=%u runtimeAlive=%u runtimeAgeMs=%llu loadLevel=%u",
+                  row.zoneId, row.gameType, row.enabled ? 1 : 0, wire.onlineCount, wire.gatewayCount,
                   runtimePtr && runtimePtr->alive ? 1 : 0,
                   static_cast<unsigned long long>(runtimeAgeMs), wire.loadLevel);
         wire.reserved[0] = 0;
         wire.reserved[1] = 0;
     }
 
-    m_owner.clientServer().SendMsg(connID, (uint16_t)ClientMsgID::S2C_ZONE_LIST_RSP,
+    m_owner.clientServer().SendMsg(connID, Msg_S2C_ZoneListRspHeader::kModule,
+                                   Msg_S2C_ZoneListRspHeader::kSub,
                                    body.data(), static_cast<uint16_t>(bodyLen));
     LOG_INFO("已下发区列表: conn=%u count=%u filter=0x%02X",
              connID, header.count, gameTypeFilter);
@@ -100,6 +99,7 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
     const auto* req = reinterpret_cast<const Msg_C2S_LoginReq*>(data);
 
     Msg_S2C_LoginRsp loginRsp{};
+    initClientMsg(loginRsp);
     loginRsp.userID = 0;
     loginRsp.accid = 0;
     loginRsp.loginToken[0] = '\0';
@@ -109,8 +109,7 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
     {
         loginRsp.code = -1;
         copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "Login service unavailable");
-        m_owner.clientServer().SendMsg(connID, (uint16_t)ClientMsgID::S2C_LOGIN_RSP,
-                                       reinterpret_cast<char*>(&loginRsp), sizeof(loginRsp));
+        sendClientWire(m_owner.clientServer(), connID, loginRsp);
         sendGatewayInfo(connID, -1, "No gateway");
         return;
     }
@@ -211,8 +210,7 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
         }
     }
 
-    m_owner.clientServer().SendMsg(connID, (uint16_t)ClientMsgID::S2C_LOGIN_RSP,
-                                   reinterpret_cast<char*>(&loginRsp), sizeof(loginRsp));
+    sendClientWire(m_owner.clientServer(), connID, loginRsp);
     if (loginRsp.code == 0)
     {
         LOG_INFO("账号登录成功: connID=%u zone=%u gameType=%u userID=%llu",
@@ -232,6 +230,7 @@ void LoginAuthService::sendGatewayInfo(ConnID connID, int32_t code, const char* 
                                        uint32_t zoneId, uint8_t gameType)
 {
     Msg_S2C_GatewayInfo info{};
+    initClientMsg(info);
     info.code = code;
     copyToWire(info.msg, sizeof(info.msg), msg);
     if (code == 0)
@@ -259,17 +258,12 @@ void LoginAuthService::sendGatewayInfo(ConnID connID, int32_t code, const char* 
             }
             else
             {
-                ZoneRuntimeRow runtime;
-                const ZoneRuntimeRow* runtimePtr = nullptr;
-                if (zoneStore.getRuntime(gameType, zoneId, runtime))
-                    runtimePtr = &runtime;
-
-                const size_t registryGatewayCount = registry.countForZone(zoneId, gameType);
-                const size_t runtimeGatewayCount = runtimePtr ? runtimePtr->gatewayCount : 0;
-                const size_t effectiveGatewayCount =
-                    registryGatewayCount > runtimeGatewayCount ? registryGatewayCount : runtimeGatewayCount;
-                const uint8_t loadLevel =
-                    ZoneInfoStore::computeLoadLevel(zone, runtimePtr, effectiveGatewayCount);
+                uint32_t onlineCount = 0;
+                uint8_t gatewayCount = 0;
+                uint8_t loadLevel = 0;
+                ZoneInfoStore::fillGatewayLoadFields(zone, zoneStore,
+                                                     registry.countForZone(zoneId, gameType),
+                                                     onlineCount, gatewayCount, loadLevel);
                 if (loadLevel == static_cast<uint8_t>(ZoneLoadLevel::MAINTENANCE))
                 {
                     info.code = -1;
@@ -294,8 +288,7 @@ void LoginAuthService::sendGatewayInfo(ConnID connID, int32_t code, const char* 
             }
         }
     }
-    m_owner.clientServer().SendMsg(connID, (uint16_t)ClientMsgID::S2C_GATEWAY_INFO,
-                                   reinterpret_cast<char*>(&info), sizeof(info));
+    sendClientWire(m_owner.clientServer(), connID, info);
     LOG_INFO("已下发网关信息: conn=%u code=%d ip=%s port=%u",
              connID, info.code, info.gatewayIP, info.gatewayPort);
 }

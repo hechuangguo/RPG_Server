@@ -17,7 +17,8 @@
 #include "SceneServer.h"
 #include "SceneUserManager.h"
 #include "SceneEntry.h"
-#include "../Common/ClientMsg.h"
+#include "../Common/MapDataMsg.h"
+#include "../Common/ClientMsgBody.h"
 #include "../sdk/log/Logger.h"
 
 extern "C"
@@ -25,8 +26,6 @@ extern "C"
 #include "lua.h"
 #include "lauxlib.h"
 }
-
-constexpr int MAX_NPC_TALK_OPTIONS = 4;
 
 // ── 全局函数 ──────────────────────────────────────────────
 
@@ -65,6 +64,7 @@ LUA_GLOBAL_FUNC("send_npc_talk_rsp", sendNpcTalkRsp)
     const char* text = luaL_checkstring(L, 4);
 
     Msg_S2C_NpcTalkRsp rsp{};
+    initClientMsg(rsp);
     rsp.code = 0;
     rsp.npcId = npcId;
     rsp.dialogStep = dialogStep;
@@ -107,7 +107,7 @@ LUA_GLOBAL_FUNC("send_npc_talk_rsp", sendNpcTalkRsp)
         return 0;
 
     server->sendToClient(user->getGatewayClientConn(),
-                         static_cast<uint16_t>(ClientMsgID::S2C_NPC_TALK_RSP),
+                         Msg_S2C_NpcTalkRsp::kModule, Msg_S2C_NpcTalkRsp::kSub,
                          reinterpret_cast<char*>(&rsp), sizeof(rsp));
     return 0;
 }

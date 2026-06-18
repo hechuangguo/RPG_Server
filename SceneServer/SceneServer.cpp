@@ -4,6 +4,9 @@
  */
 
 #include "SceneServer.h"
+#include "SceneInternMsgRegister.h"
+#include "SceneClientMsgRegister.h"
+#include "../sdk/net/MsgIngress.h"
 #include "ScenePeerClient.h"
 #include "../sdk/util/ServerBootstrap.h"
 #include "../sdk/util/GameZoneExternSender.h"
@@ -103,29 +106,13 @@ void SceneServer::OnDisconnect(ConnID id)
 void SceneServer::OnMessage(ConnID id, uint8_t module, uint8_t sub,
                             const char* data, uint16_t len)
 {
-    MsgDispatcher::Instance().Dispatch(id, module, sub, data, len);
+    MsgIngress::dispatchInternal(id, module, sub, data, len);
 }
 
 void SceneServer::RegisterHandlers()
 {
-    auto& d = MsgDispatcher::Instance();
-    d.Register((uint16_t)InternalMsgID::SCE_USER_ENTER_REQ,
-               [this](uint32_t c, const char* data, uint16_t len) { OnUserEnter(c, data, len); });
-    d.Register((uint16_t)InternalMsgID::SCE_USER_LEAVE,
-               [this](uint32_t c, const char* data, uint16_t len) { OnUserLeave(c, data, len); });
-    d.Register((uint16_t)InternalMsgID::GW_CLIENT_MSG,
-               [this](uint32_t c, const char* data, uint16_t len) { OnClientMsg(c, data, len); });
-    d.Register((uint16_t)InternalMsgID::AOI_VIEW_NOTIFY,
-               [this](uint32_t c, const char* data, uint16_t len) { OnViewNotify(c, data, len); });
-    d.Register((uint16_t)InternalMsgID::SES_SCENE_REGISTER_RSP,
-               [this](uint32_t c, const char* data, uint16_t len) { OnSceneRegisterRsp(c, data, len); });
-    d.Register((uint16_t)InternalMsgID::REC_SAVE_USER_RSP,
-               [this](uint32_t c, const char* data, uint16_t len) { OnSaveUserRsp(c, data, len); });
-    d.Register((uint16_t)InternalMsgID::SES_COPY_CREATE_RSP,
-               [this](uint32_t c, const char* data, uint16_t len) { OnCopyCreateRsp(c, data, len); });
-    d.Register((uint16_t)InternalMsgID::SES_COPY_CREATE_CMD,
-               [this](uint32_t c, const char* data, uint16_t len) { OnCopyCreateCmd(c, data, len); });
-    SceneLoginMsgRegister(*this);
+    SceneInternMsgRegister(*this);
+    SceneClientMsgRegister(*this);
 }
 
 void SceneServer::OnUserEnter(ConnID /*fromConn*/, const char* data, uint16_t len)
@@ -199,13 +186,13 @@ void SceneServer::NotifyExistingPlayersOnEnter(const SceneUser& entering)
         if (user->getGatewayClientConn() == 0) return;
 
         SendToClient(user->getGatewayClientConn(),
-                     (uint16_t)ClientMsgID::S2C_SPAWN_ENTITY,
+                     Msg_S2C_SpawnEntity::kModule, Msg_S2C_SpawnEntity::kSub,
                      reinterpret_cast<char*>(&spawn), sizeof(spawn));
 
         Msg_S2C_SpawnEntity other{};
         fillSpawnFromEntry(*user, 0, other);
         SendToClient(entering.getGatewayClientConn(),
-                     (uint16_t)ClientMsgID::S2C_SPAWN_ENTITY,
+                     Msg_S2C_SpawnEntity::kModule, Msg_S2C_SpawnEntity::kSub,
                      reinterpret_cast<char*>(&other), sizeof(other));
     });
 
@@ -217,7 +204,7 @@ void SceneServer::NotifyExistingPlayersOnEnter(const SceneUser& entering)
         Msg_S2C_SpawnEntity npcSpawn{};
         fillSpawnFromEntry(*npc, 1, npcSpawn);
         SendToClient(entering.getGatewayClientConn(),
-                     (uint16_t)ClientMsgID::S2C_SPAWN_ENTITY,
+                     Msg_S2C_SpawnEntity::kModule, Msg_S2C_SpawnEntity::kSub,
                      reinterpret_cast<char*>(&npcSpawn), sizeof(npcSpawn));
     });
 }
@@ -250,17 +237,6 @@ void SceneServer::sendCharBaseToRecord(const SceneUser& user)
     m_recordClient.saveUser(user);
 }
 
-void SceneServer::OnClientMsg(ConnID /*fromConn*/, const char* data, uint16_t len)
-{
-    if (len < sizeof(Msg_GW_ClientMsg)) return;
-    const auto* hdr = reinterpret_cast<const Msg_GW_ClientMsg*>(data);
-    const char* body = data + sizeof(Msg_GW_ClientMsg);
-    uint16_t bodyLen = hdr->dataLen;
-    LOG_DEBUG("客户端消息: connID=%u mod=0x%02X sub=0x%02X",
-              hdr->clientConnID, hdr->module, hdr->sub);
-    HandleClientMsg(hdr->clientConnID, hdr->module, hdr->sub, body, bodyLen);
-}
-
 void SceneServer::OnViewNotify(ConnID /*fromConn*/, const char* data, uint16_t len)
 {
     if (len == sizeof(Msg_AOI_Move))
@@ -289,7 +265,7 @@ void SceneServer::OnViewNotify(ConnID /*fromConn*/, const char* data, uint16_t l
         notify.dir = move->dir;
         notify.moveType = 0;
         BroadcastToMap(move->mapID, move->entityID,
-                       (uint16_t)ClientMsgID::S2C_MOVE_NOTIFY,
+                       Msg_S2C_MoveNotify::kModule, Msg_S2C_MoveNotify::kSub,
                        reinterpret_cast<char*>(&notify), sizeof(notify));
         return;
     }
@@ -319,7 +295,7 @@ void SceneServer::OnViewNotify(ConnID /*fromConn*/, const char* data, uint16_t l
             fillSpawnFromEntry(*npc, 1, spawn);
 
         BroadcastToMap(mapId, entityID,
-                       (uint16_t)ClientMsgID::S2C_SPAWN_ENTITY,
+                       Msg_S2C_SpawnEntity::kModule, Msg_S2C_SpawnEntity::kSub,
                        reinterpret_cast<char*>(&spawn), sizeof(spawn));
     }
     else
@@ -327,26 +303,9 @@ void SceneServer::OnViewNotify(ConnID /*fromConn*/, const char* data, uint16_t l
         Msg_S2C_DespawnEntity despawn{};
         despawn.entityID = entityID;
         BroadcastToMap(mapId, entityID,
-                       (uint16_t)ClientMsgID::S2C_DESPAWN_ENTITY,
+                       Msg_S2C_DespawnEntity::kModule, Msg_S2C_DespawnEntity::kSub,
                        reinterpret_cast<char*>(&despawn), sizeof(despawn));
     }
-}
-
-void SceneServer::HandleClientMsg(uint32_t clientConnID, uint8_t module, uint8_t sub,
-                                  const char* data, uint16_t len)
-{
-    if (module == static_cast<uint8_t>(ClientModule::SCENE) && sub == 0x01)
-        OnMoveReq(clientConnID, data, len);
-    else if (module == static_cast<uint8_t>(ClientModule::CHAT) && sub == 0x01)
-        OnChatReq(clientConnID, data, len);
-    else if (module == static_cast<uint8_t>(ClientModule::SKILL) && sub == 0x01)
-        OnSkillReq(clientConnID, data, len);
-    else if (module == static_cast<uint8_t>(ClientModule::NPC) && sub == 0x01)
-        OnNpcTalkReq(clientConnID, data, len);
-    else if (module == static_cast<uint8_t>(ClientModule::SYSTEM) && sub == 0x01)
-        OnHeartbeatReq(clientConnID, data, len);
-    else
-        CallLuaMsgHandler(clientConnID, module, sub, data, len);
 }
 
 void SceneServer::OnMoveReq(uint32_t /*clientConnID*/, const char* data, uint16_t len)
@@ -377,14 +336,8 @@ void SceneServer::OnChatReq(uint32_t clientConnID, const char* data, uint16_t le
     snprintf(notify.fromName, sizeof(notify.fromName), "%s", user->GetName());
     snprintf(notify.content, sizeof(notify.content), "%s", req->content);
     BroadcastToMap(user->Base().mapID, user->GetID(),
-                   (uint16_t)ClientMsgID::S2C_CHAT_NOTIFY,
+                   Msg_S2C_Chat::kModule, Msg_S2C_Chat::kSub,
                    reinterpret_cast<char*>(&notify), sizeof(notify));
-}
-
-void SceneServer::OnSkillReq(uint32_t clientConnID, const char* data, uint16_t len)
-{
-    LOG_DEBUG("技能请求: conn=%u", clientConnID);
-    CallLuaSkillHandler(clientConnID, data, len);
 }
 
 void SceneServer::OnNpcTalkReq(uint32_t clientConnID, const char* data, uint16_t len)
@@ -423,43 +376,24 @@ void SceneServer::OnNpcTalkReq(uint32_t clientConnID, const char* data, uint16_t
 void SceneServer::sendNpcTalkError(uint32_t clientConnID, uint64_t npcId, int32_t code)
 {
     Msg_S2C_NpcTalkRsp rsp{};
+    initClientMsg(rsp);
     rsp.code = code;
     rsp.npcId = npcId;
     rsp.dialogStep = 0;
     rsp.optionCount = 0;
-    SendToClient(clientConnID, (uint16_t)ClientMsgID::S2C_NPC_TALK_RSP,
-                 reinterpret_cast<char*>(&rsp), sizeof(rsp));
-}
-
-void SceneServer::OnHeartbeatReq(uint32_t clientConnID, const char* data, uint16_t len)
-{
-    Msg_S2C_Heartbeat rsp{};
-    if (len >= sizeof(Msg_C2S_Heartbeat))
-        rsp.seq = reinterpret_cast<const Msg_C2S_Heartbeat*>(data)->seq;
-    rsp.serverTime = TimerMgr::NowMs();
-    SendToClient(clientConnID, (uint16_t)ClientMsgID::S2C_HEARTBEAT,
+    SendToClient(clientConnID, Msg_S2C_NpcTalkRsp::kModule, Msg_S2C_NpcTalkRsp::kSub,
                  reinterpret_cast<char*>(&rsp), sizeof(rsp));
 }
 
 void SceneServer::SendToClient(uint32_t clientConnID, uint8_t module, uint8_t sub,
                                const char* data, uint16_t len)
 {
-    std::vector<char> buf(sizeof(Msg_GW_SendToClient) + len);
-    auto* hdr = reinterpret_cast<Msg_GW_SendToClient*>(buf.data());
-    hdr->clientConnID = clientConnID;
-    hdr->module = module;
-    hdr->sub = sub;
-    hdr->dataLen = len;
-    if (len > 0)
-        memcpy(buf.data() + sizeof(Msg_GW_SendToClient), data, len);
     if (m_gatewayInboundConn == INVALID_CONN_ID)
     {
         LOG_WARN("下发客户端失败: 无网关入站连接 clientConn=%u", clientConnID);
         return;
     }
-    m_server.SendMsg(m_gatewayInboundConn,
-                     static_cast<uint16_t>(InternalMsgID::GW_SEND_TO_CLIENT),
-                     buf.data(), static_cast<uint16_t>(buf.size()));
+    sendGwSendToClient(m_server, m_gatewayInboundConn, clientConnID, module, sub, data, len);
 }
 
 void SceneServer::SendToClient(uint32_t clientConnID, uint16_t flatMsgId,
@@ -472,14 +406,15 @@ void SceneServer::SendToClient(uint32_t clientConnID, uint16_t flatMsgId,
 }
 
 void SceneServer::BroadcastToMap(uint32_t mapID, UserID excludeUserID,
-                                 uint16_t msgID, const char* data, uint16_t len)
+                                 uint8_t module, uint8_t sub,
+                                 const char* data, uint16_t len)
 {
     SceneUserManager::Instance().forEach([&](UserID uid, const std::shared_ptr<SceneUser>& user)
     {
         if (mapID != 0 && user->Base().mapID != mapID) return;
         if (uid == excludeUserID) return;
         if (user->getGatewayClientConn() == 0) return;
-        SendToClient(user->getGatewayClientConn(), msgID, data, len);
+        SendToClient(user->getGatewayClientConn(), module, sub, data, len);
     });
 }
 
@@ -495,25 +430,6 @@ void SceneServer::CallLuaOnLeave(UserID userID)
 {
     LuaManager::Instance().callGlobalVoid("OnUserLeave", {
         LuaArg::integer(static_cast<int64_t>(userID)),
-    });
-}
-
-void SceneServer::CallLuaMsgHandler(uint32_t connID, uint8_t module, uint8_t sub,
-                                    const char* data, uint16_t len)
-{
-    char funcName[32];
-    snprintf(funcName, sizeof(funcName), "OnMsg_%02X%02X", module, sub);
-    LuaManager::Instance().callGlobalVoid(funcName, {
-        LuaArg::integer(connID),
-        LuaArg::binary(data, len),
-    });
-}
-
-void SceneServer::CallLuaSkillHandler(uint32_t connID, const char* data, uint16_t len)
-{
-    LuaManager::Instance().callGlobalVoid("OnSkillReq", {
-        LuaArg::integer(connID),
-        LuaArg::binary(data, len),
     });
 }
 

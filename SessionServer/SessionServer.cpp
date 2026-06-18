@@ -4,10 +4,14 @@
  */
 
 #include "SessionServer.h"
+#include "SessionInternMsgRegister.h"
+#include "SessionClientMsgRegister.h"
+#include "../sdk/net/MsgIngress.h"
 #include "../sdk/util/ServerBootstrap.h"
 #include "SessionUserManager.h"
 #include "SessionSceneManager.h"
 #include "SessionLoginMsg.h"
+#include "../sdk/net/GwClientRelay.h"
 
 #include <vector>
 
@@ -142,7 +146,12 @@ void SessionServer::OnDisconnect(ConnID id)
 
 void SessionServer::OnMessage(ConnID id, uint8_t module, uint8_t sub, const char* data, uint16_t len)
 {
-    MsgDispatcher::Instance().Dispatch(id, module, sub, data, len);
+    MsgIngress::dispatchInternal(id, module, sub, data, len);
+}
+
+void SessionServer::setGatewayInboundConn(ConnID conn)
+{
+    m_gatewayInboundConn = conn;
 }
 
 void SessionServer::pollForRelationSync()
@@ -201,29 +210,8 @@ bool SessionServer::saveRelation(const RelationRowData& row)
 
 void SessionServer::RegisterHandlers()
 {
-    auto& d = MsgDispatcher::Instance();
-    d.Register((uint16_t)InternalMsgID::S2S_HEARTBEAT_ACK, [](uint32_t, const char*, uint16_t) {});
-    d.Register((uint16_t)InternalMsgID::REC_RELATION_PRELOAD_RSP,
-               [this](uint32_t c, const char* d, uint16_t l) { OnRelationPreloadRsp(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::REC_RELATION_LOAD_RSP,
-               [this](uint32_t c, const char* d, uint16_t l) { OnRelationLoadRsp(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::SES_LOAD_USER_REQ,
-               [this](uint32_t c, const char* d, uint16_t l) { OnLoadUserReq(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::SES_SAVE_USER_REQ,
-               [this](uint32_t c, const char* d, uint16_t l) { OnSaveUserReq(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::SES_FRIEND_UPDATE,
-               [this](uint32_t c, const char* d, uint16_t l) { OnFriendUpdate(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::SES_SCENE_REGISTER_REQ,
-               [this](uint32_t c, const char* d, uint16_t l) { OnSceneRegisterReq(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::SES_SCENE_UNREGISTER,
-               [this](uint32_t c, const char* d, uint16_t l) { OnSceneUnregister(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::SES_COPY_CREATE_REQ,
-               [this](uint32_t c, const char* d, uint16_t l) { OnCopyCreateReq(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::SES_RESOLVE_MAP_REQ,
-               [this](uint32_t c, const char* d, uint16_t l) { OnResolveMapReq(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::GW_CLIENT_MSG,
-               [this](uint32_t c, const char* d, uint16_t l) { OnGatewayClientMsg(c, d, l); });
-    SessionLoginMsgRegister(*this);
+    SessionInternMsgRegister(*this);
+    SessionClientMsgRegister(*this);
 }
 
 void SessionServer::OnRelationPreloadRsp(ConnID /*fromConn*/, const char* data, uint16_t len)
@@ -285,38 +273,6 @@ void SessionServer::OnRelationLoadRsp(ConnID /*fromConn*/, const char* data, uin
     m_relationLoadRow  = rows[0];
     m_relationLoadOk   = true;
     m_relationLoadDone = true;
-}
-
-void SessionServer::OnGatewayClientMsg(ConnID fromConn, const char* data, uint16_t len)
-{
-    if (fromConn != INVALID_CONN_ID)
-        m_gatewayInboundConn = fromConn;
-    if (len < sizeof(Msg_GW_ClientMsg))
-        return;
-    const auto* hdr = reinterpret_cast<const Msg_GW_ClientMsg*>(data);
-    const char* body = data + sizeof(Msg_GW_ClientMsg);
-    if (len < sizeof(Msg_GW_ClientMsg) + hdr->dataLen)
-        return;
-
-    LOG_INFO("网关客户端消息: conn=%u mod=0x%02X sub=0x%02X len=%u",
-             hdr->clientConnID, hdr->module, hdr->sub, hdr->dataLen);
-
-    if (hdr->module == static_cast<uint8_t>(ClientModule::SOCIAL))
-        handleSocialClientMsg(hdr->clientConnID, hdr->sub, body, hdr->dataLen);
-    else if (hdr->module == static_cast<uint8_t>(ClientModule::QUEST))
-        handleQuestClientMsg(hdr->clientConnID, hdr->sub, body, hdr->dataLen);
-}
-
-void SessionServer::handleSocialClientMsg(uint32_t clientConnId, uint8_t sub,
-                                          const char* /*data*/, uint16_t len)
-{
-    LOG_DEBUG("社交模块消息: conn=%u sub=0x%02X len=%u", clientConnId, sub, len);
-}
-
-void SessionServer::handleQuestClientMsg(uint32_t clientConnId, uint8_t sub,
-                                       const char* /*data*/, uint16_t len)
-{
-    LOG_DEBUG("任务模块消息: conn=%u sub=0x%02X len=%u", clientConnId, sub, len);
 }
 
 void SessionServer::RegisterToSuper()
@@ -494,22 +450,12 @@ void SessionServer::AutoSaveAll()
 void SessionServer::SendToClient(uint32_t clientConnID, uint8_t module, uint8_t sub,
                                  const char* data, uint16_t len)
 {
-    std::vector<char> buf(sizeof(Msg_GW_SendToClient) + len);
-    auto* hdr = reinterpret_cast<Msg_GW_SendToClient*>(buf.data());
-    hdr->clientConnID = clientConnID;
-    hdr->module = module;
-    hdr->sub = sub;
-    hdr->dataLen = len;
-    if (len > 0)
-        memcpy(buf.data() + sizeof(Msg_GW_SendToClient), data, len);
     if (m_gatewayInboundConn == INVALID_CONN_ID)
     {
         LOG_WARN("下发客户端失败: 无网关入站连接 clientConn=%u", clientConnID);
         return;
     }
-    m_server.SendMsg(m_gatewayInboundConn,
-                     static_cast<uint16_t>(InternalMsgID::GW_SEND_TO_CLIENT),
-                     buf.data(), static_cast<uint16_t>(buf.size()));
+    sendGwSendToClient(m_server, m_gatewayInboundConn, clientConnID, module, sub, data, len);
 }
 
 void SessionServer::SendToClient(uint32_t clientConnID, uint16_t flatMsgId,

@@ -4,7 +4,8 @@
  */
 
 #include "LoggerServer.h"
-#include "LoggerGameZoneLogMsg.h"
+#include "LoggerInternMsgRegister.h"
+#include "../sdk/net/MsgIngress.h"
 
 LoggerServer::LoggerServer()
     : m_server(this)
@@ -44,15 +45,12 @@ void LoggerServer::OnDisconnect(ConnID /*id*/)
 void LoggerServer::OnMessage(ConnID id, uint8_t module, uint8_t sub,
                              const char* data, uint16_t len)
 {
-    MsgDispatcher::Instance().Dispatch(id, module, sub, data, len);
+    MsgIngress::dispatchInternal(id, module, sub, data, len);
 }
 
 void LoggerServer::RegisterHandlers()
 {
-    auto& d = MsgDispatcher::Instance();
-    d.Register((uint16_t)InternalMsgID::LOG_WRITE_REQ,
-               [this](uint32_t c, const char* d, uint16_t l) { OnWriteLog(c, d, l); });
-    LoggerGameZoneMsgRegister(*this);
+    LoggerInternMsgRegister(*this);
 }
 
 void LoggerServer::OnWriteLog(ConnID /*fromConn*/, const char* data, uint16_t len)

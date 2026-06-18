@@ -14,7 +14,7 @@
 | `ClientMsgBody.h` | body 前缀、`initClientMsg`、`clientMsgBodyMatches` |
 | `XxxCommon.h` | 域内 `XxxMsgSub`、辅助结构、常量 |
 | `XxxMsg.h` | 域内 C2S/S2C wire 消息体 |
-| `ClientMsg.h` | **已废弃**聚合头（过渡期兼容） |
+| `ClientMsg.h` | **已移除**；按域 include `*Msg.h` |
 | `NetDefine.h` | 客户端侧 `MsgHeader`（6 字节帧）与缓冲区常量 |
 | `MsgId.h` | `makeMsgId` / `msgModule` / `msgSub` 工具函数 |
 
@@ -199,7 +199,9 @@ git push
 include_directories(${CMAKE_SOURCE_DIR}/Common)
 ```
 
-引用方式：按域 `#include "LoginMsg.h"` / `#include "ZoneCommon.h"` 等；仅需路由枚举时用 `ClientTypes.h`。`ClientMsg.h` 已废弃。
+引用方式：按域 `#include "LoginMsg.h"` / `#include "ZoneCommon.h"` 等；仅需路由枚举时用 `ClientTypes.h`。
+
+**Server 开放状态**：Common 中已登记的占位 `XxxMsgSub` 未必已在 Gateway Validator 白名单；以 [PROTOCOL.md](PROTOCOL.md) §2.2「实现状态」列为准。
 
 示例：
 

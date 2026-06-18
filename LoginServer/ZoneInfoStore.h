@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include "../Common/ClientMsg.h"
+#include "../Common/ZoneCommon.h"
 #include "../protocal/InternalMsg.h"
 
 #include <cstddef>
@@ -119,6 +119,22 @@ public:
     static uint8_t computeLoadLevel(const ZoneInfoRow& row,
                                     const ZoneRuntimeRow* runtime,
                                     size_t gatewayCount);
+
+    /**
+     * @brief 合并注册表与 Super 上报网关数，计算区负载展示字段
+     * @param row 静态区配置
+     * @param store 区服缓存（查运行时）
+     * @param registryGatewayCount Login 网关注册表中的网关数
+     * @param outOnline 在线人数
+     * @param outGatewayCount 有效网关数（≤255）
+     * @param outLoadLevel ZoneLoadLevel
+     */
+    static void fillGatewayLoadFields(const ZoneInfoRow& row,
+                                      const ZoneInfoStore& store,
+                                      size_t registryGatewayCount,
+                                      uint32_t& outOnline,
+                                      uint8_t& outGatewayCount,
+                                      uint8_t& outLoadLevel);
 
 private:
     static uint64_t zoneKey(uint8_t gameType, uint32_t zoneId);

@@ -241,10 +241,52 @@ while (true) {
 
 扁平 ID：`makeMsgId(module, sub)`，见 `sdk/net/MsgId.h`。
 
-### 消息分发
+### 消息管道（四层）
 
-`OnMessage(connId, module, sub, data, len)` → `MsgDispatcher::Dispatch(module, sub)` → handler。
-仍可使用 `Register(uint16_t flatMsgId)` 兼容存量枚举。
+```mermaid
+flowchart TB
+    subgraph L1 [L1 收包 - TcpConnection]
+        Tcp[ProcessMessages 6 字节头拆包]
+    end
+    subgraph L2 [L2 Ingress - MsgIngress]
+        Kind{连接语义}
+    end
+    subgraph L3 [L3 解包与校验]
+        Val[ClientMsgValidator Gateway]
+        Route[ClientMsgRouter Gateway]
+        GwUnwrap[unwrapGwClientMsg]
+        GzFwd[GameZoneOnForwardReq]
+    end
+    subgraph L4 [L4 分发 - 双表]
+        ClientD[ClientMsgDispatcher 客户端 wire]
+        InternalD[MsgDispatcher 区内 S2S]
+    end
+    Tcp --> Kind
+    Kind -->|ClientWire| Val
+    Val --> Route
+    Route -->|LOCAL| ClientD
+    Route -->|SCENE SESSION| GwRelay[GW_CLIENT_MSG 转发]
+    Kind -->|InternalS2S| GzFwd
+    GzFwd --> InternalD
+    Kind -->|InternalS2S 直连| InternalD
+    GwRelay --> GwUnwrap
+    GwUnwrap --> ClientD
+```
+
+| 组件 | 路径 | 职责 |
+|------|------|------|
+| `MsgIngress` | `sdk/net/MsgIngress.h` | 统一 `dispatchInternal` / `dispatchClient`；未注册打 DEBUG/WARN |
+| `MsgDispatcher` | `sdk/util/MsgDispatcher.h` | 区内 `InternalMsgID` 分发 |
+| `ClientMsgDispatcher` | `sdk/util/ClientMsgDispatcher.h` | 客户端 module/sub 分发（与区内表物理隔离） |
+| `MsgHandlerBinder` | `sdk/util/MsgHandlerBinder.h` | `registerInternal` / `registerClient` 成员绑定 + sizeof 守卫 |
+| `GwClientUnwrap` | `sdk/net/GwClientUnwrap.h` | `GW_CLIENT_MSG` 解包 |
+| `*InternMsgRegister` / `*ClientMsgRegister` | 各服目录 | `RegisterHandlers()` 聚合为 1–2 行 |
+
+各服 `OnMessage` 统一调用 `MsgIngress::dispatchInternal`（Gateway 客户端连接另走 `HandleClientMsg` → Validator → Router）。
+
+### 消息分发（区内）
+
+`OnMessage` → `MsgIngress::dispatchInternal` → `MsgDispatcher::Dispatch` → handler。仍可使用 `Register(uint16_t flatMsgId)` 兼容存量枚举；推荐 `registerInternal` / `registerInternalRaw`（见 `MsgHandlerBinder.h`）。
 
 ### 用户基类体系
 
@@ -282,7 +324,7 @@ flowchart TB
     GW --> V[ClientMsgValidator]
     V -->|OK| R[ClientMsgRouter]
     V -->|fail| Err[S2C_ERROR]
-    R --> Local[Gateway 本地 Login/Heartbeat]
+    R --> Local[ClientMsgDispatcher LOCAL]
     R --> Scene[GW_CLIENT_MSG to SceneServer]
     R --> Session[GW_CLIENT_MSG to SessionServer]
     Scene --> GW2[GW_SEND_TO_CLIENT]
@@ -295,6 +337,7 @@ flowchart TB
 | 拆包 | `TcpConnection` 解析 6 字节头 |
 | 校验 | `ClientMsgValidator.h` |
 | 路由 | `ClientMsgRouter.h` |
+| 本地处理 | `GatewayClientMsgRegister` → `ClientMsgDispatcher` |
 | 转发 | `Msg_GW_ClientMsg` + body |
 | 下行 | `Msg_GW_SendToClient` + body |
 
@@ -348,23 +391,27 @@ flowchart TB
 ```mermaid
 sequenceDiagram
     participant C as Client
+    participant LS as LoginServer
     participant GW as GatewayServer
     participant REC as RecordServer
     participant SS as SuperServer
     participant SCE as SceneServer
-    participant AOI as AOIServer
 
-    C->>GW: C2S_LOGIN_REQ
-    GW->>REC: REC_LOGIN_VERIFY_REQ
-    REC-->>GW: REC_LOGIN_VERIFY_RSP
+    C->>LS: C2S_LOGIN_REQ
+    LS-->>C: S2C_LOGIN_RSP + S2C_GATEWAY_INFO
+    C->>GW: C2S_GATEWAY_AUTH_REQ
+    GW->>REC: REC_VALIDATE_TOKEN_REQ
+    REC->>LS: LOGIN_VERIFY_TOKEN_REQ
+    LS-->>REC: LOGIN_VERIFY_TOKEN_RSP
+    REC-->>GW: REC_VALIDATE_TOKEN_RSP
+    Note over GW: 角色列表/创角/选角
+    C->>GW: C2S_SELECT_USER_REQ
     GW->>SS: GW_USER_LOGIN_REQ
     SS->>REC: REC_LOAD_USER_REQ
-    REC-->>SS: REC_LOAD_USER_RSP + UserBaseWire
+    REC-->>SS: REC_LOAD_USER_RSP
     SS->>SCE: SCE_USER_ENTER_REQ
-    SCE->>AOI: AOI_ENTER_REQ
-    SCE-->>SS: SCE_USER_ENTER_RSP
     SS-->>GW: GW_USER_LOGIN_RSP
-    GW-->>C: S2C_LOGIN_RSP + S2C_ENTER_GAME
+    GW-->>C: S2C_ENTER_GAME
 ```
 
 ---
@@ -391,7 +438,7 @@ sequenceDiagram
 
 简要 checklist：
 
-1. 客户端消息：`ClientMsg.h` → `ClientMsgValidator` → `ClientMsgRouter` → Scene/Session handler
+1. 客户端消息：各域 `*Common.h` / `*Msg.h` → **已实现 handler 后**再登记 `ClientMsgValidator` + `ClientMsgRouter`
 2. S2S 消息：`InternalMsg.h` → 双方 `RegisterHandlers()`
 3. 水平扩展：多 Gateway（L4 LB）；多 Scene（不同 `sceneID` + `server_info.xml`）
 

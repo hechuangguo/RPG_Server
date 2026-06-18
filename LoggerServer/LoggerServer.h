@@ -28,6 +28,7 @@
  */
 class LoggerServer : public INetCallback, public LazySingleton<LoggerServer>
 {
+    friend void LoggerInternMsgRegister(LoggerServer& server);
 public:
     friend class LazySingleton<LoggerServer>;
     /** @brief 获取 LoggerServer 单例指针 */

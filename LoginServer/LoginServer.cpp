@@ -5,6 +5,8 @@
 
 #include "LoginServer.h"
 #include "LoginGameZoneMsg.h"
+#include "LoginClientMsgRegister.h"
+#include "../sdk/net/MsgIngress.h"
 #include "../sdk/timer/TimerMgr.h"
 
 #include <cstdio>
@@ -23,7 +25,14 @@ struct LoginServer::ClientPortBridge : INetCallback
     void OnMessage(ConnID id, uint8_t module, uint8_t sub,
                    const char* data, uint16_t len) override
     {
-        m_owner->onClientMessage(id, module, sub, data, len);
+        IngressContext ctx{};
+        ctx.kind = ConnKind::ClientWire;
+        ctx.connId = id;
+        ctx.module = module;
+        ctx.sub = sub;
+        ctx.data = data;
+        ctx.len = len;
+        MsgIngress::onMessage(ctx);
     }
 
     LoginServer* m_owner;
@@ -42,7 +51,7 @@ struct LoginServer::RegisterPortBridge : INetCallback
     void OnMessage(ConnID id, uint8_t module, uint8_t sub,
                    const char* data, uint16_t len) override
     {
-        m_owner->onRegisterMessage(id, module, sub, data, len);
+        MsgIngress::dispatchInternal(id, module, sub, data, len);
     }
 
     LoginServer* m_owner;
@@ -158,17 +167,10 @@ void LoginServer::onClientDisconnect(ConnID id)
     LOG_INFO("登录客户端断开: conn=%u", id);
 }
 
-void LoginServer::onClientMessage(ConnID id, uint8_t module, uint8_t sub,
-                                   const char* data, uint16_t len)
+void LoginServer::registerHandlers()
 {
-    if (module != static_cast<uint8_t>(ClientModule::LOGIN))
-        return;
-    if (sub == 0x01)
-        m_authService.onClientLogin(id, data, len);
-    else if (sub == 0x03)
-        m_registerService.onClientRegister(id, data, len);
-    else if (sub == 0x0B)
-        m_authService.onClientZoneList(id, data, len);
+    LoginClientMsgRegister(*this);
+    LoginGameZoneMsgRegister(*this);
 }
 
 void LoginServer::onRegisterConnect(ConnID id)
@@ -179,17 +181,6 @@ void LoginServer::onRegisterConnect(ConnID id)
 void LoginServer::onRegisterDisconnect(ConnID id)
 {
     LOG_INFO("网关注册连接断开: conn=%u", id);
-}
-
-void LoginServer::onRegisterMessage(ConnID id, uint8_t module, uint8_t sub,
-                                     const char* data, uint16_t len)
-{
-    MsgDispatcher::Instance().Dispatch(id, module, sub, data, len);
-}
-
-void LoginServer::registerHandlers()
-{
-    LoginGameZoneMsgRegister(*this);
 }
 
 void LoginServer::pruneGatewayTable()

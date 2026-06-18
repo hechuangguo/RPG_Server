@@ -11,7 +11,7 @@
 #  流程：
 #    1. 拉取 RPG_Server 主仓库
 #    2. git submodule sync + update --init --recursive（Common → RPG_Common）
-#    3. 校验 Common/ClientMsg.h 存在
+#    3. 校验 Common/ClientTypes.h 与 LoginMsg.h 存在
 #
 #  说明：
 #    - 默认 unset 本地代理（避免失效的 127.0.0.1:40387 导致 GitHub HTTPS 失败）
@@ -105,9 +105,9 @@ if ! update_submodules; then
 fi
 ok "子模块已同步"
 
-if [[ ! -f Common/ClientMsg.h ]]; then
-    err "Common/ClientMsg.h 不存在。请执行：git submodule update --init --recursive"
+if [[ ! -f Common/ClientTypes.h ]] || [[ ! -f Common/LoginMsg.h ]]; then
+    err "Common 协议头不完整。请执行：git submodule update --init --recursive"
 fi
 
 common_sha="$(git -C Common rev-parse --short HEAD 2>/dev/null || echo unknown)"
-ok "校验通过：Common/ClientMsg.h @ ${common_sha}"
+ok "校验通过：Common @ ${common_sha} (ClientTypes.h + LoginMsg.h)"

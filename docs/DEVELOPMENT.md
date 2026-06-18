@@ -8,11 +8,11 @@
 
 ### 1.1 定义协议
 
-[`Common/ClientMsg.h`](../Common/ClientMsg.h) 来自 Git Submodule [RPG_Common](https://github.com/hechuangguo/RPG_Common)（Client 独立仓库 RPG_Client 侧路径同为 `Common/`）。**在本仓库内编辑 `Common/` 下的文件，在 submodule 内 commit 并 push 到 RPG_Common**，再在 RPG / RPG_Client 主仓库更新 submodule 指针。完整流程见 [COMMON.md](COMMON.md)。
+协议头按域分布在 [`Common/`](../Common/) 子模块（RPG_Common）：`XxxCommon.h`（子编号）+ `XxxMsg.h`（wire struct）。**在本仓库内编辑 `Common/` 下的文件，在 submodule 内 commit 并 push**，再在 RPG / RPG_Client 主仓库更新 submodule 指针。完整流程见 [COMMON.md](COMMON.md)。
 
-1. 确认 `ClientModule`（或新增 module 值）
-2. 添加 `ClientMsgID` 枚举项
-3. 定义 `#pragma pack(1)` wire struct（定长字符串用 [`WireStringUtil.h`](../sdk/util/WireStringUtil.h)）
+1. 在 `XxxCommon.h` 增加 `XxxMsgSub` 枚举值（含 `/**< */` 注释）
+2. 在 `XxxMsg.h` 定义 wire struct（`kModule`/`kSub` + 字段 `/**< */`；定长字符串用 [`WireStringUtil.h`](../sdk/util/WireStringUtil.h)）
+3. 发送侧：`initClientMsg` 或 [`ClientWireSend.h`](../sdk/net/ClientWireSend.h) 的 `sendClientWire`
 
 对方拉取更新：
 
@@ -21,7 +21,9 @@
 # 或：git pull --recurse-submodules
 ```
 
-### 1.2 网关登记（必须）
+### 1.2 网关登记（必须，且仅在 handler 落地后）
+
+**勿**为未实现消息提前加入 Validator；否则客户端包会通过校验却无 handler。
 
 [`GatewayServer/ClientMsgValidator.h`](../GatewayServer/ClientMsgValidator.h)：
 
@@ -45,8 +47,8 @@ Scene Lua 扩展：见 [LUA.md](LUA.md) § 扩展指南。
 
 ### 1.4 自检
 
-- [ ] Validator 白名单 + Router 目标
-- [ ] Scene/Session handler 或 Lua 函数
+- [ ] `*Msg.h` wire struct + Scene/Session/Gateway handler **已实现**
+- [ ] Validator 白名单 + Router 目标（与 handler 同步添加）
 - [ ] 下行 S2C 结构体与 msgId
 - [ ] 未使用 `strncpy` 写 wire 字段
 

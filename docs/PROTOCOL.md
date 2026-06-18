@@ -64,61 +64,63 @@
 
 子编号定义于各域 `XxxMsgSub`（`*Common.h`）；struct 内可见 `kModule`/`kSub` 与 wire 前缀字段。
 
-| module | sub | 名称 | 方向 | 结构体 | 说明 |
-|--------|-----|------|------|--------|------|
-| 0x00 | 0x01 | C2S_LOGIN_REQ | C→S | `Msg_C2S_LoginReq` | **LoginServer** 账号密码登录 |
-| 0x00 | 0x02 | S2C_LOGIN_RSP | S→C | `Msg_S2C_LoginRsp` | 登录结果（含 accid/loginToken/tokenExpireMs） |
-| 0x00 | 0x03 | C2S_REGISTER_REQ | C→S | `Msg_C2S_RegisterReq` | 注册账号 |
-| 0x00 | 0x04 | S2C_REGISTER_RSP | S→C | `Msg_S2C_RegisterRsp` | 注册结果（含 accid） |
-| 0x00 | 0x05 | C2S_SELECT_USER_REQ | C→S | `Msg_C2S_SelectUserReq` | 选角进世界（Gateway ACCOUNT_OK） |
-| 0x00 | 0x06 | S2C_USER_LIST | S→C | `Msg_S2C_UserListHeader` + N×Entry | 角色列表（变长） |
-| 0x00 | 0x07 | C2S_CREATE_USER_REQ | C→S | `Msg_C2S_CreateUserReq` | 创角 |
-| 0x00 | 0x08 | S2C_CREATE_USER_RSP | S→C | `Msg_S2C_CreateUserRsp` | 创角响应 |
-| 0x00 | 0x0D | C2S_GATEWAY_AUTH_REQ | C→S | `Msg_C2S_GatewayAuthReq` | Gateway 票据鉴权 |
-| 0x00 | 0x09 | S2C_ENTER_GAME | S→C | `Msg_S2C_EnterGame` | 进入游戏世界 |
-| 0x00 | 0x0A | S2C_GATEWAY_INFO | S→C | `Msg_S2C_GatewayInfo` | LoginServer 下发网关地址 |
-| 0x00 | 0x0B | C2S_ZONE_LIST_REQ | C→S | `Msg_C2S_ZoneListReq` | 区列表请求 |
-| 0x00 | 0x0C | S2C_ZONE_LIST_RSP | S→C | `Msg_S2C_ZoneListRspHeader` + N×Entry | 区列表（变长） |
-| 0x01 | 0x01 | C2S_MOVE_REQ | C→S | `Msg_C2S_MoveReq` | 移动 |
-| 0x01 | 0x02 | S2C_MOVE_NOTIFY | S→C | `Msg_S2C_MoveNotify` | 移动广播 |
-| 0x01 | 0x03 | S2C_ENTER_MAP | S→C | — | 进图 |
-| 0x01 | 0x04 | S2C_LEAVE_MAP | S→C | — | 离图 |
-| 0x01 | 0x05 | S2C_SPAWN_ENTITY | S→C | `Msg_S2C_SpawnEntity` | 实体进视野 |
-| 0x01 | 0x06 | S2C_DESPAWN_ENTITY | S→C | `Msg_S2C_DespawnEntity` | 实体出视野 |
-| 0x01 | 0x07 | C2S_TELEPORT_REQ | C→S | — | 传送 |
-| 0x02 | 0x01 | C2S_ATTACK_REQ | C→S | — | 普攻 |
-| 0x02 | 0x02 | S2C_ATTACK_NOTIFY | S→C | — | 攻击广播 |
-| 0x02 | 0x03 | S2C_HP_CHANGE | S→C | — | 血量变化 |
-| 0x02 | 0x04 | S2C_ENTITY_DIE | S→C | — | 实体死亡 |
-| 0x03 | 0x01 | C2S_BAG_INFO_REQ | C→S | — | 背包查询 |
-| 0x03 | 0x02 | S2C_BAG_INFO_RSP | S→C | — | 背包数据 |
-| 0x03 | 0x03 | C2S_USE_ITEM_REQ | C→S | — | 使用物品 |
-| 0x03 | 0x04 | S2C_USE_ITEM_RSP | S→C | — | 使用结果 |
-| 0x03 | 0x05 | C2S_DROP_ITEM_REQ | C→S | — | 丢弃物品 |
-| 0x04 | 0x01 | C2S_SKILL_REQ | C→S | — | 释放技能（Scene→Lua） |
-| 0x04 | 0x02 | S2C_SKILL_NOTIFY | S→C | — | 技能广播 |
-| 0x05 | 0x01 | C2S_CHAT_REQ | C→S | `Msg_C2S_Chat` | 聊天 |
-| 0x05 | 0x02 | S2C_CHAT_NOTIFY | S→C | `Msg_S2C_Chat` | 聊天广播 |
-| 0x05 | 0x03 | C2S_WHISPER_REQ | C→S | — | 私聊 → Session |
-| 0x05 | 0x04 | S2C_WHISPER_NOTIFY | S→C | — | 私聊通知 |
-| 0x06 | 0x01 | C2S_ADD_FRIEND_REQ | C→S | — | 加好友 → Session |
-| 0x06 | 0x02 | S2C_ADD_FRIEND_RSP | S→C | — | 加好友响应 |
-| 0x06 | 0x03 | S2C_FRIEND_LIST | S→C | — | 好友列表 |
-| 0x06 | 0x10 | C2S_CREATE_TEAM_REQ | C→S | — | 创建队伍 |
-| 0x06 | 0x11 | S2C_TEAM_INFO | S→C | — | 队伍信息 |
-| 0x07 | 0x01 | C2S_QUEST_ACCEPT_REQ | C→S | — | 接任务 → Session |
-| 0x07 | 0x02 | S2C_QUEST_INFO | S→C | — | 任务同步 |
-| 0x07 | 0x03 | C2S_QUEST_SUBMIT_REQ | C→S | — | 交任务 |
-| 0x07 | 0x04 | S2C_QUEST_RESULT | S→C | — | 任务结果 |
-| 0x08 | 0x01 | C2S_NPC_TALK_REQ | C→S | `Msg_C2S_NpcTalkReq` | NPC 对话 |
-| 0x08 | 0x02 | S2C_NPC_TALK_RSP | S→C | `Msg_S2C_NpcTalkRsp` | 对话内容与选项 |
-| 0x0F | 0x01 | C2S_HEARTBEAT | C→S | `Msg_C2S_Heartbeat` | 心跳 |
-| 0x0F | 0x02 | S2C_HEARTBEAT | S→C | `Msg_S2C_Heartbeat` | 心跳响应 |
-| 0x0F | 0x03 | S2C_KICK | S→C | — | 踢线 |
-| 0x0F | 0x04 | S2C_NOTICE | S→C | `Msg_S2C_Notice` | 系统公告 |
-| 0x0F | 0x05 | S2C_ERROR | S→C | `Msg_S2C_Error` | 网关校验失败 |
+**实现状态**：`已实现` = Gateway `ClientMsgValidator` 白名单且 Server 有 handler；`未实现` = Common 已登记子编号但 Gateway **拒收**（`S2C_ERROR` / `UNKNOWN_MSG`）。`C2S_LOGIN_REQ` / `C2S_REGISTER_REQ` 仅 **LoginServer** 处理，连 Gateway 发此包会被拒收。
 
-**说明**：标「—」的结构体在域 `XxxMsgSub` 中已登记子编号，wire struct 待实现。
+| module | sub | 名称 | 方向 | 结构体 | 实现状态 | 说明 |
+|--------|-----|------|------|--------|----------|------|
+| 0x00 | 0x01 | C2S_LOGIN_REQ | C→S | `Msg_C2S_LoginReq` | LoginServer | 账号密码登录（非 Gateway） |
+| 0x00 | 0x02 | S2C_LOGIN_RSP | S→C | `Msg_S2C_LoginRsp` | 已实现 | 登录结果（含 accid/loginToken/tokenExpireMs） |
+| 0x00 | 0x03 | C2S_REGISTER_REQ | C→S | `Msg_C2S_RegisterReq` | LoginServer | 注册账号（非 Gateway） |
+| 0x00 | 0x04 | S2C_REGISTER_RSP | S→C | `Msg_S2C_RegisterRsp` | 已实现 | 注册结果（含 accid） |
+| 0x00 | 0x05 | C2S_SELECT_USER_REQ | C→S | `Msg_C2S_SelectUserReq` | 已实现 | 选角进世界（Gateway ACCOUNT_OK） |
+| 0x00 | 0x06 | S2C_USER_LIST | S→C | `Msg_S2C_UserListHeader` + N×Entry | 已实现 | 角色列表（变长） |
+| 0x00 | 0x07 | C2S_CREATE_USER_REQ | C→S | `Msg_C2S_CreateUserReq` | 已实现 | 创角 |
+| 0x00 | 0x08 | S2C_CREATE_USER_RSP | S→C | `Msg_S2C_CreateUserRsp` | 已实现 | 创角响应 |
+| 0x00 | 0x0D | C2S_GATEWAY_AUTH_REQ | C→S | `Msg_C2S_GatewayAuthReq` | 已实现 | Gateway 票据鉴权 |
+| 0x00 | 0x09 | S2C_ENTER_GAME | S→C | `Msg_S2C_EnterGame` | 已实现 | 进入游戏世界 |
+| 0x00 | 0x0A | S2C_GATEWAY_INFO | S→C | `Msg_S2C_GatewayInfo` | 已实现 | LoginServer 下发网关地址 |
+| 0x00 | 0x0B | C2S_ZONE_LIST_REQ | C→S | `Msg_C2S_ZoneListReq` | 已实现 | 区列表请求（LoginServer） |
+| 0x00 | 0x0C | S2C_ZONE_LIST_RSP | S→C | `Msg_S2C_ZoneListRspHeader` + N×Entry | 已实现 | 区列表（变长） |
+| 0x01 | 0x01 | C2S_MOVE_REQ | C→S | `Msg_C2S_MoveReq` | 已实现 | 移动 |
+| 0x01 | 0x02 | S2C_MOVE_NOTIFY | S→C | `Msg_S2C_MoveNotify` | 未实现 | 移动广播（待下发） |
+| 0x01 | 0x03 | S2C_ENTER_MAP | S→C | — | 未实现 | 由 SpawnEntity 替代 |
+| 0x01 | 0x04 | S2C_LEAVE_MAP | S→C | — | 未实现 | 由 DespawnEntity 替代 |
+| 0x01 | 0x05 | S2C_SPAWN_ENTITY | S→C | `Msg_S2C_SpawnEntity` | 已实现 | 实体进视野 |
+| 0x01 | 0x06 | S2C_DESPAWN_ENTITY | S→C | `Msg_S2C_DespawnEntity` | 已实现 | 实体出视野 |
+| 0x01 | 0x07 | C2S_TELEPORT_REQ | C→S | — | 未实现 | Gateway 拒收 |
+| 0x02 | 0x01 | C2S_ATTACK_REQ | C→S | — | 未实现 | Gateway 拒收 |
+| 0x02 | 0x02 | S2C_ATTACK_NOTIFY | S→C | — | 未实现 | — |
+| 0x02 | 0x03 | S2C_HP_CHANGE | S→C | — | 未实现 | — |
+| 0x02 | 0x04 | S2C_ENTITY_DIE | S→C | — | 未实现 | — |
+| 0x03 | 0x01 | C2S_BAG_INFO_REQ | C→S | — | 未实现 | Gateway 拒收 |
+| 0x03 | 0x02 | S2C_BAG_INFO_RSP | S→C | — | 未实现 | — |
+| 0x03 | 0x03 | C2S_USE_ITEM_REQ | C→S | — | 未实现 | Gateway 拒收 |
+| 0x03 | 0x04 | S2C_USE_ITEM_RSP | S→C | — | 未实现 | — |
+| 0x03 | 0x05 | C2S_DROP_ITEM_REQ | C→S | — | 未实现 | Gateway 拒收 |
+| 0x04 | 0x01 | C2S_SKILL_REQ | C→S | — | 未实现 | Gateway 拒收 |
+| 0x04 | 0x02 | S2C_SKILL_NOTIFY | S→C | — | 未实现 | — |
+| 0x05 | 0x01 | C2S_CHAT_REQ | C→S | `Msg_C2S_Chat` | 已实现 | 聊天 |
+| 0x05 | 0x02 | S2C_CHAT_NOTIFY | S→C | `Msg_S2C_Chat` | 已实现 | 聊天广播 |
+| 0x05 | 0x03 | C2S_WHISPER_REQ | C→S | — | 未实现 | Gateway 拒收 |
+| 0x05 | 0x04 | S2C_WHISPER_NOTIFY | S→C | — | 未实现 | — |
+| 0x06 | 0x01 | C2S_ADD_FRIEND_REQ | C→S | — | 未实现 | Gateway 拒收 |
+| 0x06 | 0x02 | S2C_ADD_FRIEND_RSP | S→C | — | 未实现 | — |
+| 0x06 | 0x03 | S2C_FRIEND_LIST | S→C | — | 未实现 | — |
+| 0x06 | 0x10 | C2S_CREATE_TEAM_REQ | C→S | — | 未实现 | Gateway 拒收 |
+| 0x06 | 0x11 | S2C_TEAM_INFO | S→C | — | 未实现 | — |
+| 0x07 | 0x01 | C2S_QUEST_ACCEPT_REQ | C→S | — | 未实现 | Gateway 拒收 |
+| 0x07 | 0x02 | S2C_QUEST_INFO | S→C | — | 未实现 | — |
+| 0x07 | 0x03 | C2S_QUEST_SUBMIT_REQ | C→S | — | 未实现 | Gateway 拒收 |
+| 0x07 | 0x04 | S2C_QUEST_RESULT | S→C | — | 未实现 | — |
+| 0x08 | 0x01 | C2S_NPC_TALK_REQ | C→S | `Msg_C2S_NpcTalkReq` | 已实现 | NPC 对话 |
+| 0x08 | 0x02 | S2C_NPC_TALK_RSP | S→C | `Msg_S2C_NpcTalkRsp` | 已实现 | 对话内容与选项 |
+| 0x0F | 0x01 | C2S_HEARTBEAT | C→S | `Msg_C2S_Heartbeat` | 已实现 | 心跳（Gateway 本地） |
+| 0x0F | 0x02 | S2C_HEARTBEAT | S→C | `Msg_S2C_Heartbeat` | 已实现 | 心跳响应 |
+| 0x0F | 0x03 | S2C_KICK | S→C | — | 无 wire | 踢线经服间 `GW_KICK_CLIENT`，无客户端包 |
+| 0x0F | 0x04 | S2C_NOTICE | S→C | `Msg_S2C_Notice` | 未实现 | 系统公告（struct 已有，暂无发送点） |
+| 0x0F | 0x05 | S2C_ERROR | S→C | `Msg_S2C_Error` | 已实现 | 网关校验失败 |
+
+**说明**：标「—」的结构体在域 `XxxMsgSub` 中已登记子编号，wire struct 待实现；未实现上行消息勿加入 Validator，落地时同步补 `*Msg.h` + handler。服间 `REC_LOGIN_VERIFY_*`（0x1205/0x1206）已废弃。
 
 ### 2.3 登录进场景错误码
 
@@ -184,7 +186,7 @@
 | 0x1F10–0x1F15 | Super 转发 | SS_EXTERN_FWD、EXT_GAMEZONE_FWD、SS_LOGIN_GATEWAY_WRAP |
 | 0x1001–0x1003 | SuperServer | SS_KICK_USER、SS_QUERY_ONLINE |
 | 0x1101–0x1113 | SessionServer | SES_LOAD/SAVE、SES_SCENE_*、SES_COPY_*、SES_RESOLVE_MAP_* |
-| 0x1201–0x1212 | RecordServer | REC_LOAD/SAVE、REC_VALIDATE_TOKEN、REC_LIST/CREATE_CHARACTER、REC_RELATION_* |
+| 0x1201–0x1212 | RecordServer | REC_LOAD/SAVE、REC_VALIDATE_TOKEN、REC_LIST/CREATE_CHARACTER、REC_RELATION_*（`REC_LOGIN_VERIFY_*` 已废弃） |
 | 0x1301–0x1306 | SceneServer | SCE_USER_ENTER/LEAVE、SCE_FORWARD_TO_CLIENT |
 | 0x1401–0x1405 | GatewayServer | GW_CLIENT_MSG、GW_SEND_TO_CLIENT、GW_USER_LOGIN_* |
 | 0x1501–0x1506 | AOIServer | AOI_ENTER/LEAVE/MOVE、AOI_VIEW_NOTIFY、AOI_SCENE_* |

@@ -196,3 +196,24 @@ uint8_t ZoneInfoStore::computeLoadLevel(const ZoneInfoRow& row,
         return static_cast<uint8_t>(ZoneLoadLevel::BUSY);
     return static_cast<uint8_t>(ZoneLoadLevel::SMOOTH);
 }
+
+void ZoneInfoStore::fillGatewayLoadFields(const ZoneInfoRow& row,
+                                          const ZoneInfoStore& store,
+                                          size_t registryGatewayCount,
+                                          uint32_t& outOnline,
+                                          uint8_t& outGatewayCount,
+                                          uint8_t& outLoadLevel)
+{
+    ZoneRuntimeRow runtime;
+    const ZoneRuntimeRow* runtimePtr = nullptr;
+    if (store.getRuntime(row.gameType, row.zoneId, runtime))
+        runtimePtr = &runtime;
+
+    const size_t runtimeGatewayCount = runtimePtr ? runtimePtr->gatewayCount : 0;
+    const size_t effectiveGatewayCount =
+        registryGatewayCount > runtimeGatewayCount ? registryGatewayCount : runtimeGatewayCount;
+    outOnline = runtimePtr ? runtimePtr->onlineCount : 0;
+    outGatewayCount = static_cast<uint8_t>(
+        effectiveGatewayCount > 255 ? 255 : effectiveGatewayCount);
+    outLoadLevel = computeLoadLevel(row, runtimePtr, effectiveGatewayCount);
+}

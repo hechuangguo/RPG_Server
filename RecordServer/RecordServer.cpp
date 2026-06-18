@@ -4,6 +4,8 @@
  */
 
 #include "RecordServer.h"
+#include "RecordInternMsgRegister.h"
+#include "../sdk/net/MsgIngress.h"
 #include "RecordCharService.h"
 #include "../sdk/util/ServerBootstrap.h"
 
@@ -87,7 +89,7 @@ void RecordServer::OnDisconnect(ConnID id)
 
 void RecordServer::OnMessage(ConnID id, uint8_t module, uint8_t sub, const char* data, uint16_t len)
 {
-    MsgDispatcher::Instance().Dispatch(id, module, sub, data, len);
+    MsgIngress::dispatchInternal(id, module, sub, data, len);
 }
 
 bool RecordServer::InitDB(const ServerConfig& cfg)
@@ -110,27 +112,7 @@ bool RecordServer::InitDB(const ServerConfig& cfg)
 
 void RecordServer::RegisterHandlers()
 {
-    auto& d = MsgDispatcher::Instance();
-    d.Register((uint16_t)InternalMsgID::REC_LOGIN_VERIFY_REQ,
-               [this](uint32_t c, const char* d, uint16_t l) { OnLoginVerify(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::REC_LOAD_USER_REQ,
-               [this](uint32_t c, const char* d, uint16_t l) { OnLoadUser(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::REC_SAVE_USER_REQ,
-               [this](uint32_t c, const char* d, uint16_t l) { OnSaveUser(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::REC_RELATION_PRELOAD_REQ,
-               [this](uint32_t c, const char* d, uint16_t l) { OnRelationPreloadReq(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::REC_RELATION_LOAD_REQ,
-               [this](uint32_t c, const char* d, uint16_t l) { OnRelationLoadReq(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::REC_RELATION_SAVE_REQ,
-               [this](uint32_t c, const char* d, uint16_t l) { OnRelationSaveReq(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::REC_VALIDATE_TOKEN_REQ,
-               [this](uint32_t c, const char* d, uint16_t l) { OnValidateTokenReq(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::REC_VERIFY_TOKEN_RSP,
-               [this](uint32_t c, const char* d, uint16_t l) { OnLoginVerifyTokenRsp(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::REC_LIST_CHARACTERS_REQ,
-               [this](uint32_t c, const char* d, uint16_t l) { OnListCharactersReq(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::REC_CREATE_CHARACTER_REQ,
-               [this](uint32_t c, const char* d, uint16_t l) { OnCreateCharacterReq(c, d, l); });
+    RecordInternMsgRegister(*this);
 }
 
 void RecordServer::RegisterToSuper()
@@ -152,21 +134,6 @@ void RecordServer::SendHeartbeat()
     hb.timestamp = TimerMgr::NowMs();
     m_superClient.SendMsg((uint16_t)InternalMsgID::S2S_HEARTBEAT,
                           reinterpret_cast<char*>(&hb), sizeof(hb));
-}
-
-void RecordServer::OnLoginVerify(ConnID fromConn, const char* data, uint16_t len)
-{
-    if (len < sizeof(Msg_REC_LoginVerifyReq))
-        return;
-    const auto* req = reinterpret_cast<const Msg_REC_LoginVerifyReq*>(data);
-
-    Msg_REC_LoginVerifyRsp rsp{};
-    rsp.gatewayConnID = req->gatewayConnID;
-    rsp.code = 1;
-    m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::REC_LOGIN_VERIFY_RSP,
-                     reinterpret_cast<char*>(&rsp), sizeof(rsp));
-    LOG_WARN("REC_LOGIN_VERIFY 已废弃: conn=%u 请走 LoginServer+Gateway 票据流程",
-             req->gatewayConnID);
 }
 
 void RecordServer::OnLoadUser(ConnID fromConn, const char* data, uint16_t len)

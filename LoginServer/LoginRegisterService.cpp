@@ -5,10 +5,12 @@
 
 #include "LoginRegisterService.h"
 #include "LoginServer.h"
-#include "../Common/ClientMsg.h"
+#include "../Common/LoginMsg.h"
+#include "../Common/ClientMsgBody.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/util/PasswordUtil.h"
 #include "../sdk/util/WireStringUtil.h"
+#include "../sdk/net/ClientWireSend.h"
 
 #include <mysqld_error.h>
 
@@ -45,11 +47,11 @@ LoginRegisterService::LoginRegisterService(LoginServer& owner)
 void LoginRegisterService::sendRegisterRsp(ConnID connID, int32_t code, const char* msg, uint64_t accid)
 {
     Msg_S2C_RegisterRsp rsp{};
+    initClientMsg(rsp);
     rsp.code = code;
     rsp.accid = accid;
     copyToWire(rsp.msg, sizeof(rsp.msg), msg);
-    m_owner.clientServer().SendMsg(connID, static_cast<uint16_t>(ClientMsgID::S2C_REGISTER_RSP),
-                                   reinterpret_cast<char*>(&rsp), sizeof(rsp));
+    sendClientWire(m_owner.clientServer(), connID, rsp);
 }
 
 void LoginRegisterService::onClientRegister(ConnID connID, const char* data, uint16_t len)

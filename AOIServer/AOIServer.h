@@ -144,6 +144,7 @@ struct GridHash
  */
 class AOIServer : public INetCallback, public LazySingleton<AOIServer>
 {
+    friend void AoiInternMsgRegister(AOIServer& server);
 public:
     friend class LazySingleton<AOIServer>;
     /** @brief 获取 AOIServer 单例指针 */

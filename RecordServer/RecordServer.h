@@ -14,7 +14,7 @@
  *
  * ## 数据流
  * @code
- *   GatewayServer ──(REC_LOGIN_VERIFY_REQ)──→ RecordServer ──(SQL)──→ MySQL
+ *   GatewayServer ──(REC_VALIDATE_TOKEN_REQ)──→ RecordServer ──(SQL)──→ MySQL
  *   SuperServer   ──(REC_LOAD_USER_REQ)───→ RecordServer ──(SQL)──→ MySQL
  *   SceneServer   ──(REC_SAVE_USER_REQ)───→ RecordServer ──(SQL)──→ MySQL
  * @endcode
@@ -49,6 +49,7 @@
  */
 class RecordServer : public INetCallback, public LazySingleton<RecordServer>
 {
+    friend void RecordInternMsgRegister(RecordServer& server);
 public:
     friend class LazySingleton<RecordServer>;
     /** @brief 获取 RecordServer 单例指针 */
@@ -98,7 +99,6 @@ private:
     /**
      * @brief 注册消息处理函数
      *
-     * REC_LOGIN_VERIFY_REQ → OnLoginVerify（账号密码验证）
      * REC_LOAD_USER_REQ    → OnLoadUser（从 DB 加载用户）
      * REC_SAVE_USER_REQ    → OnSaveUser（保存用户到 DB）
      */
@@ -109,18 +109,6 @@ private:
 
     /** @brief 定时上报心跳到 SuperServer */
     void SendHeartbeat();
-
-    /**
-     * @brief 登录验证（按角色名）
-     *
-     * CharBase 已合表，无 account/password 列；故 account 视为角色名，
-     * 执行 SELECT user_id FROM CharBase WHERE name='?'。
-     * 未命中则首登自动建号（INSERT CharBase(name)，其余列走 init.sql 默认值），
-     * 以 mysql_insert_id() 返回新角色 ID。req->password 暂不参与校验。
-     *
-     * @note account 入库前用 mysql_real_escape_string() 转义，规避 SQL 注入。
-     */
-    void OnLoginVerify(ConnID fromConn, const char* data, uint16_t len);
 
     /**
      * @brief 加载用户数据

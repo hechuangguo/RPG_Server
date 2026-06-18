@@ -52,12 +52,14 @@ step "===== RPG Server AutoInit ====="
 
 # -------------------------------------------------------
 #  第0步：初始化 Git Submodule（Common/）
-#  Common/ 为 RPG_Common 子模块，含 ClientMsg.h 等共享协议头。
+#  Common/ 为 RPG_Common 子模块，含 ClientTypes.h 与各域 *Msg.h。
 # -------------------------------------------------------
 step "Initialize Git submodules (Common/)..."
 git submodule update --init --recursive
-[ -f "$SCRIPT_DIR/Common/ClientMsg.h" ] \
-    || fail "Common/ClientMsg.h missing — run: git submodule update --init --recursive"
+[ -f "$SCRIPT_DIR/Common/ClientTypes.h" ] \
+    || fail "Common/ClientTypes.h missing — run: git submodule update --init --recursive"
+[ -f "$SCRIPT_DIR/Common/LoginMsg.h" ] \
+    || fail "Common/LoginMsg.h missing — run: git submodule update --init --recursive"
 
 # -------------------------------------------------------
 #  第1步：创建必要目录
@@ -139,11 +141,13 @@ fi
 
 # -------------------------------------------------------
 #  第5步：协议文件检查
-#  Common/ClientMsg.h 为客户端 wire 协议权威定义（header-only，无需 proto 编译）。
+#  Common/ClientTypes.h 与各域 *Msg.h 为客户端 wire 协议权威定义。
 # -------------------------------------------------------
-[ -f "$SCRIPT_DIR/Common/ClientMsg.h" ] \
-    || fail "Common/ClientMsg.h missing after submodule init"
-step "Protocol files OK (Common/ClientMsg.h present)."
+[ -f "$SCRIPT_DIR/Common/ClientTypes.h" ] \
+    || fail "Common/ClientTypes.h missing after submodule init"
+[ -f "$SCRIPT_DIR/Common/LoginMsg.h" ] \
+    || fail "Common/LoginMsg.h missing after submodule init"
+step "Protocol files OK (ClientTypes.h + LoginMsg.h present)."
 
 # -------------------------------------------------------
 #  第6步：设置脚本执行权限

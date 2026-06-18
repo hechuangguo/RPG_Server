@@ -1,6 +1,6 @@
 /**
  * @file    SessionUserManager.h
- * @brief  SessionServer 用户管理器 —— 在线用户缓存与离线消息队列
+ * @brief  SessionServer 用户管理器 —— 在线用户缓存
  */
 
 #pragma once
@@ -12,16 +12,6 @@
 #include <unordered_map>
 #include <vector>
 #include "../sdk/util/RelationWireUtil.h"
-
-/**
- * @brief 离线消息（目标用户不在线时暂存）
- */
-struct OfflineMsg
-{
-    UserID              toId;    /**< 目标用户 ID */
-    uint16_t            msgId;   /**< 协议号 */
-    std::vector<char>   data;    /**< 消息体 */
-};
 
 /**
  * @brief SessionServer 用户集合管理（单例）
@@ -52,15 +42,8 @@ public:
     /** @brief 只读遍历全部用户 */
     void forEach(const std::function<void(UserID, const std::shared_ptr<SessionUser>&)>& fn) const;
 
-    /** @brief 向离线队列追加消息 */
-    void pushOfflineMsg(UserID toId, uint16_t msgId, const char* data, uint16_t len);
-
-    /** @brief 获取指定用户的离线消息列表（无则返回空 vector） */
-    std::vector<OfflineMsg>& offlineMsgs(UserID toId);
-
 private:
     SessionUserManager() = default;
 
-    std::unordered_map<UserID, std::shared_ptr<SessionUser>> m_users;        /**< 在线用户缓存 */
-    std::unordered_map<UserID, std::vector<OfflineMsg>>     m_offlineMsgs;   /**< 离线消息队列 */
+    std::unordered_map<UserID, std::shared_ptr<SessionUser>> m_users; /**< 在线用户缓存 */
 };

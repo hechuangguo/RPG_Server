@@ -4,6 +4,8 @@
  */
 
 #include "AOIServer.h"
+#include "AoiInternMsgRegister.h"
+#include "../sdk/net/MsgIngress.h"
 #include "../sdk/util/ServerBootstrap.h"
 
 #include <cstring>
@@ -55,22 +57,12 @@ void AOIServer::OnDisconnect(ConnID id)
 void AOIServer::OnMessage(ConnID id, uint8_t module, uint8_t sub,
                           const char* data, uint16_t len)
 {
-    MsgDispatcher::Instance().Dispatch(id, module, sub, data, len);
+    MsgIngress::dispatchInternal(id, module, sub, data, len);
 }
 
 void AOIServer::RegisterHandlers()
 {
-    auto& d = MsgDispatcher::Instance();
-    d.Register((uint16_t)InternalMsgID::AOI_ENTER_REQ,
-        [this](uint32_t c, const char* d, uint16_t l){ OnEnter(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::AOI_LEAVE_REQ,
-        [this](uint32_t c, const char* d, uint16_t l){ OnLeave(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::AOI_MOVE_REQ,
-        [this](uint32_t c, const char* d, uint16_t l){ OnMove(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::AOI_SCENE_REGISTER,
-        [this](uint32_t c, const char* d, uint16_t l){ OnSceneRegister(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::AOI_SCENE_UNREGISTER,
-        [this](uint32_t c, const char* d, uint16_t l){ OnSceneUnregister(c, d, l); });
+    AoiInternMsgRegister(*this);
 }
 
 Grid AOIServer::WorldToGrid(float x, float z)

@@ -4,6 +4,9 @@
  */
 
 #include "SuperServer.h"
+#include "SuperInternMsgRegister.h"
+#include "SuperZoneStatusMsg.h"
+#include "../sdk/net/MsgIngress.h"
 #include "SuperExternRouter.h"
 #include "SuperLoginMsg.h"
 #include "SuperLoggerMsg.h"
@@ -135,34 +138,12 @@ void SuperServer::OnDisconnect(ConnID id)
 
 void SuperServer::OnMessage(ConnID id, uint8_t module, uint8_t sub, const char* data, uint16_t len)
 {
-    MsgDispatcher::Instance().Dispatch(id, module, sub, data, len);
+    MsgIngress::dispatchInternal(id, module, sub, data, len);
 }
 
 void SuperServer::RegisterHandlers()
 {
-    auto& d = MsgDispatcher::Instance();
-    d.Register((uint16_t)InternalMsgID::S2S_REGISTER_REQ,
-               [this](uint32_t c, const char* d, uint16_t l) { OnRegister(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::S2S_HEARTBEAT,
-               [this](uint32_t c, const char* d, uint16_t l) { OnHeartbeat(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::S2S_SERVERLIST_REQ,
-               [this](uint32_t c, const char* d, uint16_t l) { OnServerListReq(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::GW_USER_LOGIN_REQ,
-               [this](uint32_t c, const char* d, uint16_t l) { OnUserLoginReq(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::REC_LOAD_USER_RSP,
-               [this](uint32_t c, const char* d, uint16_t l) { OnLoadUserRsp(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::SES_RESOLVE_MAP_RSP,
-               [this](uint32_t c, const char* d, uint16_t l) { OnResolveMapRsp(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::SCE_USER_ENTER_RSP,
-               [this](uint32_t c, const char* d, uint16_t l) { OnUserEnterRsp(c, d, l); });
-    d.Register((uint16_t)InternalMsgID::SS_KICK_USER,
-               [this](uint32_t c, const char* d, uint16_t l) { OnKickUser(c, d, l); });
-
-    SuperExternMsgRegister(*this);
-    SuperLoginMsgRegister(*this);
-    SuperLoggerMsgRegister(*this);
-    SuperGlobalMsgRegister(*this);
-    SuperZoneMsgRegister(*this);
+    SuperInternMsgRegister(*this);
 }
 
 void SuperServer::OnRegister(ConnID connID, const char* data, uint16_t len)

@@ -26,7 +26,8 @@
 #include "../sdk/util/Singleton.h"
 #include "../sdk/util/WireStringUtil.h"
 #include "../sdk/log/Logger.h"
-#include "../Common/ClientMsg.h"
+#include "../Common/LoginMsg.h"
+#include "../Common/ZoneMsg.h"
 #include "../protocal/InternalMsg.h"
 
 #include <mysql/mysql.h>
@@ -79,19 +80,11 @@ public:
     /** @brief 客户端口：断开 */
     void onClientDisconnect(ConnID id);
 
-    /** @brief 客户端口：消息 */
-    void onClientMessage(ConnID id, uint8_t module, uint8_t sub,
-                          const char* data, uint16_t len);
-
     /** @brief 注册口：新连接 */
     void onRegisterConnect(ConnID id);
 
     /** @brief 注册口：断开 */
     void onRegisterDisconnect(ConnID id);
-
-    /** @brief 注册口：消息 */
-    void onRegisterMessage(ConnID id, uint8_t module, uint8_t sub,
-                            const char* data, uint16_t len);
 
 private:
     void registerHandlers();

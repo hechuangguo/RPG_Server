@@ -109,6 +109,7 @@ struct PendingLogin
  */
 class SuperServer : public INetCallback, public LazySingleton<SuperServer>
 {
+    friend void SuperInternMsgRegister(SuperServer& server);
 public:
     friend class LazySingleton<SuperServer>;
     /** @brief 获取 SuperServer 单例指针 */

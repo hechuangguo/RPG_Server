@@ -5,6 +5,7 @@
 
 #include "ZoneServer.h"
 #include "ZoneGameZoneMsg.h"
+#include "../sdk/net/MsgIngress.h"
 
 ZoneServer::ZoneServer() : m_server(this) {}
 
@@ -82,7 +83,7 @@ void ZoneServer::OnDisconnect(ConnID id)
 void ZoneServer::OnMessage(ConnID id, uint8_t module, uint8_t sub,
                            const char* data, uint16_t len)
 {
-    MsgDispatcher::Instance().Dispatch(id, module, sub, data, len);
+    MsgIngress::dispatchInternal(id, module, sub, data, len);
 }
 
 void ZoneServer::RegisterHandlers()

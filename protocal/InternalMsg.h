@@ -21,19 +21,21 @@
  * | 0x1901 ~ 0x1909    | LoginServer   |
  * | 0x1F10 ~ 0x1F13    | SuperServer 外联转发 |
  *
- * 消息流示例（登录）：
+ * 消息流示例（登录，当前生产路径）：
  * @code
- *   Client → GatewayServer                           (C2S_LOGIN_REQ)
- *   GatewayServer → RecordServer                     (REC_LOGIN_VERIFY_REQ)
- *   RecordServer → GatewayServer                     (REC_LOGIN_VERIFY_RSP)
- *   GatewayServer → SuperServer                      (GW_USER_LOGIN_REQ)
+ *   Client → LoginServer                           (C2S_LOGIN_REQ)
+ *   LoginServer → Client                           (S2C_LOGIN_RSP + S2C_GATEWAY_INFO)
+ *   Client → GatewayServer                         (C2S_GATEWAY_AUTH_REQ)
+ *   GatewayServer → RecordServer                   (REC_VALIDATE_TOKEN_REQ)
+ *   RecordServer → LoginServer                     (LOGIN_VERIFY_TOKEN_REQ)
+ *   GatewayServer → SuperServer                    (GW_USER_LOGIN_REQ)
  *   SuperServer → RecordServer                       (REC_LOAD_USER_REQ)
  *   RecordServer → SuperServer                       (REC_LOAD_USER_RSP)
  *   SuperServer → SceneServer                        (SCE_USER_ENTER_REQ)
- *   SceneServer → AOIServer                          (AOI_ENTER_REQ)
- *   SceneServer → GatewayServer                      (SCE_USER_ENTER_RSP)
- *   GatewayServer → Client                           (S2C_LOGIN_RSP / S2C_ENTER_GAME)
+ *   GatewayServer → Client                           (S2C_ENTER_GAME)
  * @endcode
+ *
+ * REC_LOGIN_VERIFY_REQ/RSP（0x1205/0x1206）已废弃，勿再注册 handler。
  */
 
 #pragma once
@@ -116,8 +118,8 @@ enum class InternalMsgID : uint16_t
     REC_LOAD_USER_RSP    = 0x1202,  /**< 用户数据加载响应 */
     REC_SAVE_USER_REQ    = 0x1203,  /**< 保存用户数据到 DB */
     REC_SAVE_USER_RSP    = 0x1204,  /**< 保存结果响应 */
-    REC_LOGIN_VERIFY_REQ = 0x1205,  /**< 账号密码验证请求 */
-    REC_LOGIN_VERIFY_RSP = 0x1206,  /**< 验证结果响应 */
+    REC_LOGIN_VERIFY_REQ = 0x1205,  /**< @deprecated 已废弃；请走 LoginServer+REC_VALIDATE_TOKEN */
+    REC_LOGIN_VERIFY_RSP = 0x1206,  /**< @deprecated 已废弃 */
     REC_RELATION_PRELOAD_REQ = 0x1207, /**< SessionServer → RecordServer: 启动预载 Relation 全表 */
     REC_RELATION_PRELOAD_RSP = 0x1208, /**< RecordServer → SessionServer: 预载响应（变长多行） */
     REC_RELATION_LOAD_REQ    = 0x1209, /**< SessionServer → RecordServer: 单用户 Relation 加载 */
@@ -309,6 +311,7 @@ struct Msg_Log_WriteReq
 
 /**
  * @brief GatewayServer → RecordServer: 登录验证请求
+ * @deprecated 已废弃；生产环境请走 REC_VALIDATE_TOKEN_REQ
  */
 struct Msg_REC_LoginVerifyReq
 {
@@ -319,6 +322,7 @@ struct Msg_REC_LoginVerifyReq
 
 /**
  * @brief RecordServer → GatewayServer: 登录验证响应
+ * @deprecated 已废弃
  */
 struct Msg_REC_LoginVerifyRsp
 {

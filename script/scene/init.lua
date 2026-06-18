@@ -44,11 +44,3 @@ function OnUserLeave(userID)
     EventSystem.Fire("user_leave", userID)
     NpcMgr.OnPlayerLeave(userID)
 end
-
--- ============================================================
---  技能请求（C++ OnSkillReq → Lua）
--- ============================================================
-function OnSkillReq(connID, rawData)
-    log_info(string.format("OnSkillReq: connID=%d dataLen=%d", connID, #rawData))
-    SkillMgr.HandleSkillReq(connID, rawData)
-end

@@ -4,7 +4,11 @@
  */
 
 #pragma once
-#include "../Common/ClientMsg.h"
+#include "../Common/ClientTypes.h"
+#include "../Common/ClientMsgBody.h"
+#include "../Common/LoginMsg.h"
+#include "../Common/MapDataMsg.h"
+#include "../Common/ChatMsg.h"
 #include "GatewayUser.h"
 #include <cstdint>
 #include <cstring>
@@ -39,22 +43,29 @@ public:
             return ValidateResult::BAD_STATE;
         if (len < rule->minLen || len > rule->maxLen)
             return ValidateResult::BAD_LENGTH;
+        if (!clientMsgBodyMatches(module, sub, data, len))
+            return ValidateResult::BAD_PAYLOAD;
         if (rule->needsInWorld && user->getClientState() != ClientState::IN_WORLD)
             return ValidateResult::BAD_STATE;
-        if (rule->checkUserId && len >= static_cast<uint16_t>(sizeof(uint64_t)))
+        if (rule->checkUserId &&
+            len >= static_cast<uint16_t>(sizeof(ClientMsgBodyHead) + sizeof(uint64_t)))
         {
             uint64_t packetUserId = 0;
-            memcpy(&packetUserId, data, sizeof(uint64_t));
+            memcpy(&packetUserId, data + sizeof(ClientMsgBodyHead), sizeof(uint64_t));
             if (user->GetID() != 0 && packetUserId != user->GetID())
                 return ValidateResult::BAD_PAYLOAD;
         }
-        if (module == static_cast<uint8_t>(ClientModule::SCENE) && sub == 0x01)
+        if (module == Msg_C2S_MoveReq::kModule &&
+            sub == static_cast<uint8_t>(SceneMsgSub::C2S_MOVE_REQ))
             return validateMove(data, len);
-        if (module == static_cast<uint8_t>(ClientModule::CHAT) && sub == 0x01)
+        if (module == Msg_C2S_Chat::kModule &&
+            sub == static_cast<uint8_t>(ChatMsgSub::C2S_CHAT_REQ))
             return validateChat(data, len);
-        if (module == static_cast<uint8_t>(ClientModule::LOGIN) && sub == 0x0D)
+        if (module == Msg_C2S_GatewayAuthReq::kModule &&
+            sub == static_cast<uint8_t>(LoginMsgSub::C2S_GATEWAY_AUTH_REQ))
             return validateGatewayAuth(data, len);
-        if (module == static_cast<uint8_t>(ClientModule::LOGIN) && sub == 0x07)
+        if (module == Msg_C2S_CreateUserReq::kModule &&
+            sub == static_cast<uint8_t>(LoginMsgSub::C2S_CREATE_USER_REQ))
             return validateCreateUser(data, len);
         return ValidateResult::OK;
     }
@@ -108,32 +119,28 @@ private:
     static const MsgRule* findRule(uint8_t module, uint8_t sub)
     {
         static const MsgRule kRules[] = {
-            {0x00, 0x01, sizeof(Msg_C2S_LoginReq), sizeof(Msg_C2S_LoginReq),
+            {Msg_C2S_GatewayAuthReq::kModule, Msg_C2S_GatewayAuthReq::kSub,
+             sizeof(Msg_C2S_GatewayAuthReq), sizeof(Msg_C2S_GatewayAuthReq),
              STATE_CONNECTED, false, false},
-            {0x00, 0x03, sizeof(Msg_C2S_RegisterReq), sizeof(Msg_C2S_RegisterReq),
-             STATE_CONNECTED, false, false},
-            {0x00, 0x0D, sizeof(Msg_C2S_GatewayAuthReq), sizeof(Msg_C2S_GatewayAuthReq),
-             STATE_CONNECTED, false, false},
-            {0x00, 0x05, sizeof(Msg_C2S_SelectUserReq), sizeof(Msg_C2S_SelectUserReq),
+            {Msg_C2S_SelectUserReq::kModule, Msg_C2S_SelectUserReq::kSub,
+             sizeof(Msg_C2S_SelectUserReq), sizeof(Msg_C2S_SelectUserReq),
              STATE_ACCOUNT_OK, false, false},
-            {0x00, 0x07, sizeof(Msg_C2S_CreateUserReq), sizeof(Msg_C2S_CreateUserReq),
+            {Msg_C2S_CreateUserReq::kModule, Msg_C2S_CreateUserReq::kSub,
+             sizeof(Msg_C2S_CreateUserReq), sizeof(Msg_C2S_CreateUserReq),
              STATE_ACCOUNT_OK, false, false},
-            {0x0F, 0x01, sizeof(Msg_C2S_Heartbeat), sizeof(Msg_C2S_Heartbeat),
+            {Msg_C2S_Heartbeat::kModule, Msg_C2S_Heartbeat::kSub,
+             sizeof(Msg_C2S_Heartbeat), sizeof(Msg_C2S_Heartbeat),
              STATE_CONNECTED | STATE_AUTHING | STATE_ACCOUNT_OK | STATE_ENTERING | STATE_IN_WORLD,
              false, false},
-            {0x01, 0x01, sizeof(Msg_C2S_MoveReq), sizeof(Msg_C2S_MoveReq),
+            {Msg_C2S_MoveReq::kModule, Msg_C2S_MoveReq::kSub,
+             sizeof(Msg_C2S_MoveReq), sizeof(Msg_C2S_MoveReq),
              STATE_IN_WORLD, true, true},
-            {0x01, 0x07, 16, 64, STATE_IN_WORLD, true, true},
-            {0x02, 0x01, 16, 128, STATE_IN_WORLD, true, true},
-            {0x04, 0x01, 8, 256, STATE_IN_WORLD, true, true},
-            {0x05, 0x01, sizeof(Msg_C2S_Chat), sizeof(Msg_C2S_Chat),
+            {Msg_C2S_Chat::kModule, Msg_C2S_Chat::kSub,
+             sizeof(Msg_C2S_Chat), sizeof(Msg_C2S_Chat),
              STATE_IN_WORLD, true, false},
-            {0x05, 0x03, 16, 320, STATE_IN_WORLD, true, false},
-            {0x06, 0x01, 8, 64, STATE_IN_WORLD, true, false},
-            {0x06, 0x10, 8, 64, STATE_IN_WORLD, true, false},
-            {0x07, 0x01, 8, 32, STATE_IN_WORLD, true, true},
-            {0x07, 0x03, 8, 32, STATE_IN_WORLD, true, true},
-            {0x08, 0x01, 8, 64, STATE_IN_WORLD, true, true},
+            {Msg_C2S_NpcTalkReq::kModule, Msg_C2S_NpcTalkReq::kSub,
+             sizeof(Msg_C2S_NpcTalkReq), sizeof(Msg_C2S_NpcTalkReq),
+             STATE_IN_WORLD, true, true},
         };
         for (const auto& rule : kRules)
         {

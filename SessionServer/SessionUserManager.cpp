@@ -57,18 +57,3 @@ void SessionUserManager::forEach(
     for (const auto& kv : m_users)
         fn(kv.first, kv.second);
 }
-
-void SessionUserManager::pushOfflineMsg(UserID toId, uint16_t msgId, const char* data, uint16_t len)
-{
-    OfflineMsg msg;
-    msg.toId  = toId;
-    msg.msgId = msgId;
-    if (data && len > 0)
-        msg.data.assign(data, data + len);
-    m_offlineMsgs[toId].push_back(std::move(msg));
-}
-
-std::vector<OfflineMsg>& SessionUserManager::offlineMsgs(UserID toId)
-{
-    return m_offlineMsgs[toId];
-}
