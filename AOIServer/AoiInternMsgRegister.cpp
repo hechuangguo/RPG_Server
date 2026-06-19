@@ -11,6 +11,9 @@
 void AoiInternMsgRegister(AOIServer& server)
 {
     auto& d = MsgDispatcher::Instance();
+    d.Register(static_cast<uint16_t>(InternalMsgID::S2S_HEARTBEAT_ACK),
+               [](uint32_t, const char*, uint16_t) {});
+
     registerInternalSized<AOIServer, Msg_AOI_Move>(
         d, &server, static_cast<uint16_t>(InternalMsgID::AOI_ENTER_REQ), &AOIServer::onEnter);
     registerInternalSized<AOIServer, uint64_t>(

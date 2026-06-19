@@ -18,6 +18,7 @@
 #include "../sdk/net/ClientWireSend.h"
 
 #include <cstring>
+#include <string>
 #include <vector>
 
 LoginAuthService::LoginAuthService(LoginServer& owner)
@@ -274,7 +275,13 @@ void LoginAuthService::sendGatewayInfo(ConnID connID, int32_t code, const char* 
                     LoginGatewayEntry gw;
                     if (registry.pickByZone(zoneId, gameType, gw))
                     {
-                        copyToWire(info.gatewayIP, sizeof(info.gatewayIP), gw.ip.c_str());
+                        std::string clientGatewayIp = gw.ip;
+                        if (clientGatewayIp.empty() || clientGatewayIp == "127.0.0.1" ||
+                            clientGatewayIp == "0.0.0.0")
+                        {
+                            clientGatewayIp = zone.ip;
+                        }
+                        copyToWire(info.gatewayIP, sizeof(info.gatewayIP), clientGatewayIp.c_str());
                         info.gatewayPort = gw.port;
                         if (!zone.name.empty())
                             copyToWire(info.msg, sizeof(info.msg), zone.name.c_str());

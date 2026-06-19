@@ -48,7 +48,7 @@ UPDATE CharBase SET
 WHERE name = 'test002';
 
 UPDATE CharBase SET
-    level = 10, vocation = 3, sex = 2, map_id = 2001,
+    level = 10, vocation = 3, sex = 1, map_id = 2001,
     pos_x = 22, pos_y = 0, pos_z = 16,
     hp = 260, max_hp = 300, mp = 180, max_mp = 220, gold = 12000
 WHERE name = 'test003';

@@ -6,6 +6,7 @@
 #include "LoginGameZoneAuthMsg.h"
 #include "LoginServer.h"
 #include "../sdk/log/Logger.h"
+#include "../sdk/util/GameZoneReply.h"
 #include "../sdk/util/MsgHandlerBinder.h"
 #include "../sdk/util/WireStringUtil.h"
 #include "../protocal/InternalMsg.h"
@@ -14,6 +15,28 @@
 
 namespace
 {
+
+void sendVerifyTokenForwardRsp(LoginServer& server, ConnID fromConn,
+                               const Msg_Login_VerifyTokenRsp& rsp)
+{
+    const GameZoneForwardContext* ctx = gameZoneCurrentForwardContext(fromConn);
+    if (!ctx)
+    {
+        LOG_WARN("登录服票据校验回包丢弃: 无 EXT_GAMEZONE 上下文 conn=%u innerSeq=%u",
+                 fromConn, rsp.requestSeq);
+        return;
+    }
+    const int32_t envelopeCode = rsp.code;
+    const void* innerBody = envelopeCode == 0 ? static_cast<const void*>(&rsp) : nullptr;
+    const uint16_t innerLen =
+        envelopeCode == 0 ? static_cast<uint16_t>(sizeof(rsp)) : 0;
+    if (!gameZoneSendForwardRsp(server.registerServer(), fromConn, ctx->reqHdr, envelopeCode,
+                                innerBody, innerLen))
+    {
+        LOG_WARN("登录服票据校验回包发送失败: conn=%u fwdSeq=%u innerSeq=%u",
+                 fromConn, ctx->reqHdr.seq, rsp.requestSeq);
+    }
+}
 
 void onVerifyTokenReq(LoginServer& server, ConnID fromConn, const Msg_Login_VerifyTokenReq& req)
 {
@@ -25,9 +48,7 @@ void onVerifyTokenReq(LoginServer& server, ConnID fromConn, const Msg_Login_Veri
     MYSQL* db = server.db();
     if (!db)
     {
-        server.registerServer().SendMsg(fromConn,
-            static_cast<uint16_t>(InternalMsgID::LOGIN_VERIFY_TOKEN_RSP),
-            reinterpret_cast<char*>(&rsp), sizeof(rsp));
+        sendVerifyTokenForwardRsp(server, fromConn, rsp);
         return;
     }
 
@@ -35,9 +56,7 @@ void onVerifyTokenReq(LoginServer& server, ConnID fromConn, const Msg_Login_Veri
     copyToWire(token, sizeof(token), req.loginToken);
     if (token[0] == '\0')
     {
-        server.registerServer().SendMsg(fromConn,
-            static_cast<uint16_t>(InternalMsgID::LOGIN_VERIFY_TOKEN_RSP),
-            reinterpret_cast<char*>(&rsp), sizeof(rsp));
+        sendVerifyTokenForwardRsp(server, fromConn, rsp);
         return;
     }
 
@@ -69,9 +88,18 @@ void onVerifyTokenReq(LoginServer& server, ConnID fromConn, const Msg_Login_Veri
         LOG_ERR("登录服票据校验 SQL 失败: %s", mysql_error(db));
     }
 
-    server.registerServer().SendMsg(fromConn,
-        static_cast<uint16_t>(InternalMsgID::LOGIN_VERIFY_TOKEN_RSP),
-        reinterpret_cast<char*>(&rsp), sizeof(rsp));
+    if (rsp.code == 0)
+    {
+        LOG_INFO("登录服票据校验成功: seq=%u accid=%llu zone=%u",
+                 rsp.requestSeq, static_cast<unsigned long long>(rsp.accid), req.zoneId);
+    }
+    else
+    {
+        LOG_WARN("登录服票据校验失败: seq=%u zone=%u gameType=%u",
+                 rsp.requestSeq, req.zoneId, req.gameType);
+    }
+
+    sendVerifyTokenForwardRsp(server, fromConn, rsp);
 }
 
 void onUpdateLastUserReq(LoginServer& server, ConnID /*fromConn*/,

@@ -136,8 +136,9 @@ void RecordServer::sendHeartbeat()
                           reinterpret_cast<char*>(&hb), sizeof(hb));
 }
 
-void RecordServer::onLoadUser(ConnID fromConn, const char* data, uint16_t len)
+void RecordServer::onLoadUser(ConnID /*fromConn*/, const char* data, uint16_t len)
 {
+    // Super 经 Record→Super 出站连接下发 REC_LOAD_USER_REQ，须同连接回包（m_superClient）
     if (len < sizeof(UserID))
     {
         return;
@@ -155,8 +156,8 @@ void RecordServer::onLoadUser(ConnID fromConn, const char* data, uint16_t len)
     if (!user)
     {
         hdr.code = -1;
-        m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::REC_LOAD_USER_RSP,
-                         reinterpret_cast<char*>(&hdr), sizeof(hdr));
+        m_superClient.SendMsg((uint16_t)InternalMsgID::REC_LOAD_USER_RSP,
+                              reinterpret_cast<char*>(&hdr), sizeof(hdr));
         return;
     }
 
@@ -181,12 +182,13 @@ void RecordServer::onLoadUser(ConnID fromConn, const char* data, uint16_t len)
     std::vector<char> buf(sizeof(hdr) + sizeof(wire));
     memcpy(buf.data(), &hdr, sizeof(hdr));
     memcpy(buf.data() + sizeof(hdr), &wire, sizeof(wire));
-    m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::REC_LOAD_USER_RSP,
-                     buf.data(), (uint16_t)buf.size());
+    m_superClient.SendMsg((uint16_t)InternalMsgID::REC_LOAD_USER_RSP,
+                          buf.data(), static_cast<uint16_t>(buf.size()));
 }
 
 void RecordServer::onSaveUser(ConnID fromConn, const char* data, uint16_t len)
 {
+    // Scene 直连 Record Listen 口（m_server）发 REC_SAVE_USER_REQ，须同连接回包
     UserID rid = INVALID_USER_ID;
 
     if (len >= sizeof(Msg_REC_SaveUserReq))
@@ -222,7 +224,7 @@ void RecordServer::onSaveUser(ConnID fromConn, const char* data, uint16_t len)
     Msg_REC_LoadUserRsp rsp{};
     rsp.code = 0;
     rsp.userID = rid;
-    m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::REC_SAVE_USER_RSP,
+    m_server.SendMsg(fromConn, static_cast<uint16_t>(InternalMsgID::REC_SAVE_USER_RSP),
                      reinterpret_cast<char*>(&rsp), sizeof(rsp));
 }
 
@@ -384,10 +386,75 @@ void RecordServer::onValidateTokenReq(ConnID fromConn, const Msg_REC_ValidateTok
         m_pendingVerifyToken.erase(verifyReq.requestSeq);
         Msg_REC_ValidateTokenRsp failRsp{};
         failRsp.code = 1;
+        failRsp.accid = 0;
         failRsp.gatewayConnID = req.gatewayConnID;
         m_server.SendMsg(fromConn, static_cast<uint16_t>(InternalMsgID::REC_VALIDATE_TOKEN_RSP),
                          reinterpret_cast<char*>(&failRsp), sizeof(failRsp));
     }
+}
+
+void RecordServer::onLoginVerifyTokenExternFail(uint32_t requestSeq)
+{
+    auto it = m_pendingVerifyToken.find(requestSeq);
+    if (it == m_pendingVerifyToken.end())
+        return;
+
+    Msg_REC_ValidateTokenRsp failRsp{};
+    failRsp.code = 1;
+    failRsp.accid = 0;
+    failRsp.gatewayConnID = it->second.gatewayConnID;
+    m_server.SendMsg(it->second.replyConn,
+                     static_cast<uint16_t>(InternalMsgID::REC_VALIDATE_TOKEN_RSP),
+                     reinterpret_cast<char*>(&failRsp), sizeof(failRsp));
+    m_pendingVerifyToken.erase(it);
+    LOG_WARN("票据校验外联回包失败: seq=%u", requestSeq);
+}
+
+void RecordServer::onExternForwardRsp(ConnID /*fromConn*/, const char* data, uint16_t len)
+{
+    if (len < sizeof(Msg_SS_ExternForwardRsp))
+        return;
+
+    const auto* hdr = reinterpret_cast<const Msg_SS_ExternForwardRsp*>(data);
+    const char* body = data + sizeof(Msg_SS_ExternForwardRsp);
+    if (len < sizeof(Msg_SS_ExternForwardRsp) + hdr->dataLen)
+        return;
+
+    if (hdr->innerMsgId != static_cast<uint16_t>(InternalMsgID::LOGIN_VERIFY_TOKEN_REQ))
+        return;
+
+    if (hdr->seq == 0)
+    {
+        LOG_WARN("外联转发回包丢弃: seq=0 inner=LOGIN_VERIFY_TOKEN");
+        return;
+    }
+
+    if (hdr->code != 0 ||
+        hdr->dataLen < sizeof(Msg_Login_VerifyTokenRsp))
+    {
+        if (m_pendingVerifyToken.find(hdr->seq) == m_pendingVerifyToken.end())
+        {
+            LOG_WARN("外联转发失败回包无待处理项: seq=%u code=%d", hdr->seq, hdr->code);
+            return;
+        }
+        onLoginVerifyTokenExternFail(hdr->seq);
+        return;
+    }
+
+    const auto& inner = *reinterpret_cast<const Msg_Login_VerifyTokenRsp*>(body);
+    if (inner.requestSeq != hdr->seq)
+    {
+        LOG_WARN("外联转发回包 seq 不一致，丢弃: fwdSeq=%u innerSeq=%u",
+                 hdr->seq, inner.requestSeq);
+        return;
+    }
+    if (m_pendingVerifyToken.find(hdr->seq) == m_pendingVerifyToken.end())
+    {
+        LOG_WARN("票据校验回包无待处理项: seq=%u", hdr->seq);
+        return;
+    }
+
+    onLoginVerifyTokenRsp(INVALID_CONN_ID, inner);
 }
 
 void RecordServer::onLoginVerifyTokenRsp(ConnID /*fromConn*/, const Msg_Login_VerifyTokenRsp& rsp)
@@ -426,6 +493,7 @@ void RecordServer::CleanupPendingVerifyTokenTimeout()
             continue;
         Msg_REC_ValidateTokenRsp rsp{};
         rsp.code = 1;
+        rsp.accid = 0;
         rsp.gatewayConnID = it->second.gatewayConnID;
         m_server.SendMsg(it->second.replyConn,
                          static_cast<uint16_t>(InternalMsgID::REC_VALIDATE_TOKEN_RSP),

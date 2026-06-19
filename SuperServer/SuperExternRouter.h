@@ -6,7 +6,7 @@
  *   - 区内服 → Super：SS_EXTERN_FWD_REQ（Msg_SS_ExternForward + inner body）
  *   - Super → 独立服：EXT_GAMEZONE_FWD_REQ（同信封，SuperExternSendToExtern）
  *   - 独立服 → Super：EXT_GAMEZONE_FWD_RSP（需应答业务）
- *   - Super → 区内服：SS_EXTERN_FWD_RSP（按 sourceServerType 查子服连接）
+ *   - Super → 区内服：SS_EXTERN_FWD_RSP（按 RSP.targetServerType 路由；该字段存原请求区内服类型）
  */
 
 #pragma once

@@ -152,7 +152,13 @@ private:
     void onListCharactersRsp(ConnID fromConn, const char* data, uint16_t len);
     void onCreateCharacterRsp(ConnID fromConn, const Msg_REC_CreateCharacterRsp& rsp);
 
-    void sendUserListToClient(ConnID clientConn, uint64_t accid, uint32_t zoneId);
+    /**
+     * @brief 向客户端推送/刷新角色列表
+     * @param notifyClientOnRecordDown 为 true 且 Record 未连接时下发 S2C_USER_LIST code=-1
+     * @return Record 已连接并成功发出 REC_LIST_CHARACTERS_REQ 时 true
+     */
+    bool sendUserListToClient(ConnID clientConn, uint64_t accid, uint32_t zoneId,
+                              bool notifyClientOnRecordDown = true);
 
     /**
      * @brief 处理客户端心跳

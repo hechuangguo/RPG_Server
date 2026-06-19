@@ -341,7 +341,7 @@ void SessionServer::onSceneUnregister(ConnID /*fromConn*/, const Msg_SES_SceneUn
     SessionSceneManager::Instance().unregisterScene(req.sceneInstanceId, req.sceneServerId);
 }
 
-void SessionServer::onResolveMapReq(ConnID fromConn, const Msg_SES_ResolveMapReq& req)
+void SessionServer::onResolveMapReq(ConnID /*fromConn*/, const Msg_SES_ResolveMapReq& req)
 {
     Msg_SES_ResolveMapRsp rsp{};
     rsp.userID = req.userID;
@@ -349,8 +349,10 @@ void SessionServer::onResolveMapReq(ConnID fromConn, const Msg_SES_ResolveMapReq
     rsp.sceneServerId = SessionSceneManager::Instance().resolveSceneServerByMapId(req.mapId);
     rsp.code = rsp.sceneServerId != 0 ? 0 : -1;
 
-    m_server.SendMsg(fromConn, static_cast<uint16_t>(InternalMsgID::SES_RESOLVE_MAP_RSP),
-                     reinterpret_cast<char*>(&rsp), sizeof(rsp));
+    // Super 经 Session 的 superClient 入站下发 SES_RESOLVE_MAP_REQ，须同 superClient 回包
+    // （勿用 m_server.SendMsg(fromConn)：fromConn 为 listen 口 conn，与 Super 链路无关）
+    m_superClient.SendMsg(static_cast<uint16_t>(InternalMsgID::SES_RESOLVE_MAP_RSP),
+                          reinterpret_cast<char*>(&rsp), sizeof(rsp));
     LOG_INFO("地图解析结果: user=%llu map=%u -> sceneServerId=%u code=%d",
              req.userID, req.mapId, rsp.sceneServerId, rsp.code);
 }

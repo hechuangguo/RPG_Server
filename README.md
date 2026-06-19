@@ -311,19 +311,20 @@ SceneServer::Instance()->requestCreateCopy(
 
 ## 登录流程
 
-**区内直连（默认）**：
+**两阶段（推荐）**：Client → LoginServer（9010）→ `S2C_GATEWAY_INFO` → Gateway（9005）。详见 [docs/EXTERNAL.md](docs/EXTERNAL.md)。
+
+**Gateway 阶段（选角/创角/进世界）**：
 
 ```
-Client ──[module=0x00 Login]──► Gateway（本地校验）
-         ──► Record（验证）──► Super
-         ──► Record（加载用户）──► Session（SES_RESOLVE_MAP 按 mapId 选 SceneServer）
-         ──► Scene（SCE_USER_ENTER）──► AOI
-Client ◄── Gateway ◄── Super ◄── Scene（S2C_LOGIN_RSP + S2C_ENTER_GAME）
+Client ──► Gateway（票据鉴权 + S2C_USER_LIST）
+         ──► Record（创角/加载）──► Super
+         ──► Session（SES_RESOLVE_MAP）──► Scene（SCE_USER_ENTER）──► AOI
+Client ◄── Gateway ◄── Super ◄── Scene（S2C_LOGIN_RSP + S2C_ENTER_GAME + S2C_SPAWN_ENTITY）
 ```
 
-Gateway 登录成功后按 `sceneServerId` 绑定 `GatewayUser`，上行 SCENE 模块经 `SceneClient` 转发到对应 SceneServer（无 `firstConnected` 兜底）。
+完整 UI 对照见 [docs/LOGIN_CHAR_FLOW.md](docs/LOGIN_CHAR_FLOW.md)。
 
-**两阶段（可选）**：Client → LoginServer（9010）→ `S2C_GATEWAY_INFO` → Gateway。详见 [docs/EXTERNAL.md](docs/EXTERNAL.md)。
+Gateway 进世界成功后按 `sceneServerId` 绑定 `GatewayUser`，上行 SCENE 模块经 `SceneClient` 转发到对应 SceneServer。
 
 登录后玩法包 ──► Gateway（Validator）──► Scene 或 Session（Router）
 

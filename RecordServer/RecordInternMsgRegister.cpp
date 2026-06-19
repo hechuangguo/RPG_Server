@@ -12,6 +12,9 @@
 void RecordInternMsgRegister(RecordServer& server)
 {
     auto& d = MsgDispatcher::Instance();
+    d.Register(static_cast<uint16_t>(InternalMsgID::S2S_HEARTBEAT_ACK),
+               [](uint32_t, const char*, uint16_t) {});
+
     registerInternalSized<RecordServer, UserID>(
         d, &server, static_cast<uint16_t>(InternalMsgID::REC_LOAD_USER_REQ),
         &RecordServer::onLoadUser);
@@ -30,6 +33,9 @@ void RecordInternMsgRegister(RecordServer& server)
     registerInternal(d, &server,
                      static_cast<uint16_t>(InternalMsgID::REC_VALIDATE_TOKEN_REQ),
                      &RecordServer::onValidateTokenReq);
+    registerInternalRaw(d, &server,
+                        static_cast<uint16_t>(InternalMsgID::SS_EXTERN_FWD_RSP),
+                        &RecordServer::onExternForwardRsp);
     registerInternal(d, &server,
                      static_cast<uint16_t>(InternalMsgID::REC_VERIFY_TOKEN_RSP),
                      &RecordServer::onLoginVerifyTokenRsp);

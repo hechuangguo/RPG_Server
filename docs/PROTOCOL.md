@@ -147,6 +147,7 @@
 | 1 | NAME_EXISTS | 角色名重复 |
 | 2 | LIMIT_REACHED | 达每账号每区角色上限 |
 | 3 | INVALID_NAME | 角色名非法 |
+| 4 | INVALID_VOCATION | 职业或性别非法 |
 
 ### 2.4 Gateway 校验错误码
 
@@ -214,7 +215,17 @@ sequenceDiagram
     REC-->>GW: REC_VALIDATE_TOKEN_RSP(accid)
     GW->>REC: REC_LIST_CHARACTERS_REQ
     REC-->>GW: REC_LIST_CHARACTERS_RSP
+    GW-->>C: S2C_LOGIN_RSP authOK
+    GW->>R: REC_LIST_CHARACTERS_REQ
+    REC-->>GW: REC_LIST_CHARACTERS_RSP
     GW-->>C: S2C_USER_LIST
+    opt 创建角色
+        C->>GW: C2S_CREATE_USER_REQ
+        GW->>R: REC_CREATE_CHARACTER_REQ
+        REC-->>GW: REC_CREATE_CHARACTER_RSP
+        GW-->>C: S2C_CREATE_USER_RSP
+        GW-->>C: S2C_USER_LIST refresh
+    end
     C->>GW: C2S_SELECT_USER_REQ
     GW->>SS: GW_USER_LOGIN_REQ(Msg_GW_UserEnterReq)
     SS->>REC: REC_LOAD_USER_REQ
@@ -225,7 +236,10 @@ sequenceDiagram
     SCE-->>SS: SCE_USER_ENTER_RSP
     SS-->>GW: GW_USER_LOGIN_RSP
     GW-->>C: S2C_LOGIN_RSP + S2C_ENTER_GAME
+    Note over Sc,C: Scene 经 GW_SEND_TO_CLIENT 下发 S2C_SPAWN_ENTITY
 ```
+
+完整 UI 对照见 [LOGIN_CHAR_FLOW.md](LOGIN_CHAR_FLOW.md)。
 
 ### 4.3 场景/副本登记
 

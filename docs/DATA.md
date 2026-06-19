@@ -17,7 +17,7 @@
 
 | 库 | 配置来源 | 连接进程 | 表 |
 |----|----------|----------|-----|
-| **rpg_login** | `LoginServer/extern_login.xml` | LoginServer | GameUser, ZoneInfo |
+| **rpg_login** | `LoginServer/extern_login.xml` | LoginServer | GameUser, ZoneInfo, LoginSession |
 | **rpg_game** | `config/config.xml` | SuperServer, RecordServer, SessionServer | CharBase, Relation, Friend, Mail, MapInfo, ServerList |
 | **rpg_global** | `GlobalServer/extern_global.xml` | GlobalServer | AllLittleThing |
 
@@ -27,6 +27,7 @@
 |----|-----|----------|----------|----------|
 | **GameUser** | rpg_login | 账号主表（账号/密码哈希/区号/绑定角色） | LoginServer | **已实现** |
 | **ZoneInfo** | rpg_login | 登录区入口参考/种子 | LoginServer `ZoneInfoStore`（运行时读 serverlist.xml） | **已实现** |
+| **LoginSession** | rpg_login | Gateway 鉴权 loginToken（一次性） | LoginServer 写 / Record 经 Login 校验 | **已实现** |
 | **CharBase** | rpg_game | 角色基础；`` `binary` `` 存 bag/skills/buffs/quests | RecordServer | **已实现** |
 | **Relation** | rpg_game | 好友/黑名单 JSON + 社交扩展 `` `binary` `` | RecordServer ↔ SessionServer | **已实现** |
 | **Friend** | rpg_game | 双向好友/黑名单行 | — | **仅 DDL** |
@@ -42,14 +43,16 @@
 | 字段 | 说明 |
 |------|------|
 | `user_id` | 自增主键 |
-| `name` | 角色名，**全局唯一**；登录验证按 name 查找/创建 |
+| `accid` | 所属账号 ID（LoginServer `GameUser.accid`） |
+| `gamezone` | 区服 ID（与登录所选 zone 一致） |
+| `name` | 角色名，**全局唯一** |
 | `level`, `vocation`, `sex` | 基础属性 |
 | `map_id`, `pos_x/y/z` | 位置 |
 | `hp`, `max_hp`, `mp`, `max_mp`, `gold` | 战斗/货币 |
 | `` `binary` `` | 包裹/技能/Buff/任务等序列化 blob |
 | `create_time`, `update_time` | 时间戳 |
 
-**登录语义**：角色持久化由 Record 维护；账号密码校验已迁移至 LoginServer `GameUser`（bcrypt）。
+**登录语义**：账号密码在 LoginServer `GameUser` 校验；角色列表/创角/选角在 Gateway → Record `CharBase`（按 `accid`+`gamezone`）。流程见 [LOGIN_CHAR_FLOW.md](LOGIN_CHAR_FLOW.md)。
 
 ### 1.2 GameUser
 

@@ -18,6 +18,12 @@ constexpr float DEFAULT_NEWBIE_SPAWN_Z = 100.f;
 /** @brief 每账号每区最大角色数 */
 constexpr uint32_t MAX_CHARACTERS_PER_ACCOUNT = 3;
 
+/** @brief 职业 ID 上限（0=战士 1=法师 2=弓手 3=刺客，与 UserBaseWire 一致） */
+constexpr uint8_t MAX_VOCATION_ID = 3;
+
+/** @brief 性别 ID 上限（0=男 1=女） */
+constexpr uint8_t MAX_SEX_ID = 1;
+
 /** @brief LoginServer 下发给 Gateway 的 loginToken 有效期（秒） */
 constexpr uint32_t LOGIN_TOKEN_TTL_SEC = 300;
 

@@ -120,6 +120,13 @@ void RecordCharService::createCharacter(MYSQL* db, const Msg_REC_CreateCharacter
                      "角色名非法");
         return;
     }
+    if (req.vocation > MAX_VOCATION_ID || req.sex > MAX_SEX_ID)
+    {
+        rsp.code = static_cast<int32_t>(CreateCharacterError::INVALID_VOCATION);
+        logLoginFlow(LoginFlowPhase::CHAR_CREATE, req.accid, 0, req.gatewayConnID, rsp.code,
+                     "职业或性别非法");
+        return;
+    }
 
     char sql[512];
     snprintf(sql, sizeof(sql),

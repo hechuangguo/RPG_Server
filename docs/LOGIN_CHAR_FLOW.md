@@ -1,0 +1,157 @@
+# 角色选择 → 创角 → 进游戏流程
+
+本文档描述客户端 UI 六步与服务器协议、Gateway 状态机的对应关系。协议细节见 [PROTOCOL.md](PROTOCOL.md) §2.2、§4.2。
+
+---
+
+## 1. 客户端 UI 与服务端步骤
+
+| UI 步骤 | 客户端动作 | 服务端处理 | 关键消息 |
+|---------|-----------|-----------|---------|
+| 1 登录后进选角 | Login 9010 登录 → 断开 → 连 Gateway 9005 | LoginServer 发 token；Gateway 鉴权 | `C2S_LOGIN_REQ` → `S2C_LOGIN_RSP` + `S2C_GATEWAY_INFO`；`C2S_GATEWAY_AUTH_REQ` |
+| 2 右上角角色列表 | 等待列表 | Gateway 鉴权成功后**主动推送**（无 `C2S_USER_LIST_REQ`） | `S2C_USER_LIST`（变长，`count` 条 `EntryWire`） |
+| 3 无角色点「创建角色」 | 打开创角 UI | Gateway 校验 `ACCOUNT_OK` | — |
+| 4 输入名字 + 选职业 | 发创角包 | Gateway → Record 写 `CharBase` | `C2S_CREATE_USER_REQ` → `S2C_CREATE_USER_RSP`；成功后刷新 `S2C_USER_LIST` |
+| 5 选中角色点「进入游戏」 | 发选角包 | Gateway → Super 编排进 Scene | `C2S_SELECT_USER_REQ` |
+| 6 加载地图/角色 | 收进世界 + AOI | Scene 下发实体 | `S2C_LOGIN_RSP` + `S2C_ENTER_GAME`；`S2C_SPAWN_ENTITY` |
+
+---
+
+## 2. Gateway 连接状态机
+
+定义于 [`GatewayServer/GatewayUser.h`](../GatewayServer/GatewayUser.h)：
+
+```
+CONNECTED → AUTHING → ACCOUNT_OK → ENTERING → IN_WORLD
+```
+
+| 状态 | 允许的上行消息 |
+|------|----------------|
+| `CONNECTED` | `C2S_GATEWAY_AUTH_REQ`、心跳 |
+| `AUTHING` | 心跳（鉴权等待中） |
+| `ACCOUNT_OK` | `C2S_CREATE_USER_REQ`、`C2S_SELECT_USER_REQ`、心跳 |
+| `ENTERING` | 心跳（进世界中，选角/创角被拒） |
+| `IN_WORLD` | 场景/战斗/聊天等（经 Validator 白名单） |
+
+鉴权成功后 Gateway 置 `ACCOUNT_OK` 并请求 Record 拉列表；创角成功后会刷新列表，并允许在列表包到达前选角（`roleListReady` + `ownedRoleIds`）。
+
+---
+
+## 3. 完整时序（含 Session / Scene）
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant L as LoginServer
+    participant G as GatewayServer
+    participant R as RecordServer
+    participant S as SuperServer
+    participant Ses as SessionServer
+    participant Sc as SceneServer
+
+    C->>L: C2S_LOGIN_REQ
+    L->>C: S2C_LOGIN_RSP + S2C_GATEWAY_INFO
+    C->>G: C2S_GATEWAY_AUTH_REQ
+    G->>R: REC_VALIDATE_TOKEN_REQ
+    R->>L: LOGIN_VERIFY_TOKEN_REQ via EXT_GAMEZONE
+    L->>R: EXT_GAMEZONE_FWD_RSP
+    R->>G: REC_VALIDATE_TOKEN_RSP
+    G->>C: S2C_LOGIN_RSP authOK
+    G->>R: REC_LIST_CHARACTERS_REQ
+    R->>G: REC_LIST_CHARACTERS_RSP
+    G->>C: S2C_USER_LIST
+
+    opt 创建角色
+        C->>G: C2S_CREATE_USER_REQ
+        G->>R: REC_CREATE_CHARACTER_REQ
+        R->>G: REC_CREATE_CHARACTER_RSP
+        G->>C: S2C_CREATE_USER_RSP
+        G->>C: S2C_USER_LIST refresh
+    end
+
+    C->>G: C2S_SELECT_USER_REQ
+    G->>S: GW_USER_LOGIN_REQ
+    S->>R: REC_LOAD_USER_REQ
+    R->>S: REC_LOAD_USER_RSP
+    S->>Ses: SES_RESOLVE_MAP_REQ
+    Ses->>S: SES_RESOLVE_MAP_RSP
+    S->>Sc: SCE_USER_ENTER_REQ
+    Sc->>C: S2C_SPAWN_ENTITY via GW
+    Sc->>S: SCE_USER_ENTER_RSP
+    S->>G: GW_USER_LOGIN_RSP
+    G->>C: S2C_LOGIN_RSP + S2C_ENTER_GAME
+```
+
+---
+
+## 4. 关键 wire 字段
+
+### 4.1 创角 `C2S_CREATE_USER_REQ`
+
+| 字段 | 说明 |
+|------|------|
+| `name` | 2–16 字符，字母数字下划线 |
+| `vocation` | 职业 ID：0=战士 1=法师 2=弓手 3=刺客（见 `LoginSpawnConfig.h` `MAX_VOCATION_ID`） |
+| `sex` | 0=男 1=女（`MAX_SEX_ID`） |
+
+每账号每区最多 **3** 个角色（`MAX_CHARACTERS_PER_ACCOUNT`）。新角色出生在 map **1001**，坐标见 `LoginSpawnConfig.h`。
+
+### 4.2 选角 `C2S_SELECT_USER_REQ`
+
+| 字段 | 说明 |
+|------|------|
+| `userID` | 须属于当前 `accid` 且已在 Gateway 缓存的 `ownedRoleIds` |
+| `loginTxnId` | 幂等事务 ID；非 0 时 Super 对重复请求去重 |
+
+### 4.3 `S2C_LOGIN_RSP` 复用
+
+同一消息用于三处，客户端需结合 **Gateway 状态** 与 `code` 区分：
+
+| 时机 | `code` | 含义 |
+|------|--------|------|
+| Gateway 鉴权成功 | 0 | 可进入选角/创角 UI |
+| 进世界成功 | 0 | 已 `IN_WORLD`，随后收 `S2C_ENTER_GAME` |
+| 鉴权/进世界失败 | 非 0 | 见 `GatewayAuthError` / `SuperEnterError` |
+
+---
+
+## 5. 错误码速查
+
+### CreateCharacterError（`S2C_CREATE_USER_RSP.code`）
+
+| 值 | 名称 | 含义 |
+|----|------|------|
+| -1 | SYSTEM_ERROR | 系统/DB 失败 |
+| 0 | OK | 成功 |
+| 1 | NAME_EXISTS | 重名 |
+| 2 | LIMIT_REACHED | 达上限（3/区） |
+| 3 | INVALID_NAME | 名非法 |
+| 4 | INVALID_VOCATION | 职业或性别非法 |
+
+### SuperEnterError（进世界失败，`S2C_LOGIN_RSP.code`）
+
+见 [PROTOCOL.md](PROTOCOL.md) §2.3 与 `sdk/util/LoginEnterErrorCode.h`。
+
+### GatewayValidateCode（`S2C_ERROR.code`）
+
+状态/包长/字段非法时 Gateway 本地拒收。
+
+---
+
+## 6. 本地冒烟
+
+```bash
+./RunServer.sh && ./RunServer.sh login
+python3 scripts/test_login_gateway_e2e.py autotest_e2e test1234
+```
+
+期望：`gateway.log` 出现 `鉴权成功` → `phase=角色列表` → `选角进世界` → `进入游戏成功`。
+
+---
+
+## 7. 后续（未实现）
+
+- 客户端主动 `C2S_USER_LIST_REQ` 刷新列表
+- `S2C_ENTER_MAP`（当前用 `S2C_ENTER_GAME` + `S2C_SPAWN_ENTITY`）
+- 进世界预加载背包/技能/任务（Scene `load()` 仍为 stub）
+- 职业表 DataDoc 化（当前为常量 ID）

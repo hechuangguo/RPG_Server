@@ -31,7 +31,8 @@ enum class CreateCharacterError : int32_t
     OK            = 0,  /**< 成功 */
     NAME_EXISTS   = 1,  /**< 角色名重复 */
     LIMIT_REACHED = 2,  /**< 达每区角色上限 */
-    INVALID_NAME  = 3,  /**< 名非法 */
+    INVALID_NAME    = 3,  /**< 名非法 */
+    INVALID_VOCATION = 4, /**< 职业或性别非法 */
 };
 
 /**

@@ -446,13 +446,24 @@ void GatewayServer::onCreateUser(ConnID connID, const char* data, uint16_t len)
     logLoginFlow(LoginFlowPhase::CHAR_CREATE, user->getAccid(), 0, connID, 0, req->name);
 }
 
-void GatewayServer::sendUserListToClient(ConnID clientConn, uint64_t accid, uint32_t zoneId)
+bool GatewayServer::sendUserListToClient(ConnID clientConn, uint64_t accid, uint32_t zoneId,
+                                         bool notifyClientOnRecordDown)
 {
     if (!m_recordClient.IsConnected())
     {
         LOG_WARN("请求角色列表失败: Record 未连接 conn=%u accid=%llu",
                  clientConn, static_cast<unsigned long long>(accid));
-        return;
+        if (notifyClientOnRecordDown)
+        {
+            Msg_S2C_UserListHeader outHdr{};
+            initClientMsg(outHdr);
+            outHdr.code = -1;
+            outHdr.count = 0;
+            m_clientServer.SendMsg(clientConn, Msg_S2C_UserListHeader::kModule,
+                                   Msg_S2C_UserListHeader::kSub,
+                                   reinterpret_cast<char*>(&outHdr), sizeof(outHdr));
+        }
+        return false;
     }
     Msg_REC_ListCharactersReq listReq{};
     listReq.accid = accid;
@@ -460,6 +471,7 @@ void GatewayServer::sendUserListToClient(ConnID clientConn, uint64_t accid, uint
     listReq.gatewayConnID = clientConn;
     m_recordClient.SendMsg(static_cast<uint16_t>(InternalMsgID::REC_LIST_CHARACTERS_REQ),
                            reinterpret_cast<char*>(&listReq), sizeof(listReq));
+    return true;
 }
 
 void GatewayServer::onValidateTokenRsp(ConnID /*fromConn*/, const Msg_REC_ValidateTokenRsp& rsp)
@@ -487,9 +499,28 @@ void GatewayServer::onValidateTokenRsp(ConnID /*fromConn*/, const Msg_REC_Valida
         return;
     }
 
+    user->setRoleListReady(false);
+
+    // Record 不可达：下发 S2C_USER_LIST code=-1（与创角后刷新一致）并 S2C_LOGIN_RSP code=-1
+    if (!sendUserListToClient(clientConn, rsp.accid, user->getZoneId(), true))
+    {
+        user->setClientState(ClientState::CONNECTED);
+        Msg_S2C_LoginRsp loginRsp{};
+        initClientMsg(loginRsp);
+        loginRsp.code = -1;
+        copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "存档服务不可用，请稍后重试");
+        m_clientServer.SendMsg(clientConn, Msg_S2C_LoginRsp::kModule, Msg_S2C_LoginRsp::kSub,
+                               reinterpret_cast<char*>(&loginRsp), sizeof(loginRsp));
+        LOG_WARN("Gateway 鉴权后无法拉取角色列表: Record 未连接 conn=%u", clientConn);
+        logLoginFlow(LoginFlowPhase::GATEWAY_AUTH, rsp.accid, 0, clientConn, -1,
+                     "Record 未连接");
+        m_clientServer.Kick(clientConn);
+        m_userManager.removeUser(clientConn);
+        return;
+    }
+
     user->setAccid(rsp.accid);
     user->setClientState(ClientState::ACCOUNT_OK);
-    user->setRoleListReady(false);
 
     Msg_S2C_LoginRsp loginRsp{};
     initClientMsg(loginRsp);
@@ -502,7 +533,6 @@ void GatewayServer::onValidateTokenRsp(ConnID /*fromConn*/, const Msg_REC_Valida
     m_clientServer.SendMsg(clientConn, Msg_S2C_LoginRsp::kModule, Msg_S2C_LoginRsp::kSub,
                            reinterpret_cast<char*>(&loginRsp), sizeof(loginRsp));
 
-    sendUserListToClient(clientConn, rsp.accid, user->getZoneId());
     logLoginFlow(LoginFlowPhase::GATEWAY_AUTH, rsp.accid, 0, clientConn, 0, "鉴权成功");
 }
 
@@ -567,9 +597,14 @@ void GatewayServer::onListCharactersRsp(ConnID /*fromConn*/, const char* data, u
                     data + sizeof(Msg_REC_ListCharactersRspHeader),
                     entryBytes);
     }
-    m_clientServer.SendMsg(clientConn, Msg_S2C_UserListHeader::kModule,
-                           Msg_S2C_UserListHeader::kSub,
-                           body.data(), static_cast<uint16_t>(bodyLen));
+    if (!m_clientServer.SendMsg(clientConn, Msg_S2C_UserListHeader::kModule,
+                               Msg_S2C_UserListHeader::kSub,
+                               body.data(), static_cast<uint16_t>(bodyLen)))
+    {
+        LOG_WARN("角色列表下发失败: conn=%u count=%u", clientConn, hdr->count);
+        user->setRoleListReady(false);
+        return;
+    }
 
     std::unordered_set<uint64_t> roleIds;
     const auto* entries = reinterpret_cast<const Msg_S2C_UserListEntryWire*>(
@@ -610,6 +645,9 @@ void GatewayServer::onCreateCharacterRsp(ConnID /*fromConn*/, const Msg_REC_Crea
     case static_cast<int32_t>(CreateCharacterError::INVALID_NAME):
         copyToWire(createRsp.msg, sizeof(createRsp.msg), "角色名非法");
         break;
+    case static_cast<int32_t>(CreateCharacterError::INVALID_VOCATION):
+        copyToWire(createRsp.msg, sizeof(createRsp.msg), "职业或性别非法");
+        break;
     default:
         copyToWire(createRsp.msg, sizeof(createRsp.msg), "创角失败");
         break;
@@ -621,7 +659,18 @@ void GatewayServer::onCreateCharacterRsp(ConnID /*fromConn*/, const Msg_REC_Crea
     if (rsp.code == static_cast<int32_t>(CreateCharacterError::OK) && rsp.userID != 0)
         user->addOwnedRole(rsp.userID);
     if (rsp.code == static_cast<int32_t>(CreateCharacterError::OK))
-        sendUserListToClient(clientConn, user->getAccid(), user->getZoneId());
+    {
+        user->setRoleListReady(false);
+        // 创角已成功下发 S2C_CREATE_USER_RSP；列表刷新失败时仍通知 S2C_USER_LIST code=-1，
+        // 客户端可提示重试列表，并凭 CREATE_USER_RSP.userID / ownedRoleIds 选角进世界。
+        if (!sendUserListToClient(clientConn, user->getAccid(), user->getZoneId(), true))
+        {
+            LOG_WARN("创角成功后刷新列表失败: Record 未连接 conn=%u accid=%llu",
+                     clientConn, static_cast<unsigned long long>(user->getAccid()));
+            logLoginFlow(LoginFlowPhase::CHAR_LIST, user->getAccid(), rsp.userID, clientConn,
+                         -1, "创角后列表刷新失败");
+        }
+    }
     logLoginFlow(LoginFlowPhase::CHAR_CREATE, user->getAccid(), rsp.userID, clientConn,
                  rsp.code, createRsp.msg);
 }
@@ -680,6 +729,8 @@ void GatewayServer::onUserLoginRsp(ConnID /*fromConn*/, const Msg_GW_UserLoginRs
                                reinterpret_cast<char*>(&loginRsp), sizeof(loginRsp));
         LOG_WARN("进入游戏失败: conn=%u userID=%llu code=%d",
                  clientConn, rsp.userID, rsp.code);
+        logLoginFlow(LoginFlowPhase::CHAR_SELECT, user->getAccid(), rsp.userID, clientConn,
+                     rsp.code, "进入游戏失败");
     }
 }
 

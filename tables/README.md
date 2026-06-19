@@ -6,7 +6,7 @@
 
 | 库 | 表 | 连接进程 | 配置 |
 |----|-----|----------|------|
-| `rpg_login` | GameUser, ZoneInfo | LoginServer | `LoginServer/extern_login.xml` |
+| `rpg_login` | GameUser, ZoneInfo, LoginSession | LoginServer | `LoginServer/extern_login.xml` |
 | `rpg_game` | CharBase, Relation, Friend, Mail, MapInfo, ServerList | SuperServer, RecordServer, SessionServer | `config/config.xml` |
 | `rpg_global` | AllLittleThing | GlobalServer | `GlobalServer/extern_global.xml` |
 
@@ -17,7 +17,7 @@
 | `database.credentials` | 工作区内连接信息（默认区内库 rpg_game；含三库名注释） |
 | `create_user_and_db.sql` | 建三库、创建应用用户 `rpg_table` 并授权（须 root 执行） |
 | `setup_database.sh` | 一键：建三库与用户 + `init.sql` 建表 + 三库验证 |
-| `init.sql` | 三库建表：rpg_login（2 表）+ rpg_game（6 表）+ rpg_global（1 表） |
+| `init.sql` | 三库建表：rpg_login（3 表）+ rpg_game（6 表）+ rpg_global（1 表） |
 | `migrate_login_db.sql` | 存量迁移：GameUser/ZoneInfo 从 rpg_game → rpg_login |
 | `alter_relation_add_binary.sql` | 迁移：已为旧库 `Relation` 表增加 `` `binary` `` 列（执行一次） |
 | `seed_test_data.sql` | 开发/测试用种子数据：test001~test003（rpg_game） |

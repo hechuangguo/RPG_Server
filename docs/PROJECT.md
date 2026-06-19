@@ -45,7 +45,7 @@ Client → GatewayServer ─┬→ SceneServer / AOIServer
 |--------|----------|----------|------|
 | SuperServer | 9000 | 注册中心、登录调度、外联转发枢纽 | 区内 |
 | SessionServer | 9001 | 社会关系、全区场景/副本登记与负载均衡 | 区内 |
-| RecordServer | 9002 | 唯一写库进程，账号验证、读写存档 | 区内 |
+| RecordServer | 9002 | 唯一写库进程，角色列表/创角/加载存档 | 区内 |
 | AOIServer | 9003 | 9 宫格 AOI 视野 | 区内 |
 | SceneServer | 9004 | 在线玩法、地图实例、Lua 脚本（可多台） | 区内 |
 | GatewayServer | 9005 / 19005 | 客户端接入、消息校验、按 module 转发 | 区内 |
@@ -147,9 +147,12 @@ UserBase → IUser → SessionUser / RecordUser / SceneUser
 #### 登录主路径
 
 ```
-Client → Gateway（验证）→ Super → Record（加载）→ Scene → AOI
-         ← Gateway ← Super ← Scene（进入完成）
+Client → LoginServer（账号+token）→ Gateway（鉴权+选角/创角）
+       → Super → Record（加载）→ Session（解析地图）→ Scene → AOI
+       ← Gateway ← Super ← Scene（S2C_ENTER_GAME + S2C_SPAWN_ENTITY）
 ```
+
+详见 [LOGIN_CHAR_FLOW.md](LOGIN_CHAR_FLOW.md)。
 
 ### 1.6 开发与运维流程
 
@@ -198,7 +201,7 @@ mysql -u root -p < tables/seed_test_data.sql  # 可选：开发测试账号
 | 维度 | 说明 |
 |------|------|
 | 分布式骨架 | 10 服拆分（6 区内 + 4 外联）、注册心跳、统一启动/停止脚本 |
-| 登录与存档 | Gateway + Super + Record 链路；Record 按 CharBase.name 验证（password 未校验） |
+| 登录与存档 | LoginServer 账号 + Gateway 票据；Gateway 角色列表/创角/选角；Record 读写 `CharBase` |
 | 场景运行 | Scene/CopyScene、SceneManager、地图配置、AOI 登记 |
 | 全区调度 | SessionSceneManager：注册、副本复用、SceneServer 负载选择（登录选服为 Super 取首个存活 Scene） |
 | 客户端接入 | Gateway 双端口、6 字节消息头、校验与按模块转发 Scene/Session |

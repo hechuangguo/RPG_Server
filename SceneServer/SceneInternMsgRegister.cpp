@@ -15,6 +15,9 @@
 void SceneInternMsgRegister(SceneServer& server)
 {
     auto& d = MsgDispatcher::Instance();
+    d.Register(static_cast<uint16_t>(InternalMsgID::S2S_HEARTBEAT_ACK),
+               [](uint32_t, const char*, uint16_t) {});
+
     registerInternal(d, &server,
                      static_cast<uint16_t>(InternalMsgID::SCE_USER_ENTER_REQ),
                      &SceneServer::onUserEnter);

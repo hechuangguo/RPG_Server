@@ -625,7 +625,7 @@ struct Msg_Login_GatewayRegisterRsp
  */
 struct Msg_Login_VerifyTokenReq
 {
-    uint32_t requestSeq;    /**< 请求序号（Record 生成，用于路由回包） */
+    uint32_t requestSeq;    /**< Record 侧关联序号（与 SS_EXTERN_FWD.seq 一致时由 Record 填入） */
     char     loginToken[65];/**< 登录票据（64 hex + '\0'） */
     uint32_t zoneId;        /**< 游戏区号 */
     uint8_t  gameType;      /**< 游戏类型 */
@@ -697,14 +697,34 @@ struct Msg_SS_ExternForward
  */
 struct Msg_SS_ExternForwardRsp
 {
-    uint8_t  sourceServerType;  /**< 原请求发起方类型 */
-    uint32_t sourceServerId;    /**< 原请求发起方 ID */
-    uint8_t  targetServerType;  /**< 原请求目标类型 */
+    uint8_t  sourceServerType;  /**< 响应方类型（外联 LOGIN/LOGGER/GLOBAL/ZONE） */
+    uint32_t sourceServerId;    /**< 响应方 ID（外联服可为 0） */
+    uint8_t  targetServerType;  /**< 原请求发起方类型（Super 按此路由回区内服） */
     uint16_t innerMsgId;        /**< 原业务协议号 */
     uint32_t seq;               /**< 原请求序号 */
     int32_t  code;              /**< 0=成功 */
     uint16_t dataLen;           /**< 后续 body 长度 */
 };
+
+/**
+ * @brief 由区内请求信封填充对称 RSP 头（交换 source/target，保留 seq/innerMsgId）
+ * @param rsp     待填充响应头
+ * @param req     原 SS_EXTERN_FWD / EXT_GAMEZONE_FWD 请求信封
+ * @param code    信封层结果；0=成功
+ * @param dataLen inner body 长度
+ */
+inline void fillExternForwardRspFromReq(Msg_SS_ExternForwardRsp& rsp,
+                                        const Msg_SS_ExternForward& req,
+                                        int32_t code, uint16_t dataLen)
+{
+    rsp.sourceServerType = req.targetServerType; /**< 响应方（外联服类型） */
+    rsp.sourceServerId   = 0;
+    rsp.targetServerType = req.sourceServerType; /**< Super 路由回源区内服 */
+    rsp.innerMsgId       = req.innerMsgId;
+    rsp.seq              = req.seq;
+    rsp.code             = code;
+    rsp.dataLen          = dataLen;
+}
 
 /**
  * @brief GatewayServer → SceneServer/SessionServer: 客户端消息转发

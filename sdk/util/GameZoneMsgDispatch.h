@@ -6,6 +6,7 @@
  *   1. SuperServer 将区内服 SS_EXTERN_FWD_REQ 解包为 EXT_GAMEZONE_FWD_REQ 发到独立服 Listen 口
  *   2. 本模块注册 EXT_GAMEZONE_FWD_REQ handler，解析 Msg_SS_ExternForward 头（Internal 管道 Unwrap 阶段）
  *   3. 按 hdr.innerMsgId 调用 MsgDispatcher::Dispatch(innerMsgId, body)
+ *   4. handler 须 gameZoneSendForwardRsp 对称回包；未回包时 Dispatch 收尾强制 pop 防泄漏
  * 各独立服 *InternMsgRegister 聚合时调用 GameZoneMsgRegisterForwardDispatch()，再注册 inner 处理器。
  */
 
@@ -25,3 +26,5 @@ void GameZoneMsgRegisterForwardDispatch();
  * @param len      总长度
  */
 void GameZoneOnForwardReq(ConnID fromConn, const char* data, uint16_t len);
+
+/** @brief 对称回包见 GameZoneReply.h（gameZoneSendForwardRsp / gameZonePeekForwardContext） */

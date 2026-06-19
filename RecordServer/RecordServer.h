@@ -132,8 +132,14 @@ private:
     /** @brief Gateway loginToken 校验 */
     void onValidateTokenReq(ConnID fromConn, const Msg_REC_ValidateTokenReq& req);
 
-    /** @brief LoginServer loginToken 校验回包 */
+    /** @brief LoginServer loginToken 校验回包（legacy 直连 REC_VERIFY_TOKEN_RSP） */
     void onLoginVerifyTokenRsp(ConnID fromConn, const Msg_Login_VerifyTokenRsp& rsp);
+
+    /** @brief Super SS_EXTERN_FWD_RSP 解包（Login 外联回包主路径） */
+    void onExternForwardRsp(ConnID fromConn, const char* data, uint16_t len);
+
+    /** @brief 外联信封层失败时按 seq 回收 pending 并向 Gateway 回失败 */
+    void onLoginVerifyTokenExternFail(uint32_t requestSeq);
 
     /** @brief 清理票据校验待回包超时上下文 */
     void CleanupPendingVerifyTokenTimeout();

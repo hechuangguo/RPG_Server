@@ -8,6 +8,7 @@
 #include "../Common/ClientMsgBody.h"
 #include "../Common/LoginMsg.h"
 #include "../Common/MapDataMsg.h"
+#include "../sdk/util/LoginSpawnConfig.h"
 #include "../Common/ChatMsg.h"
 #include "GatewayUser.h"
 #include <cstdint>
@@ -166,6 +167,8 @@ private:
             return ValidateResult::BAD_LENGTH;
         const auto* req = reinterpret_cast<const Msg_C2S_CreateUserReq*>(data);
         if (req->name[0] == '\0')
+            return ValidateResult::BAD_PAYLOAD;
+        if (req->vocation > MAX_VOCATION_ID || req->sex > MAX_SEX_ID)
             return ValidateResult::BAD_PAYLOAD;
         return ValidateResult::OK;
     }

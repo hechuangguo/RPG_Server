@@ -93,13 +93,7 @@ void SuperExternOnForwardReq(SuperServer& super, ConnID fromConn,
         if (hdr->seq != 0)
         {
             Msg_SS_ExternForwardRsp rsp{};
-            rsp.sourceServerType = hdr->sourceServerType;
-            rsp.sourceServerId   = hdr->sourceServerId;
-            rsp.targetServerType = hdr->targetServerType;
-            rsp.innerMsgId       = hdr->innerMsgId;
-            rsp.seq              = hdr->seq;
-            rsp.code             = -1;
-            rsp.dataLen          = 0;
+            fillExternForwardRspFromReq(rsp, *hdr, -1, 0);
             SuperExternSendRspToGameZone(super, fromConn, rsp, nullptr);
         }
     }
@@ -121,12 +115,15 @@ void SuperExternOnForwardRsp(SuperServer& super, ConnID /*fromExternConn*/,
     if (len < sizeof(Msg_SS_ExternForwardRsp) + hdr->dataLen)
         return;
 
-    ConnID targetConn = super.findSubServerConn(toSubServerType(hdr->sourceServerType));
-    if (targetConn == INVALID_CONN_ID)
+    // RSP.targetServerType = 原 SS_EXTERN_FWD 请求的 sourceServerType（见 fillExternForwardRspFromReq）
+    const SubServerType originZoneType = toSubServerType(hdr->targetServerType);
+    ConnID originZoneConn = super.findSubServerConn(originZoneType);
+    if (originZoneConn == INVALID_CONN_ID)
     {
-        LOG_WARN("外联转发: 响应目标类型=%u 离线", hdr->sourceServerType);
+        LOG_WARN("外联转发: 原请求区内服 type=%u 离线（RSP.targetServerType=originZoneType）",
+                 hdr->targetServerType);
         return;
     }
 
-    SuperExternSendRspToGameZone(super, targetConn, *hdr, body);
+    SuperExternSendRspToGameZone(super, originZoneConn, *hdr, body);
 }

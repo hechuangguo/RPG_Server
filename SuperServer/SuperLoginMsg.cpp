@@ -105,6 +105,7 @@ void superLoginOnGatewayHeartbeat(SuperServer& super, ConnID /*fromConn*/,
 void superLoginOnVerifyTokenReq(SuperServer& super, ConnID fromConn,
                                 const char* data, uint16_t len)
 {
+    // @deprecated 区内服应经 SS_EXTERN_FWD 访问 Login；此直连路径仅保留兼容调试
     if (len < sizeof(Msg_Login_VerifyTokenReq))
         return;
     const auto* req = reinterpret_cast<const Msg_Login_VerifyTokenReq*>(data);

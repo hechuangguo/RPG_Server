@@ -13,6 +13,7 @@
 3. [ARCHITECTURE.md](ARCHITECTURE.md) — 进程拓扑与核心流程
 4. [SDK.md](SDK.md) — 网络、定时器、配置、Bootstrap
 5. [PROTOCOL.md](PROTOCOL.md) — 客户端与服间协议
+6. [LOGIN_CHAR_FLOW.md](LOGIN_CHAR_FLOW.md) — 选角/创角/进游戏 UI 对照
 6. [SERVERS.md](SERVERS.md) — 10 个进程职责与 handler
 7. [SceneServer/SceneServer.h](../SceneServer/SceneServer.h) — 核心玩法入口
 
@@ -55,6 +56,7 @@
 | [PROJECT.md](PROJECT.md) | 项目说明、技术栈、已完成能力与局限 |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | 架构图、启动顺序、各服概要、分层 |
 | [SDK.md](SDK.md) | `sdk/` 全模块说明 |
+| [LOGIN_CHAR_FLOW.md](LOGIN_CHAR_FLOW.md) | 角色选择、创角、进世界流程 |
 | [PROTOCOL.md](PROTOCOL.md) | 客户端与服间协议参考 |
 | [SERVERS.md](SERVERS.md) | 10 进程详细说明（连接、handler、定时器） |
 | [EXTERNAL.md](EXTERNAL.md) | Logger/Global/Zone/Login 外联架构 |
