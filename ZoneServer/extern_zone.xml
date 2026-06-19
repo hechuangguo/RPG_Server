@@ -9,4 +9,11 @@
 <ExternServer>
     <Listen ip="0.0.0.0" port="9008"/>
     <LogPath>logs/zone.log</LogPath>
+    <!-- TLS：Super 经 mTLS 连接；修改后重启 ZoneServer -->
+    <Tls enabled="1"
+         cert="config/tls/server.crt"
+         key="config/tls/server.key"
+         ca="config/tls/ca.crt"
+         verifyPeer="1"
+         minVersion="1.2"/>
 </ExternServer>

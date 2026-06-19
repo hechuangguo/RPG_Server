@@ -5,6 +5,7 @@
 
 #include "ExternalServerConnector.h"
 
+#include "../net/NetTls.h"
 #include "../timer/TimerMgr.h"
 
 #include <algorithm>
@@ -47,6 +48,7 @@ void ExternalServerConnector::connectIfConfigured()
     if (!isConfigured() || m_client.IsConnected())
         return;
     m_client.Disconnect();
+    wireTlsClient(m_client);
     m_client.Connect(m_entry.ip, m_entry.port);
 }
 
@@ -68,6 +70,7 @@ void ExternalServerConnector::tickReconnect(uint64_t nowMs)
         return;
 
     m_client.Disconnect();
+    wireTlsClient(m_client);
     if (!m_client.Connect(m_entry.ip, m_entry.port))
     {
         m_retryDelayMs = std::min(m_retryDelayMs * 2, MAX_RETRY_MS);

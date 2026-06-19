@@ -57,8 +57,11 @@
 
 #pragma once
 #include "TcpConnection.h"
+#include "TlsContext.h"
 #include <sys/epoll.h>
 #include <arpa/inet.h>
+#include <netinet/tcp.h>
+#include <unistd.h>
 #include <unordered_map>
 #include <memory>
 #include <atomic>
@@ -81,7 +84,18 @@ public:
     explicit TcpServer(INetCallback* cb)
         : m_cb(cb), m_epollFd(-1), m_listenFd(-1)
         , m_nextConnID(1), m_running(false)
+        , m_useTls(false)
     {}
+
+    /** @brief 启用 TLS（须在 Start 之前调用；使用 TlsContext 服务端 SSL_CTX） */
+    void EnableTls()
+    {
+        if (TlsContext::instance().enabled())
+            m_useTls = true;
+    }
+
+    /** @brief 是否已启用 TLS */
+    bool tlsEnabled() const { return m_useTls; }
 
     /** @brief 析构时停止服务端并释放所有资源 */
     ~TcpServer() { Stop(); }
@@ -147,6 +161,8 @@ public:
                 {
                     if (events[i].events & EPOLLIN)  conn->OnReadable();
                     if (events[i].events & EPOLLOUT) conn->OnWritable();
+                    if (!conn->IsClosed())
+                        conn->tryFireConnect();
                     if (conn->IsClosed()) RemoveConn(fd);
                 }
             }
@@ -277,11 +293,13 @@ private:
             int opt = 1;
             ::setsockopt(cfd, IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(opt));
             ConnID id = m_nextConnID++;
-            auto conn = std::make_shared<TcpConnection>(cfd, id, m_cb);
+            SSL* ssl = m_useTls ? TlsContext::instance().newServerSsl(cfd) : nullptr;
+            auto conn = std::make_shared<TcpConnection>(cfd, id, m_cb, ssl, true);
             m_fdToConn[cfd]  = conn;
             m_connMap[id]    = conn;
             AddEpoll(cfd, EPOLLIN | EPOLLOUT | EPOLLET | EPOLLRDHUP);
-            if (m_cb) m_cb->OnConnect(id);
+            if (!m_useTls && m_cb)
+                m_cb->OnConnect(id);
         }
     }
 
@@ -325,6 +343,7 @@ private:
     int            m_listenFd;    /**< 监听 socket fd */
     uint32_t       m_nextConnID;  /**< 自增连接 ID 分配器（从 1 开始） */
     bool           m_running;     /**< 运行状态标记 */
+    bool           m_useTls;      /**< 是否对新连接启用 TLS */
     /** @brief fd → TcpConnection 索引（用于 epoll 事件分发，O(1) 查找） */
     std::unordered_map<int,     std::shared_ptr<TcpConnection>> m_fdToConn;
     /** @brief ConnID → TcpConnection 索引（用于 SendMsg / Kick，O(1) 查找） */

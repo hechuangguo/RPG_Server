@@ -7,6 +7,7 @@
 #include "SceneInternMsgRegister.h"
 #include "SceneClientMsgRegister.h"
 #include "../sdk/net/MsgIngress.h"
+#include "../sdk/net/NetTls.h"
 #include "ScenePeerClient.h"
 #include "../sdk/util/ServerBootstrap.h"
 #include "../sdk/util/GameZoneExternSender.h"
@@ -36,8 +37,10 @@ bool SceneServer::Init(const std::string& ip, uint16_t port,
         m_self = *first;
     m_externSender.setSelfId(m_self.id ? m_self.id : selfId);
     ServerBootstrap::bindRemoteLog(m_externSender, SubServerType::SCENE);
+    wireTlsServer(m_server);
     if (!m_server.Start(ip, port)) { LOG_FATAL("场景服启动失败"); return false; }
 
+    wireTlsClient(m_superClient);
     m_superClient.Connect(cfg.superIP, (uint16_t)cfg.superPort);
     if (const ServerEntry* ses = list.findFirst(SubServerType::SESSION))
         m_sessionClient.connect(ses->ip, ses->port);

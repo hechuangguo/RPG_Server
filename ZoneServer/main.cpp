@@ -6,6 +6,7 @@
  */
 
 #include "ZoneServer.h"
+#include "../sdk/net/NetTls.h"
 #include "../sdk/util/ServerBootstrap.h"
 #include "../sdk/util/ExternServerConfig.h"
 #include <csignal>
@@ -31,6 +32,9 @@ int main(int argc, char* argv[])
         std::fprintf(stderr, "extern_zone.xml: Listen port is 0\n");
         return 1;
     }
+
+    if (!initNetTls(extCfg.tls))
+        return 1;
 
     const char* logPath = extCfg.logPath.empty() ? "logs/zone.log" : extCfg.logPath.c_str();
     Logger::Instance().SetPath(logPath);

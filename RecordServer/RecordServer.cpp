@@ -6,6 +6,7 @@
 #include "RecordServer.h"
 #include "RecordInternMsgRegister.h"
 #include "../sdk/net/MsgIngress.h"
+#include "../sdk/net/NetTls.h"
 #include "RecordCharService.h"
 #include "../sdk/util/ServerBootstrap.h"
 
@@ -43,6 +44,7 @@ bool RecordServer::Init(const std::string& ip, uint16_t port,
         m_self = *self;
     m_externSender.setSelfId(m_self.id ? m_self.id : selfId);
     ServerBootstrap::bindRemoteLog(m_externSender, SubServerType::RECORD);
+    wireTlsServer(m_server);
     if (!m_server.Start(ip, port))
     {
         LOG_FATAL("存档服监听启动失败");
@@ -54,6 +56,7 @@ bool RecordServer::Init(const std::string& ip, uint16_t port,
         return false;
     }
 
+    wireTlsClient(m_superClient);
     m_superClient.Connect(cfg.superIP, (uint16_t)cfg.superPort);
 
     registerHandlers();

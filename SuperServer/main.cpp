@@ -39,6 +39,9 @@ int main(int argc, char* argv[])
     if (!ServerBootstrap::loadGlobalConfig(argc, argv, cfg, cfgPath))
         return 1;
 
+    if (!ServerBootstrap::initNetTlsFromConfig(cfg))
+        return 1;
+
     Logger::Instance().SetPath(
         ServerBootstrap::logPathFor(cfg, "SuperServer", "logs/super.log"));
 

@@ -6,6 +6,7 @@
 #include "LoggerServer.h"
 #include "LoggerInternMsgRegister.h"
 #include "../sdk/net/MsgIngress.h"
+#include "../sdk/net/NetTls.h"
 
 LoggerServer::LoggerServer()
     : m_server(this)
@@ -16,6 +17,7 @@ bool LoggerServer::Init(const std::string& ip, uint16_t port, const std::string&
 {
     Logger::Instance().SetServerName("LoggerServer");
     m_logDir = logDir;
+    wireTlsServer(m_server);
     if (!m_server.Start(ip, port))
     {
         LOG_FATAL("日志服启动失败");

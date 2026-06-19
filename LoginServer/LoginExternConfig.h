@@ -10,6 +10,8 @@
 #include "../sdk/util/ExternServerConfig.h"
 #include "../sdk/util/XmlConfigUtil.h"
 
+#include "../sdk/net/TlsConfig.h"
+
 #include <cstdint>
 #include <string>
 
@@ -27,6 +29,7 @@ struct LoginExternConfig
     std::string logPath = "logs/login.log";  /**< 本进程日志路径 */
     std::string serverListPath = XmlConfig::SERVER_LIST_PATH_DEFAULT; /**< 游戏区列表 serverlist.xml */
     DatabaseConfig database;                 /**< 账号库 rpg_login（GameUser/ZoneInfo） */
+    TlsConfig      tls;                      /**< TLS（与 config.xml Tls 段同构） */
 };
 
 /**
@@ -77,6 +80,8 @@ public:
                 cfg.serverListPath = path;
         }
         loadDatabase(root->FirstChildElement("Database"), cfg.database);
+        if (auto* tls = root->FirstChildElement("Tls"))
+            loadTlsConfigFromXml(tls, cfg.tls);
         return true;
     }
 

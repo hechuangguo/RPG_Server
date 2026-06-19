@@ -5,6 +5,9 @@
 
 #include "ServerList.h"
 
+#include "../sdk/util/ServerList.h"
+
+#include "../net/NetTls.h"
 #include "../net/TcpClient.h"
 #include "../net/MsgId.h"
 
@@ -136,6 +139,7 @@ bool ServerListClient::fetch(const std::string& superIP, uint16_t superPort,
 {
     FetchCallback cb(out);
     TcpClient client(&cb);
+    wireTlsClient(client);
     if (!client.Connect(superIP, superPort))
     {
         return false;

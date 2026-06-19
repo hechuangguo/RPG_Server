@@ -5,6 +5,7 @@
 
 #include "GlobalServer.h"
 #include "../sdk/net/MsgIngress.h"
+#include "../sdk/net/NetTls.h"
 
 #include "GlobalHttpApi.h"
 #include "GlobalInternMsgRegister.h"
@@ -52,6 +53,7 @@ bool GlobalServer::initDatabase(const DatabaseConfig& dbCfg)
 bool GlobalServer::Init(const ExternServerConfig& cfg)
 {
     Logger::Instance().SetServerName("GlobalServer");
+    wireTlsServer(m_server);
     if (!m_server.Start(cfg.listenIP, cfg.listenPort))
     {
         LOG_FATAL("全局服启动失败");

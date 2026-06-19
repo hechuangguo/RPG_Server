@@ -49,7 +49,9 @@
 
 ```
 docs/INDEX.md                    # 文档总索引
-sdk/net/NetDefine.h              # MsgHeader
+docs/TLS.md                      # 全链路 TLS 配置与证书
+sdk/net/NetTls.h                 # initNetTls / wireTlsServer / wireTlsClient
+sdk/net/TlsConfig.h              # TlsConfig + XML 解析
 sdk/net/MsgId.h                  # module/sub 工具
 docs/PROTOCOL.md                 # 协议参考
 docs/SERVERS.md                  # 10 进程说明
@@ -78,7 +80,8 @@ docs/LUA.md                      # Lua 绑定与模块
 - [ ] 新建或改动的 `.h` 中，**本次新增**符号均有 Doxygen 注释
 - [ ] 新客户端消息：`*Msg.h` handler 已实现后，再登记 Validator + Router + 字段注释
 - [ ] 协议字段用 `WireStringUtil`；线上帧为 6 字节头（非旧 4 字节）
-- [ ] 改策划表已跑 `./gen_data.sh`，未手改 `AUTO-GENERATED` 的 lua
+- [ ] 改 TLS 证书后重启相关进程；dev 先 `./scripts/gen_tls_certs.sh`
+- [ ] 新网络代码走 `TlsContext`/`NetTls`，禁止裸 recv/send 旁路 TLS
 - [ ] 未提交 `.build/`、`logs/`、`run/`、`.cache/`
 - [ ] 未提交 `3Party/src/` 与 `3Party/lua|tinyxml2|mysql/` 编译产物；`3Party/vendor/*.tar.gz` 应已在库内
 

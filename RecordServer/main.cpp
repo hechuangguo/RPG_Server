@@ -31,6 +31,9 @@ int main(int argc, char* argv[])
     Logger::Instance().SetPath(
         ServerBootstrap::logPathFor(cfg, "RecordServer", "logs/record.log"));
 
+    if (!ServerBootstrap::initNetTlsFromConfig(cfg))
+        return 1;
+
     uint32_t selfId = ServerBootstrap::resolveServerID();
     ServerList list;
     if (!ServerBootstrap::fetchServerList(cfg, SubServerType::RECORD, selfId, list))

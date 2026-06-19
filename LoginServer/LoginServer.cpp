@@ -7,6 +7,7 @@
 #include "LoginGameZoneMsg.h"
 #include "LoginClientMsgRegister.h"
 #include "../sdk/net/MsgIngress.h"
+#include "../sdk/net/NetTls.h"
 #include "../sdk/timer/TimerMgr.h"
 
 #include <cstdio>
@@ -124,6 +125,9 @@ bool LoginServer::Init(const LoginExternConfig& cfg)
         return false;
     if (!initDatabase(cfg.database))
         return false;
+
+    wireTlsServer(m_clientServer);
+    wireTlsServer(m_registerServer);
 
     if (!m_clientServer.Start(cfg.clientListenIP, cfg.clientListenPort))
     {

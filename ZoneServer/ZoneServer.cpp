@@ -6,6 +6,7 @@
 #include "ZoneServer.h"
 #include "ZoneInternMsgRegister.h"
 #include "../sdk/net/MsgIngress.h"
+#include "../sdk/net/NetTls.h"
 
 ZoneServer::ZoneServer() : m_server(this) {}
 
@@ -46,6 +47,7 @@ bool ZoneServer::initDatabase(const DatabaseConfig& dbCfg)
 bool ZoneServer::Init(const ExternServerConfig& cfg)
 {
     Logger::Instance().SetServerName("ZoneServer");
+    wireTlsServer(m_server);
     if (!m_server.Start(cfg.listenIP, cfg.listenPort))
     {
         LOG_FATAL("跨区服启动失败");

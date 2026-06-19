@@ -7,6 +7,7 @@
 
 #include "../sdk/log/Logger.h"
 #include "../sdk/net/GwClientRelay.h"
+#include "../sdk/net/NetTls.h"
 
 #include <cstring>
 
@@ -18,6 +19,7 @@ SceneClient::SceneClient(uint32_t sceneServerId, INetCallback* cb)
 
 bool SceneClient::connect(const std::string& ip, uint16_t port)
 {
+    wireTlsClient(*m_client);
     if (!m_client->Connect(ip, port))
     {
         LOG_WARN("场景连接: 连接失败 sceneId=%u %s:%u",

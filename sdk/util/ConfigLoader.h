@@ -23,6 +23,7 @@
 #pragma once
 
 #include "XmlConfigUtil.h"
+#include "../net/TlsConfig.h"
 
 #include <string>
 #include <unordered_map>
@@ -53,6 +54,7 @@ struct ServerConfig
     int gatewayPort  = 9005;  /**< GatewayServer 端口（区内 ServerList；保留默认值兜底） */
     uint32_t zoneId  = 1;     /**< 本游戏区号（Super/Gateway 上报 Login 用） */
     uint8_t  gameType = 0;    /**< 游戏类型（0=当前 RPG） */
+    TlsConfig tls;              /**< TLS 传输层（全区 TCP 加密） */
     /** @brief 日志输出路径映射：服务器名称 → 日志文件路径 */
     std::unordered_map<std::string, std::string> logPaths;
 };
@@ -99,6 +101,8 @@ public:
         }
         // Session/Record/AOI/Scene/Gateway 端口已迁移至 DB 的 ServerList。
         // Logger/Global/Zone 外联地址见 loginserverlist.xml，不在此加载。
+        if (auto* tls = root->FirstChildElement("Tls"))
+            loadTlsConfigFromXml(tls, cfg.tls);
         if (auto* lp = root->FirstChildElement("LogPaths"))
         {
             for (auto* e = lp->FirstChildElement(); e; e = e->NextSiblingElement())

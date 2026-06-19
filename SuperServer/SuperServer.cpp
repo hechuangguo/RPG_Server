@@ -7,6 +7,7 @@
 #include "SuperInternMsgRegister.h"
 #include "SuperZoneStatusMsg.h"
 #include "../sdk/net/MsgIngress.h"
+#include "../sdk/net/NetTls.h"
 #include "SuperExternRouter.h"
 #include "SuperLoginMsg.h"
 #include "SuperLoggerMsg.h"
@@ -51,6 +52,7 @@ bool SuperServer::Init(const std::string& ip, uint16_t port, const ServerConfig&
         return false;
     }
 
+    wireTlsServer(m_server);
     if (!m_server.Start(ip, port))
     {
         LOG_FATAL("超级服监听启动失败");

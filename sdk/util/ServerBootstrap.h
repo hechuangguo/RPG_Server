@@ -14,6 +14,7 @@
 #include "SceneInfoLoader.h"
 #include "ServerList.h"
 #include "../log/RemoteLogClient.h"
+#include "../net/NetTls.h"
 #include "XmlConfigUtil.h"
 
 #include <cstdio>
@@ -118,6 +119,12 @@ inline bool loadGlobalConfig(int argc, char* argv[], ServerConfig& cfg,
         return true;
     std::fprintf(stderr, "Failed to load config: %s\n  %s\n", outPath, err.c_str());
     return false;
+}
+
+/** @brief 按 config.xml 的 Tls 段初始化 OpenSSL */
+inline bool initNetTlsFromConfig(const ServerConfig& cfg)
+{
+    return initNetTls(cfg.tls);
 }
 
 /**

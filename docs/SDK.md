@@ -7,6 +7,7 @@
 | 模块 | `.cpp` 文件 |
 |------|-------------|
 | `util/` | `ServerList`, `LoginServerList`, `ExternalServerHub`, `ExternalServerConnector`, `GameZoneExternSender`, `GameZoneMsgDispatch` |
+| `net/` | `TcpConnection`, `TlsContext` |
 | `log/` | `RemoteLogClient`, `UserLog` |
 | `math/` | `Vec`, `Random` |
 | `http/` | `HttpParser` |
@@ -53,18 +54,21 @@ Wire 序列化：[`sdk/util/UserWireUtil.h`](../sdk/util/UserWireUtil.h)（`User
 
 ---
 
-## 2. sdk/net/ — TCP 栈
+## 2. sdk/net/ — TCP / TLS 栈
 
 | 文件 | 职责 |
 |------|------|
 | `NetDefine.h` | `MsgHeader`（6 字节）、`ConnID`、`MAX_PACKET_SIZE`、`INetCallback` |
 | `MsgId.h` | `makeMsgId` / `msgModule` / `msgSub` / `makeMsgKey` |
+| `TlsConfig.h` | `TlsConfig` 与 XML `<Tls>` 解析 |
+| `TlsContext.h` | 进程级 `SSL_CTX`（mTLS） |
+| `NetTls.h` | `initNetTls` / `wireTlsServer` / `wireTlsClient` |
 | `RingBuffer.h` | SPSC 字节环形缓冲 |
-| `TcpConnection.h` | 单连接收发、MsgHeader 组帧/拆帧 |
+| `TcpConnection.h` | 单连接收发、TLS 握手、MsgHeader 组帧/拆帧 |
 | `TcpServer.h` | listen + accept + epoll ET `Poll()` |
 | `TcpClient.h` | 单出站连接（服间） |
 
-所有 TCP 流量（客户端与服间）共用同一帧格式。
+所有 TCP 流量（客户端与服间）共用同一帧格式；传输层为 TLS 1.2+（见 [TLS.md](TLS.md)）。
 
 ---
 

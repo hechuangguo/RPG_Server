@@ -6,6 +6,7 @@
  */
 
 #include "LoginServer.h"
+#include "../sdk/net/NetTls.h"
 #include "../sdk/util/ServerBootstrap.h"
 
 #include <csignal>
@@ -26,6 +27,9 @@ int main(int argc, char* argv[])
         std::fprintf(stderr, "Failed to load %s\n  %s\n", extPath, err.c_str());
         return 1;
     }
+
+    if (!initNetTls(cfg.tls))
+        return 1;
 
     Logger::Instance().SetPath(cfg.logPath.empty() ? "logs/login.log" : cfg.logPath);
 

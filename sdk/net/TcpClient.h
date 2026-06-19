@@ -42,9 +42,12 @@
 
 #pragma once
 #include "TcpConnection.h"
+#include "TlsContext.h"
 #include <sys/epoll.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
+#include <unistd.h>
 #include <unordered_map>
 #include <memory>
 #include <string>
@@ -66,7 +69,15 @@ public:
      */
     explicit TcpClient(INetCallback* cb)
         : m_cb(cb), m_epollFd(-1), m_conn(nullptr), m_connID(INVALID_CONN_ID)
+        , m_useTls(false), m_tcpConnectDone(false), m_connectNotified(false)
     {}
+
+    /** @brief 启用 TLS（须在 Connect 之前调用） */
+    void EnableTls()
+    {
+        if (TlsContext::instance().enabled())
+            m_useTls = true;
+    }
 
     /** @brief 析构时自动断开连接并释放资源 */
     ~TcpClient() { Disconnect(); }
@@ -100,12 +111,23 @@ public:
         if (ret < 0 && errno != EINPROGRESS) { ::close(fd); return false; }
         m_epollFd = ::epoll_create1(EPOLL_CLOEXEC);
         m_connID  = 1;
-        m_conn    = std::make_shared<TcpConnection>(fd, m_connID, m_cb);
+        m_tcpConnectDone = (ret == 0);
+        m_connectNotified = false;
+        SSL* ssl = m_useTls ? TlsContext::instance().newClientSsl(fd) : nullptr;
+        m_conn    = std::make_shared<TcpConnection>(fd, m_connID, m_cb, ssl, false);
         epoll_event ev{};
         ev.events   = EPOLLIN | EPOLLOUT | EPOLLET | EPOLLRDHUP;
         ev.data.fd  = fd;
         ::epoll_ctl(m_epollFd, EPOLL_CTL_ADD, fd, &ev);
-        if (ret == 0 && m_cb) m_cb->OnConnect(m_connID); /**< 本地立即连接成功 */
+        if (ret == 0)
+        {
+            m_tcpConnectDone = true;
+            if (!m_useTls)
+            {
+                m_conn->tryFireConnect();
+                m_connectNotified = true;
+            }
+        }
         return true;
     }
 
@@ -130,17 +152,20 @@ public:
         {
             if (events[i].events & EPOLLOUT)
             {
-                // 非阻塞 connect 完成时 EPOLLOUT 就绪
-                static bool connected = false;
-                if (!connected)
-                {
-                    connected = true;
-                    if (m_cb) m_cb->OnConnect(m_connID);
-                }
+                if (!m_tcpConnectDone)
+                    m_tcpConnectDone = true;
                 m_conn->OnWritable();
             }
-            if (events[i].events & EPOLLIN) m_conn->OnReadable();
-            if (events[i].events & (EPOLLERR | EPOLLHUP)) m_conn->Close();
+            if (events[i].events & EPOLLIN)
+                m_conn->OnReadable();
+            if (!m_connectNotified && m_conn && !m_conn->IsClosed())
+            {
+                m_conn->tryFireConnect();
+                if (m_conn->connectFired())
+                    m_connectNotified = true;
+            }
+            if (events[i].events & (EPOLLERR | EPOLLHUP))
+                m_conn->Close();
         }
     }
 
@@ -172,6 +197,9 @@ public:
     {
         if (m_conn) m_conn->Close();
         if (m_epollFd >= 0) { ::close(m_epollFd); m_epollFd = -1; }
+        m_conn = nullptr;
+        m_tcpConnectDone = false;
+        m_connectNotified = false;
     }
 
     /** @brief 连接是否存活（未关闭） */
@@ -182,4 +210,7 @@ private:
     int            m_epollFd;  /**< 独立的 epoll 实例 fd */
     std::shared_ptr<TcpConnection> m_conn;  /**< 底层连接对象（shared_ptr 管理生命周期） */
     ConnID         m_connID;   /**< 连接 ID（客户端固定为 1） */
+    bool           m_useTls;   /**< 出站是否 TLS */
+    bool           m_tcpConnectDone;  /**< TCP connect 是否完成 */
+    bool           m_connectNotified;   /**< OnConnect 是否已触发 */
 };

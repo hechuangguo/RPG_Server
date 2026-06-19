@@ -6,6 +6,7 @@
 #include "AOIServer.h"
 #include "AoiInternMsgRegister.h"
 #include "../sdk/net/MsgIngress.h"
+#include "../sdk/net/NetTls.h"
 #include "../sdk/util/ServerBootstrap.h"
 
 #include <cstring>
@@ -25,7 +26,9 @@ bool AOIServer::Init(const std::string& ip, uint16_t port,
         m_self = *self;
     m_externSender.setSelfId(m_self.id ? m_self.id : selfId);
     ServerBootstrap::bindRemoteLog(m_externSender, SubServerType::AOI);
+    wireTlsServer(m_server);
     if (!m_server.Start(ip, port)) { LOG_FATAL("视野服启动失败"); return false; }
+    wireTlsClient(m_superClient);
     m_superClient.Connect(cfg.superIP, (uint16_t)cfg.superPort);
     registerHandlers();
     TimerMgr::Instance().Register(500,   0,     [this]{ RegisterToSuper(); });

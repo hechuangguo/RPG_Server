@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""Login → Gateway 鉴权 → 角色列表 → 创角(可选) → 选角进世界 E2E 冒烟。"""
+"""Login → Gateway 鉴权 → 角色列表 → 创角(可选) → 选角进世界 E2E 冒烟（TLS）。"""
 
+import os
 import socket
+import ssl
 import struct
 import sys
 import time
@@ -9,6 +11,39 @@ import time
 HOST = "127.0.0.1"
 LOGIN_PORT = 9010
 GATEWAY_PORT = 9005
+
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_ROOT = os.path.dirname(_SCRIPT_DIR)
+DEFAULT_CA = os.path.join(_ROOT, "config", "tls", "ca.crt")
+TLS_INSECURE = os.environ.get("TLS_INSECURE", "").strip() in ("1", "true", "yes")
+
+
+def make_ssl_context():
+    """构建客户端 TLS 上下文；默认校验 config/tls/ca.crt。"""
+    if TLS_INSECURE:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        return ctx
+    cafile = os.environ.get("TLS_CAFILE", DEFAULT_CA)
+    if not os.path.isfile(cafile):
+        print(f"FAIL: CA not found: {cafile} (run ./scripts/gen_tls_certs.sh)", file=sys.stderr)
+        sys.exit(2)
+    ctx = ssl.create_default_context(cafile=cafile)
+    return ctx
+
+
+_SSL_CTX = None
+
+
+def tls_connect(host, port, timeout=5):
+    """TCP 连接后 wrap TLS（与 Login/Gateway 一致）。"""
+    global _SSL_CTX
+    if _SSL_CTX is None:
+        _SSL_CTX = make_ssl_context()
+    raw = socket.create_connection((host, port), timeout)
+    raw.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    return _SSL_CTX.wrap_socket(raw, server_hostname=host)
 
 LOGIN_MODULE = 0
 SCENE_MODULE = 1
@@ -173,7 +208,7 @@ def login(account, password, zone_id=1, game_type=0):
     body += pad_str(password, 32)
     body += struct.pack("<IB3x", zone_id, game_type)
 
-    sock = socket.create_connection((HOST, LOGIN_PORT), 5)
+    sock = tls_connect(HOST, LOGIN_PORT, 5)
     send_msg(sock, LOGIN_MODULE, C2S_LOGIN_REQ, body)
     reader = MsgReader(sock)
     msgs = reader.collect({S2C_LOGIN_RSP, 0x0A}, timeout=5.0)
@@ -214,8 +249,7 @@ def main():
     gw_port = gw_port or GATEWAY_PORT
 
     print(f"[2] gateway connect {gw_host}:{gw_port} ...")
-    gw = socket.create_connection((gw_host, gw_port), 5)
-    gw.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    gw = tls_connect(gw_host, gw_port, 5)
     reader = MsgReader(gw)
     auth_body = struct.pack(
         GATEWAY_AUTH_FMT,

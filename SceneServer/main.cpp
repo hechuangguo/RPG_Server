@@ -43,6 +43,9 @@ int main(int argc, char* argv[])
     Logger::Instance().SetPath(
         ServerBootstrap::logPathFor(cfg, "SceneServer", "logs/scene.log"));
 
+    if (!ServerBootstrap::initNetTlsFromConfig(cfg))
+        return 1;
+
     uint32_t selfId = sceneInfo.sceneID ? sceneInfo.sceneID
                                         : ServerBootstrap::resolveServerID();
     ServerList list;

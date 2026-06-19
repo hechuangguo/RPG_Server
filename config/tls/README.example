@@ -1,0 +1,27 @@
+# TLS 证书目录（示例说明）
+
+本目录存放 TLS/mTLS 证书。**私钥勿提交 git**（见根目录 `.gitignore`）。
+
+## 生成（开发）
+
+```bash
+./scripts/gen_tls_certs.sh
+```
+
+产物：
+
+| 文件 | 说明 |
+|------|------|
+| `ca.crt` / `ca.key` | 开发 CA（`ca.key` 保密） |
+| `server.crt` / `server.key` | 全区 dev 共用服务端/客户端证书 |
+
+## 配置
+
+- 游戏区：`config/config.xml` → `<Tls cert="..." key="..." ca="..."/>`
+- 外联：`LoginServer/extern_login.xml` 等 → 同名 `<Tls>` 段
+
+## 客户端
+
+将 `ca.crt` 安装到 RPG_Client 信任库，或 dev 跳过校验。
+
+详见 `docs/TLS.md`。

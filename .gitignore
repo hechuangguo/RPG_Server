@@ -16,8 +16,11 @@ run/
 # 用户目录下本地 MySQL 数据（setup 时若无法 sudo systemctl 则使用）
 .mysql/
 
-# Excel 临时锁文件
-DataDoc/~$*
+LoginServer/serverlist.xml
+
+# TLS 私钥与 CA（执行 gen_tls_certs.sh 生成；ca.crt/server.crt 可分发）
+config/tls/*.key
+config/tls/ca.key
 
 # 各服务器编译产物（可执行文件，与目录同名）
 SuperServer/SuperServer

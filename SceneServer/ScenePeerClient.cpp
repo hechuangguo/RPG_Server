@@ -5,6 +5,8 @@
 
 #include "ScenePeerClient.h"
 
+#include "../sdk/net/NetTls.h"
+
 ScenePeerClient::ScenePeerClient(const char* peerName)
     : m_client(&m_callback)
     , m_peerName(peerName)
@@ -13,6 +15,7 @@ ScenePeerClient::ScenePeerClient(const char* peerName)
 
 bool ScenePeerClient::connect(const std::string& ip, uint16_t port)
 {
+    wireTlsClient(m_client);
     return m_client.Connect(ip, port);
 }
 

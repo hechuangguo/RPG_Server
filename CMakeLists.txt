@@ -123,6 +123,12 @@ else()
 endif()
 
 # -------------------------------------------------------
+# OpenSSL — 游戏 TCP/TLS（全区进程）
+# -------------------------------------------------------
+find_package(OpenSSL REQUIRED)
+set(GAME_TLS_LIBS OpenSSL::SSL OpenSSL::Crypto)
+
+# -------------------------------------------------------
 # 公共头文件搜索路径
 # 所有服务器均可直接引用以下目录中的头文件
 include_directories(
@@ -157,6 +163,7 @@ macro(add_server SERVER_NAME EXTRA_LIBS)
         pthread          # POSIX 线程库（所有服务器均需多线程支持）
         ${LUA_LIBRARIES} # Lua 脚本引擎（SceneServer 必需，其他可选）
         ${TINYXML2_LIB}  # XML 配置解析库（所有服务器均需读取配置文件）
+        ${GAME_TLS_LIBS} # OpenSSL TLS（TcpServer/TcpClient）
         ${EXTRA_LIBS}    # 服务器特有的额外链接库
     )
     set_target_properties(${SERVER_NAME} PROPERTIES

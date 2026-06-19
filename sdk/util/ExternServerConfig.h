@@ -10,6 +10,8 @@
 
 #include "XmlConfigUtil.h"
 
+#include "../net/TlsConfig.h"
+
 #include <cstdint>
 #include <string>
 
@@ -63,6 +65,7 @@ struct ExternServerConfig
     DatabaseConfig database;             /**< 可选 MySQL */
     HttpListenConfig httpListen;         /**< Global 专用：HTTP 入站 */
     HttpClientConfig httpClient;         /**< Global 专用：HTTP 出站 */
+    TlsConfig        tls;                /**< TLS 传输层 */
 };
 
 /**
@@ -116,6 +119,8 @@ public:
         loadDatabase(root->FirstChildElement("Database"), cfg.database);
         if (auto* http = root->FirstChildElement("Http"))
             loadHttp(http, cfg.httpListen, cfg.httpClient);
+        if (auto* tls = root->FirstChildElement("Tls"))
+            loadTlsConfigFromXml(tls, cfg.tls);
         return true;
     }
 

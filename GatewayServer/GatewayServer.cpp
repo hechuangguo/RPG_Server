@@ -10,6 +10,7 @@
 #include "../sdk/util/LoginEnterErrorCode.h"
 #include "../sdk/util/LoginFlowLog.h"
 #include "../sdk/net/ClientWireSend.h"
+#include "../sdk/net/NetTls.h"
 #include "../sdk/net/GwClientRelay.h"
 
 #include <vector>
@@ -60,9 +61,11 @@ bool GatewayServer::Init(uint16_t clientPort,
     if (const ServerEntry* self = list.find(SubServerType::GATEWAY, selfId))
         m_self = *self;
 
+    wireTlsServer(m_clientServer);
     if (!m_clientServer.Start("0.0.0.0", clientPort))
     { LOG_FATAL("客户端监听失败"); return false; }
 
+    wireTlsClient(m_superClient);
     m_superClient.Connect(cfg.superIP, (uint16_t)cfg.superPort);
     m_clientPort = clientPort;
     m_zoneId = cfg.zoneId;
@@ -140,12 +143,18 @@ void GatewayServer::setupUpstreamClients()
         return;
 
     if (const ServerEntry* rec = m_serverList.findFirst(SubServerType::RECORD))
+    {
+        wireTlsClient(m_recordClient);
         m_recordClient.Connect(rec->ip, rec->port);
+    }
     else
         LOG_WARN("服务器列表缺少 RECORD 条目");
 
     if (const ServerEntry* ses = m_serverList.findFirst(SubServerType::SESSION))
+    {
+        wireTlsClient(m_sessionClient);
         m_sessionClient.Connect(ses->ip, ses->port);
+    }
     else
         LOG_WARN("服务器列表缺少 SESSION 条目");
 

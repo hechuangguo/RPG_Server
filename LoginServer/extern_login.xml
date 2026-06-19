@@ -21,4 +21,11 @@
     <LogPath>logs/login.log</LogPath>
     <!-- 账号库：仅登录服使用 -->
     <Database host="192.168.65.128" port="3306" user="rpg_table" pass="rpg_table" name="rpg_login"/>
+    <!-- TLS：与 config/config.xml Tls 段一致；修改后重启 LoginServer -->
+    <Tls enabled="1"
+         cert="config/tls/server.crt"
+         key="config/tls/server.key"
+         ca="config/tls/ca.crt"
+         verifyPeer="1"
+         minVersion="1.2"/>
 </ExternServer>

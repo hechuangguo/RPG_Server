@@ -38,7 +38,8 @@
 2. [tables/README.md](../tables/README.md) — MySQL 脚本
 3. [DATA.md](DATA.md) — 表结构与读写进程
 4. [config/README.md](../config/README.md) — 运行时 XML 配置
-5. [EXTERNAL.md](EXTERNAL.md) — 外联四服与 `loginserverlist.xml`
+5. [TLS.md](TLS.md) — 全链路 TLS 证书与 mTLS
+6. [EXTERNAL.md](EXTERNAL.md) — 外联四服与 `loginserverlist.xml`
 
 ### AI / 自动化协作
 
@@ -60,6 +61,7 @@
 | [PROTOCOL.md](PROTOCOL.md) | 客户端与服间协议参考 |
 | [SERVERS.md](SERVERS.md) | 10 进程详细说明（连接、handler、定时器） |
 | [EXTERNAL.md](EXTERNAL.md) | Logger/Global/Zone/Login 外联架构 |
+| [TLS.md](TLS.md) | 全链路 TLS/mTLS 配置与证书 |
 | [DATA.md](DATA.md) | MySQL + 策划 Lua 双轨数据 |
 | [LUA.md](LUA.md) | SceneServer Lua 脚本体系 |
 | [DEVELOPMENT.md](DEVELOPMENT.md) | 扩展开发指南（消息、副本、配表、构建） |

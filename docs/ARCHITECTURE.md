@@ -8,7 +8,7 @@
 | 属性 | 说明 |
 |------|------|
 | 语言 | C++17（核心逻辑）+ Lua 5.4（SceneServer 游戏脚本） |
-| 网络模型 | 单线程 epoll ET + TCP 长连接 |
+| 网络模型 | 单线程 epoll ET + **TLS over TCP** 长连接（见 [TLS.md](TLS.md)） |
 | 持久化 | MySQL 三库（rpg_login / rpg_game / rpg_global） |
 | 配置 | XML（tinyxml2 解析） |
 | 构建 | CMake 3.16+，输出至各服务器目录（如 `SuperServer/SuperServer`） |

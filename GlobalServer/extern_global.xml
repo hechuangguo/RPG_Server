@@ -18,4 +18,11 @@
         <!-- 可选出站：enabled=1 启用；reconnect=1 断线重连 -->
         <Client enabled="0" host="127.0.0.1" port="8080" reconnect="1"/>
     </Http>
+    <!-- TLS：Super 经 mTLS 连接；修改后重启 GlobalServer -->
+    <Tls enabled="1"
+         cert="config/tls/server.crt"
+         key="config/tls/server.key"
+         ca="config/tls/ca.crt"
+         verifyPeer="1"
+         minVersion="1.2"/>
 </ExternServer>

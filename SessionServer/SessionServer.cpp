@@ -7,6 +7,7 @@
 #include "SessionInternMsgRegister.h"
 #include "SessionClientMsgRegister.h"
 #include "../sdk/net/MsgIngress.h"
+#include "../sdk/net/NetTls.h"
 #include "../sdk/util/ServerBootstrap.h"
 #include "SessionUserManager.h"
 #include "SessionSceneManager.h"
@@ -74,11 +75,13 @@ bool SessionServer::Init(const std::string& ip, uint16_t port,
         m_self = *self;
     m_externSender.setSelfId(m_self.id ? m_self.id : selfId);
     ServerBootstrap::bindRemoteLog(m_externSender, SubServerType::SESSION);
+    wireTlsServer(m_server);
     if (!m_server.Start(ip, port))
     {
         LOG_FATAL("会话服监听启动失败");
         return false;
     }
+    wireTlsClient(m_superClient);
     if (!m_superClient.Connect(cfg.superIP, (uint16_t)cfg.superPort))
         LOG_WARN("无法连接超级服");
 
@@ -88,6 +91,7 @@ bool SessionServer::Init(const std::string& ip, uint16_t port,
         LOG_FATAL("服务器列表缺少 RECORD 条目");
         return false;
     }
+    wireTlsClient(m_recordClient);
     if (!m_recordClient.Connect(rec->ip, rec->port))
     {
         LOG_FATAL("无法连接存档服: %s:%u", rec->ip.c_str(), rec->port);
