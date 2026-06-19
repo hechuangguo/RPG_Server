@@ -20,5 +20,5 @@
     <ServerList path="LoginServer/serverlist.xml"/>
     <LogPath>logs/login.log</LogPath>
     <!-- 账号库：仅登录服使用 -->
-    <Database host="127.0.0.1" port="3306" user="rpg_table" pass="rpg_table" name="rpg_login"/>
+    <Database host="192.168.65.128" port="3306" user="rpg_table" pass="rpg_table" name="rpg_login"/>
 </ExternServer>

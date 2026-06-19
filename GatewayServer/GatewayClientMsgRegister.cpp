@@ -21,6 +21,9 @@ void GatewayClientMsgRegister(GatewayServer& server)
     registerClientRaw(d, &server, Msg_C2S_CreateUserReq::kModule,
                       static_cast<uint8_t>(LoginMsgSub::C2S_CREATE_USER_REQ),
                       &GatewayServer::onCreateUser);
+    registerClientRaw(d, &server, Msg_C2S_LogoutReq::kModule,
+                      static_cast<uint8_t>(LoginMsgSub::C2S_LOGOUT_REQ),
+                      &GatewayServer::onLogoutReq);
     registerClientRaw(d, &server, Msg_C2S_Heartbeat::kModule,
                       static_cast<uint8_t>(SystemMsgSub::C2S_HEARTBEAT),
                       &GatewayServer::onClientHeartbeat);

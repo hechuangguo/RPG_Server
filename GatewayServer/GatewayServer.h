@@ -148,6 +148,15 @@ private:
     /** @brief 创建角色 */
     void onCreateUser(ConnID connID, const char* data, uint16_t len);
 
+    /** @brief 离世界/退出（回选角或回登录） */
+    void onLogoutReq(ConnID connID, const char* data, uint16_t len);
+
+    /** @brief 通知 Scene 离场并可选通知 Super 清在线映射 */
+    void leaveWorldSession(const std::shared_ptr<GatewayUser>& user, bool notifySuper);
+
+    /** @brief 重置为账号已认证态（ACCOUNT_OK），清空角色进世界绑定 */
+    void resetToAccountSession(const std::shared_ptr<GatewayUser>& user);
+
     void onValidateTokenRsp(ConnID fromConn, const Msg_REC_ValidateTokenRsp& rsp);
     void onListCharactersRsp(ConnID fromConn, const char* data, uint16_t len);
     void onCreateCharacterRsp(ConnID fromConn, const Msg_REC_CreateCharacterRsp& rsp);

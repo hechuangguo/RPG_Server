@@ -77,6 +77,8 @@
 | 0x00 | 0x07 | C2S_CREATE_USER_REQ | C→S | `Msg_C2S_CreateUserReq` | 已实现 | 创角 |
 | 0x00 | 0x08 | S2C_CREATE_USER_RSP | S→C | `Msg_S2C_CreateUserRsp` | 已实现 | 创角响应 |
 | 0x00 | 0x0D | C2S_GATEWAY_AUTH_REQ | C→S | `Msg_C2S_GatewayAuthReq` | 已实现 | Gateway 票据鉴权 |
+| 0x00 | 0x0E | C2S_LOGOUT_REQ | C→S | `Msg_C2S_LogoutReq` | 已实现 | 离世界/退出（`ENTERING`/`IN_WORLD`） |
+| 0x00 | 0x0F | S2C_LOGOUT_RSP | S→C | `Msg_S2C_LogoutRsp` | 已实现 | 离世界响应 |
 | 0x00 | 0x09 | S2C_ENTER_GAME | S→C | `Msg_S2C_EnterGame` | 已实现 | 进入游戏世界 |
 | 0x00 | 0x0A | S2C_GATEWAY_INFO | S→C | `Msg_S2C_GatewayInfo` | 已实现 | LoginServer 下发网关地址 |
 | 0x00 | 0x0B | C2S_ZONE_LIST_REQ | C→S | `Msg_C2S_ZoneListReq` | 已实现 | 区列表请求（LoginServer） |
@@ -149,6 +151,8 @@
 | 3 | INVALID_NAME | 角色名非法 |
 | 4 | INVALID_VOCATION | 职业或性别非法 |
 
+`C2S_CREATE_USER_REQ.name`：UTF-8，2–12 码点，≤31 字节；允许中文（CJK 统一汉字）、英文字母、数字、下划线；校验见 `sdk/util/RoleNameUtil.h`。
+
 ### 2.4 Gateway 校验错误码
 
 `Msg_S2C_Error.code` 使用 `GatewayValidateCode`：
@@ -189,7 +193,7 @@
 | 0x1101–0x1113 | SessionServer | SES_LOAD/SAVE、SES_SCENE_*、SES_COPY_*、SES_RESOLVE_MAP_* |
 | 0x1201–0x1212 | RecordServer | REC_LOAD/SAVE、REC_VALIDATE_TOKEN、REC_LIST/CREATE_CHARACTER、REC_RELATION_*（`REC_LOGIN_VERIFY_*` 已废弃） |
 | 0x1301–0x1306 | SceneServer | SCE_USER_ENTER/LEAVE、SCE_FORWARD_TO_CLIENT |
-| 0x1401–0x1405 | GatewayServer | GW_CLIENT_MSG、GW_SEND_TO_CLIENT、GW_USER_LOGIN_* |
+| 0x1401–0x1406 | GatewayServer | GW_CLIENT_MSG、GW_SEND_TO_CLIENT、GW_USER_LOGIN_*、GW_USER_LEAVE_REQ |
 | 0x1501–0x1506 | AOIServer | AOI_ENTER/LEAVE/MOVE、AOI_VIEW_NOTIFY、AOI_SCENE_* |
 | 0x1601 | LoggerServer | LOG_WRITE_REQ |
 | 0x1701–0x1702 | GlobalServer | GLB_DATA_SYNC、GLB_RANK_UPDATE |

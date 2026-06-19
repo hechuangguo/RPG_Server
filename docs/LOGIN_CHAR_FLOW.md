@@ -90,7 +90,7 @@ sequenceDiagram
 
 | 字段 | 说明 |
 |------|------|
-| `name` | 2–16 字符，字母数字下划线 |
+| `name` | 2–12 码点（UTF-8 ≤31 字节）；中文/英文字母、数字、下划线 `_`；可混排 |
 | `vocation` | 职业 ID：0=战士 1=法师 2=弓手 3=刺客（见 `LoginSpawnConfig.h` `MAX_VOCATION_ID`） |
 | `sex` | 0=男 1=女（`MAX_SEX_ID`） |
 
@@ -115,7 +115,41 @@ sequenceDiagram
 
 ---
 
-## 5. 错误码速查
+## 5. 游戏中退出
+
+客户端 X/ESC 二级弹窗三选项与服端映射：
+
+| UI 选项 | `LogoutAction` | 客户端行为 | 服端行为 |
+|---------|----------------|-----------|----------|
+| **选择角色** | `RETURN_CHAR_SELECT`(1) | 保持 Gateway 连接 | `SCE_USER_LEAVE` + `GW_USER_LEAVE_REQ` → 状态回 `ACCOUNT_OK` → `S2C_LOGOUT_RSP` + 刷新 `S2C_USER_LIST` |
+| **登录游戏** | `RETURN_LOGIN`(2) | 收 rsp 后断 Gateway，连 Login 9010 拉区列表 | 同上清理；**不**主动 Kick，由客户端 disconnect |
+| **退出游戏** | — | 直接关进程 | 可无上行包；`OnDisconnect` 走 `leaveWorldSession` 兜底 |
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant GW as Gateway
+    participant SS as Super
+    participant SC as Scene
+
+    C->>GW: C2S_LOGOUT_REQ action=CharSelect
+    GW->>SC: SCE_USER_LEAVE
+    GW->>SS: GW_USER_LEAVE_REQ
+    GW->>GW: IN_WORLD → ACCOUNT_OK
+    GW-->>C: S2C_LOGOUT_RSP + S2C_USER_LIST
+```
+
+### 5.1 `C2S_LOGOUT_REQ`
+
+| 字段 | 说明 |
+|------|------|
+| `action` | 1=回选角（保持账号会话）；2=回登录（客户端随后断 Gateway） |
+
+允许 Gateway 状态：`ENTERING`（进世界中可取消）、`IN_WORLD`。
+
+---
+
+## 6. 错误码速查
 
 ### CreateCharacterError（`S2C_CREATE_USER_RSP.code`）
 
@@ -138,18 +172,18 @@ sequenceDiagram
 
 ---
 
-## 6. 本地冒烟
+## 7. 本地冒烟
 
 ```bash
 ./RunServer.sh && ./RunServer.sh login
 python3 scripts/test_login_gateway_e2e.py autotest_e2e test1234
 ```
 
-期望：`gateway.log` 出现 `鉴权成功` → `phase=角色列表` → `选角进世界` → `进入游戏成功`。
+期望：`gateway.log` 出现 `鉴权成功` → `phase=角色列表` → `选角进世界` → `进入游戏成功`；E2E 脚本还会测 `C2S_LOGOUT_REQ` 返回选角。
 
 ---
 
-## 7. 后续（未实现）
+## 8. 后续（未实现）
 
 - 客户端主动 `C2S_USER_LIST_REQ` 刷新列表
 - `S2C_ENTER_MAP`（当前用 `S2C_ENTER_GAME` + `S2C_SPAWN_ENTITY`）

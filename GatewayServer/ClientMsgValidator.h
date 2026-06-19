@@ -9,6 +9,7 @@
 #include "../Common/LoginMsg.h"
 #include "../Common/MapDataMsg.h"
 #include "../sdk/util/LoginSpawnConfig.h"
+#include "../sdk/util/RoleNameUtil.h"
 #include "../Common/ChatMsg.h"
 #include "GatewayUser.h"
 #include <cstdint>
@@ -68,6 +69,9 @@ public:
         if (module == Msg_C2S_CreateUserReq::kModule &&
             sub == static_cast<uint8_t>(LoginMsgSub::C2S_CREATE_USER_REQ))
             return validateCreateUser(data, len);
+        if (module == Msg_C2S_LogoutReq::kModule &&
+            sub == static_cast<uint8_t>(LoginMsgSub::C2S_LOGOUT_REQ))
+            return validateLogout(data, len);
         return ValidateResult::OK;
     }
 
@@ -129,6 +133,9 @@ private:
             {Msg_C2S_CreateUserReq::kModule, Msg_C2S_CreateUserReq::kSub,
              sizeof(Msg_C2S_CreateUserReq), sizeof(Msg_C2S_CreateUserReq),
              STATE_ACCOUNT_OK, false, false},
+            {Msg_C2S_LogoutReq::kModule, Msg_C2S_LogoutReq::kSub,
+             sizeof(Msg_C2S_LogoutReq), sizeof(Msg_C2S_LogoutReq),
+             STATE_ENTERING | STATE_IN_WORLD, false, false},
             {Msg_C2S_Heartbeat::kModule, Msg_C2S_Heartbeat::kSub,
              sizeof(Msg_C2S_Heartbeat), sizeof(Msg_C2S_Heartbeat),
              STATE_CONNECTED | STATE_AUTHING | STATE_ACCOUNT_OK | STATE_ENTERING | STATE_IN_WORLD,
@@ -168,7 +175,20 @@ private:
         const auto* req = reinterpret_cast<const Msg_C2S_CreateUserReq*>(data);
         if (req->name[0] == '\0')
             return ValidateResult::BAD_PAYLOAD;
+        if (!isValidRoleNameUtf8(req->name))
+            return ValidateResult::BAD_PAYLOAD;
         if (req->vocation > MAX_VOCATION_ID || req->sex > MAX_SEX_ID)
+            return ValidateResult::BAD_PAYLOAD;
+        return ValidateResult::OK;
+    }
+
+    static ValidateResult validateLogout(const char* data, uint16_t len)
+    {
+        if (len < sizeof(Msg_C2S_LogoutReq))
+            return ValidateResult::BAD_LENGTH;
+        const auto* req = reinterpret_cast<const Msg_C2S_LogoutReq*>(data);
+        if (req->action != static_cast<uint8_t>(LogoutAction::RETURN_CHAR_SELECT) &&
+            req->action != static_cast<uint8_t>(LogoutAction::RETURN_LOGIN))
             return ValidateResult::BAD_PAYLOAD;
         return ValidateResult::OK;
     }

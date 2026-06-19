@@ -29,6 +29,9 @@ void SuperInternMsgRegister(SuperServer& server)
     registerInternal(d, &server,
                      static_cast<uint16_t>(InternalMsgID::GW_USER_LOGIN_REQ),
                      &SuperServer::onUserLoginReq);
+    registerInternal(d, &server,
+                     static_cast<uint16_t>(InternalMsgID::GW_USER_LEAVE_REQ),
+                     &SuperServer::onUserLeaveReq);
     registerInternalRaw(d, &server,
                         static_cast<uint16_t>(InternalMsgID::REC_LOAD_USER_RSP),
                         &SuperServer::onLoadUserRsp);

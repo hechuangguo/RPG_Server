@@ -358,6 +358,29 @@ void SuperServer::kickExistingUserSession(UserID userID)
                  "重复登录踢旧会话");
 }
 
+void SuperServer::onUserLeaveReq(ConnID /*connID*/, const Msg_GW_UserLeaveReq& req)
+{
+    const UserID userID = req.userID;
+    if (userID == INVALID_USER_ID)
+        return;
+
+    auto pendingIt = m_pendingLogins.find(userID);
+    if (pendingIt != m_pendingLogins.end())
+    {
+        logLoginFlow(LoginFlowPhase::CHAR_LEAVE, 0, userID, req.gatewayClientConnID, 0,
+                     "主动离开，取消 pending", pendingIt->second.loginTxnId);
+        m_pendingLogins.erase(pendingIt);
+    }
+
+    auto userIt = m_users.find(userID);
+    if (userIt != m_users.end())
+    {
+        logLoginFlow(LoginFlowPhase::LOGOUT, 0, userID, req.gatewayClientConnID, 0,
+                     "主动离开，清除在线映射");
+        m_users.erase(userIt);
+    }
+}
+
 void SuperServer::checkPendingLoginTimeouts()
 {
     const uint64_t nowMs = TimerMgr::NowMs();

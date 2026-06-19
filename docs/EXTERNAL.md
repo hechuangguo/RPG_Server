@@ -144,34 +144,49 @@ Gateway **不直连** Login RegisterListen，而是：
 
 ### 4.6 Windows 客户端连接检查清单
 
-Windows 客户端连不上 LoginServer 时，**先看 `logs/login.log` 是否出现 `登录客户端连接`**。若无该日志，说明 TCP 未到达服务端（非账号/协议问题）。
+两阶段登录需 **两个** 客户端口均可达：
+
+| 阶段 | 端口 | 进程 | 客户端行为 |
+|------|------|------|------------|
+| 账号登录 | **9010** | LoginServer ClientListen | `C2S_LOGIN_REQ` → 收 `S2C_GATEWAY_INFO` |
+| 网关鉴权 / 角色列表 | **9005** | GatewayServer | 断开 9010 后连网关 → `C2S_GATEWAY_AUTH_REQ` → `S2C_USER_LIST` |
+
+**症状对照**：
+
+- `login.log` 有 `账号登录成功` 但 **无** `gateway.log` 的 `客户端连接建立` → 9010 通、**9005 未通**（防火墙/安全组常见）
+- 客户端「正在获取角色列表」后「验证账号超时」→ 同上，或 Gateway 鉴权链路未闭环（见 [LOGIN_CHAR_FLOW.md](LOGIN_CHAR_FLOW.md)）
+
+Windows 客户端连不上时，**先看 `logs/login.log` 是否出现 `登录客户端连接`**。若无该日志，说明 TCP 未到达 LoginServer（非账号/协议问题）。
 
 | 检查项 | 说明 |
 |--------|------|
 | **地址** | 填 **Linux 服务器局域网 IP**（如 `192.168.65.128`），**勿用** `127.0.0.1`（在 Windows 上指向本机） |
-| **端口** | 登录阶段连 **9010**（LoginServer ClientListen），不是 9005（Gateway） |
+| **端口** | **9010**（Login）与 **9005**（Gateway）均须可达；仅开 9010 会导致登录成功但选角超时 |
 | **LoginServer 已启动** | `./RunServer.sh login`（默认 `./RunServer.sh` 不含 LoginServer） |
-| **防火墙** | Linux `firewall-cmd --list-ports` 需含 `9010/tcp`；云主机安全组入站放行 9010 |
-| **serverlist.xml** | `LoginServer/serverlist.xml` 中 `<Zone ip="..."/>` 须为 **Windows 可达 IP**（登录成功后 `S2C_GATEWAY_INFO` 会下发该区网关地址）；改后重启 LoginServer |
+| **防火墙** | `firewall-cmd --list-ports` 需含 `9010/tcp` **与** `9005/tcp`；云安全组入站同样放行 |
+| **serverlist.xml** | `LoginServer/serverlist.xml` 中 `<Zone ip="..."/>` 须为 **Windows 可达 IP**（`S2C_GATEWAY_INFO` 下发网关地址）；改后重启 LoginServer |
+| **DB ServerList** | `rpg_game.ServerList` 中 Gateway（`server_type=5`）`ip` 宜为 LAN IP，非仅 `127.0.0.1` |
 
-**服务器自检**（在 Linux 上执行）：
+**服务器自检**（项目根目录）：
 
 ```bash
-ss -lntp | grep 9010          # 期望 0.0.0.0:9010
-nc -zv 127.0.0.1 9010         # 本机探测
-nc -zv <服务器局域网IP> 9010   # 局域网 IP 探测
-grep "登录客户端连接" logs/login.log
+./scripts/check_login_ports.sh 192.168.65.128   # ss + nc 探测 9010/9005
+sudo ./scripts/open_game_ports.sh               # firewalld 永久放行 9010+9005
+sudo ./scripts/open_game_ports.sh --check         # 只读检查 firewalld
+python3 scripts/test_login_gateway_e2e.py         # 同机 E2E：鉴权 + 角色列表 + 进世界
+grep "客户端连接建立" logs/gateway.log            # 客户端连上 Gateway 时应有此行
 ```
 
 **Windows 侧**（PowerShell，将 IP 换成服务器实际地址）：
 
 ```powershell
 Test-NetConnection -ComputerName 192.168.65.128 -Port 9010
+Test-NetConnection -ComputerName 192.168.65.128 -Port 9005
 ```
 
-`TcpTestSucceeded : True` 表示网络可达；再连客户端并观察 `logs/login.log` 是否出现 `登录客户端连接`。
+两者均需 `TcpTestSucceeded : True`。再连客户端：`login.log` 应有 `登录客户端连接`，`gateway.log` 应有 `客户端连接建立` → `鉴权成功` → `phase=角色列表`。
 
-**虚拟机 / NAT**：若 Linux 在 VMware/VirtualBox NAT 下，Windows 可能无法直连；改用桥接模式或配置端口转发。
+**虚拟机 / NAT**：若 Linux 在 VMware/VirtualBox NAT 下，Windows 可能无法直连；改用桥接模式或配置 **9010 与 9005** 端口转发。
 
 ---
 

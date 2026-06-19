@@ -33,6 +33,8 @@ enum class LoginFlowPhase : uint8_t
     CHAR_SELECT   = 4,  /**< 选角 */
     SUPER_ENTER   = 5,  /**< Super 进世界编排 */
     SCENE_ENTER   = 6,  /**< Scene 入场完成 */
+    CHAR_LEAVE    = 7,  /**< 主动离世界（Scene/Super 清理） */
+    LOGOUT        = 8,  /**< 客户端退出意图（回选角/回登录） */
 };
 
 /** @brief 阶段名（中文，用于日志） */
@@ -47,6 +49,8 @@ inline const char* loginFlowPhaseName(LoginFlowPhase phase)
     case LoginFlowPhase::CHAR_SELECT:   return "选角";
     case LoginFlowPhase::SUPER_ENTER:   return "超级服进世界";
     case LoginFlowPhase::SCENE_ENTER:     return "场景入场";
+    case LoginFlowPhase::CHAR_LEAVE:      return "角色离世界";
+    case LoginFlowPhase::LOGOUT:          return "退出登录";
     default: return "未知";
     }
 }

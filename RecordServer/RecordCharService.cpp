@@ -8,34 +8,12 @@
 #include "../sdk/util/LoginEnterErrorCode.h"
 #include "../sdk/util/LoginSpawnConfig.h"
 #include "../sdk/util/LoginFlowLog.h"
+#include "../sdk/util/RoleNameUtil.h"
 #include "../sdk/util/WireStringUtil.h"
 
 #include <cstdio>
 #include <cstring>
 #include <limits>
-
-namespace
-{
-
-bool isValidRoleName(const char* name)
-{
-    if (!name || name[0] == '\0')
-        return false;
-    const size_t n = strlen(name);
-    if (n < 2 || n > 16)
-        return false;
-    for (size_t i = 0; i < n; ++i)
-    {
-        const unsigned char c = static_cast<unsigned char>(name[i]);
-        const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-                        (c >= '0' && c <= '9') || c == '_';
-        if (!ok)
-            return false;
-    }
-    return true;
-}
-
-} // namespace
 
 void RecordCharService::listCharacters(MYSQL* db, const Msg_REC_ListCharactersReq& req,
                                        Msg_REC_ListCharactersRspHeader& hdr,
@@ -113,7 +91,7 @@ void RecordCharService::createCharacter(MYSQL* db, const Msg_REC_CreateCharacter
 
     char roleName[sizeof(req.name)];
     copyToWire(roleName, sizeof(roleName), req.name);
-    if (!isValidRoleName(roleName))
+    if (!isValidRoleNameUtf8(roleName))
     {
         rsp.code = static_cast<int32_t>(CreateCharacterError::INVALID_NAME);
         logLoginFlow(LoginFlowPhase::CHAR_CREATE, req.accid, 0, req.gatewayConnID, rsp.code,

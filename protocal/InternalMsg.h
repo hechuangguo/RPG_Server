@@ -145,13 +145,14 @@ enum class InternalMsgID : uint16_t
     SCE_MAP_INFO_RSP     = 0x1306,  /**< 地图信息响应 */
 
     // ============================================================
-    //  GatewayServer (0x1401 ~ 0x1405)
+    //  GatewayServer (0x1401 ~ 0x1406)
     // ============================================================
     GW_CLIENT_MSG        = 0x1401,  /**< 来自客户端的消息（转发给 SceneServer） */
     GW_SEND_TO_CLIENT    = 0x1402,  /**< SceneServer → Gateway: 发送给客户端 */
     GW_KICK_CLIENT       = 0x1403,  /**< 踢除客户端连接 */
     GW_USER_LOGIN_REQ    = 0x1404,  /**< Gateway → SuperServer: 发起用户登录流程 */
     GW_USER_LOGIN_RSP    = 0x1405,  /**< SuperServer → Gateway: 登录流程结果 */
+    GW_USER_LEAVE_REQ    = 0x1406,  /**< Gateway → Super: 主动离世界（回选角/回登录） */
 
     // ============================================================
     //  AOIServer (0x1501 ~ 0x1504)
@@ -578,6 +579,19 @@ struct Msg_GW_UserLoginRsp
     uint32_t mp    = 100;         /**< 当前魔法值 */
     uint32_t maxMP = 100;         /**< 最大魔法值 */
     uint32_t sceneServerId = 0;   /**< 用户所在 SceneServer 实例 ID（ServerList.server_id） */
+};
+
+/**
+ * @brief Gateway → SuperServer: 主动离世界（回选角/回登录/断线兜底）
+ *
+ * 方向：GatewayServer → SuperServer
+ * 编号：InternalMsgID::GW_USER_LEAVE_REQ
+ * 触发：C2S_LOGOUT_REQ 或客户端 TCP 断开且 userID 非 0
+ */
+struct Msg_GW_UserLeaveReq
+{
+    uint64_t userID;              /**< 离世界角色 ID */
+    uint32_t gatewayClientConnID; /**< Gateway 中客户端连接 ID */
 };
 
 /**

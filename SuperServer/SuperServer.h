@@ -249,6 +249,9 @@ private:
     /** @brief 重复登录时踢除旧会话（Gateway 断连 + Scene 离场） */
     void kickExistingUserSession(UserID userID);
 
+    /** @brief Gateway 主动离世界：清 pending/users，不踢客户端 */
+    void onUserLeaveReq(ConnID connID, const Msg_GW_UserLeaveReq& req);
+
     /** @brief 清理超时 pending 登录并回包失败 */
     void checkPendingLoginTimeouts();
 

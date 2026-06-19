@@ -15,6 +15,7 @@
 #include <vector>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <unordered_set>
 
 namespace {
@@ -104,14 +105,8 @@ void GatewayServer::OnDisconnect(ConnID id)
     auto user = m_userManager.findUser(id);
     if (user)
     {
-        if (user->GetID() != INVALID_USER_ID && m_upstreamReady)
-        {
-            UserID uid = user->GetID();
-            SceneClient* scene = m_scenePool.clientFor(user->getSceneServerId());
-            if (scene)
-                scene->sendMsg(static_cast<uint16_t>(InternalMsgID::SCE_USER_LEAVE),
-                               reinterpret_cast<const char*>(&uid), sizeof(UserID));
-        }
+        if (user->GetID() != INVALID_USER_ID)
+            leaveWorldSession(user, true);
         m_userManager.removeUser(id);
     }
 }
@@ -444,6 +439,97 @@ void GatewayServer::onCreateUser(ConnID connID, const char* data, uint16_t len)
     m_recordClient.SendMsg(static_cast<uint16_t>(InternalMsgID::REC_CREATE_CHARACTER_REQ),
                            reinterpret_cast<char*>(&createReq), sizeof(createReq));
     logLoginFlow(LoginFlowPhase::CHAR_CREATE, user->getAccid(), 0, connID, 0, req->name);
+}
+
+void GatewayServer::leaveWorldSession(const std::shared_ptr<GatewayUser>& user, bool notifySuper)
+{
+    if (!user || user->GetID() == INVALID_USER_ID)
+        return;
+
+    const UserID uid = user->GetID();
+    const ConnID connId = user->getConnId();
+
+    if (m_upstreamReady && user->getSceneServerId() != 0)
+    {
+        SceneClient* scene = m_scenePool.clientFor(user->getSceneServerId());
+        if (scene)
+        {
+            scene->sendMsg(static_cast<uint16_t>(InternalMsgID::SCE_USER_LEAVE),
+                           reinterpret_cast<const char*>(&uid), sizeof(UserID));
+        }
+    }
+
+    if (notifySuper && m_superClient.IsConnected())
+    {
+        Msg_GW_UserLeaveReq leaveReq{};
+        leaveReq.userID = uid;
+        leaveReq.gatewayClientConnID = connId;
+        m_superClient.SendMsg(static_cast<uint16_t>(InternalMsgID::GW_USER_LEAVE_REQ),
+                              reinterpret_cast<char*>(&leaveReq), sizeof(leaveReq));
+    }
+
+    logLoginFlow(LoginFlowPhase::CHAR_LEAVE, user->getAccid(), uid, connId, 0, nullptr,
+                 user->getLoginTxnId());
+}
+
+void GatewayServer::resetToAccountSession(const std::shared_ptr<GatewayUser>& user)
+{
+    if (!user)
+        return;
+
+    user->setUserId(INVALID_USER_ID);
+    user->setSceneServerId(0);
+    user->setLoginTxnId(0);
+    user->setOwnedRoleIds({});
+    user->setRoleListReady(false);
+    user->setClientState(ClientState::ACCOUNT_OK);
+}
+
+void GatewayServer::onLogoutReq(ConnID connID, const char* data, uint16_t len)
+{
+    if (len < sizeof(Msg_C2S_LogoutReq))
+        return;
+
+    const auto* req = reinterpret_cast<const Msg_C2S_LogoutReq*>(data);
+    auto user = m_userManager.findUser(connID);
+    if (!user)
+        return;
+
+    const auto action = static_cast<LogoutAction>(req->action);
+    Msg_S2C_LogoutRsp rsp{};
+    initClientMsg(rsp);
+    rsp.action = req->action;
+
+    if (action != LogoutAction::RETURN_CHAR_SELECT &&
+        action != LogoutAction::RETURN_LOGIN)
+    {
+        rsp.code = -1;
+        copyToWire(rsp.msg, sizeof(rsp.msg), "无效的退出选项");
+        m_clientServer.SendMsg(connID, Msg_S2C_LogoutRsp::kModule, Msg_S2C_LogoutRsp::kSub,
+                               reinterpret_cast<char*>(&rsp), sizeof(rsp));
+        logLoginFlow(LoginFlowPhase::LOGOUT, user->getAccid(), user->GetID(), connID, -1,
+                     "无效 action");
+        return;
+    }
+
+    const uint64_t accid = user->getAccid();
+    const uint32_t zoneId = user->getZoneId();
+    const UserID leavingUserId = user->GetID();
+
+    leaveWorldSession(user, true);
+    resetToAccountSession(user);
+
+    rsp.code = 0;
+    copyToWire(rsp.msg, sizeof(rsp.msg),
+               action == LogoutAction::RETURN_CHAR_SELECT ? "已返回选角" : "已退出游戏");
+    m_clientServer.SendMsg(connID, Msg_S2C_LogoutRsp::kModule, Msg_S2C_LogoutRsp::kSub,
+                           reinterpret_cast<char*>(&rsp), sizeof(rsp));
+
+    logLoginFlow(LoginFlowPhase::LOGOUT, accid, leavingUserId, connID, 0,
+                 action == LogoutAction::RETURN_CHAR_SELECT ? "返回选角" : "返回登录");
+
+    if (action == LogoutAction::RETURN_CHAR_SELECT)
+        sendUserListToClient(connID, accid, zoneId);
 }
 
 bool GatewayServer::sendUserListToClient(ConnID clientConn, uint64_t accid, uint32_t zoneId,

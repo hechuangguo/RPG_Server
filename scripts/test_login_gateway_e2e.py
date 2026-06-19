@@ -19,6 +19,8 @@ S2C_USER_LIST = 6
 C2S_CREATE_USER_REQ = 7
 S2C_CREATE_USER_RSP = 8
 S2C_ENTER_GAME = 9
+C2S_LOGOUT_REQ = 0x0E
+S2C_LOGOUT_RSP = 0x0F
 C2S_GATEWAY_AUTH_REQ = 0x0D
 S2C_SPAWN_ENTITY = 5
 
@@ -31,6 +33,8 @@ CREATE_USER_RSP_USERID_OFF = 70  # body[0:1]module/sub + [2:5]code + [6:69]msg�
 CREATE_USER_FMT = "<BB32sBB2x"
 SELECT_USER_FMT = "<BBQQ"
 GATEWAY_AUTH_FMT = "<BB32s65sIB3x"
+LOGOUT_REQ_FMT = "<BBB3x"
+LOGOUT_RSP_MIN = 74  # module(1)+sub(1)+code(4)+action(1)+reserved(3)+msg(64)
 MSG_HEADER_SIZE = 4  # MsgHeader: bodyLen(2)+module(1)+sub(1)，见 sdk/net/NetDefine.h
 
 
@@ -191,7 +195,7 @@ def login(account, password, zone_id=1, game_type=0):
 def main():
     account = sys.argv[1] if len(sys.argv) > 1 else "autotest_e2e"
     password = sys.argv[2] if len(sys.argv) > 2 else "test1234"
-    role_name = sys.argv[3] if len(sys.argv) > 3 else f"hero_{int(time.time()) % 100000}"
+    role_name = sys.argv[3] if len(sys.argv) > 3 else f"E2E侠{int(time.time()) % 100000}"
 
     print(f"[1] login {account} ...")
     login_rsp, gw_ip, gw_port = login(account, password)
@@ -324,11 +328,65 @@ def main():
             print(f"    S2C_SPAWN_ENTITY len={len(data)}")
             spawn_ok = True
 
+    if not enter_ok:
+        gw.close()
+        print("FAIL: no S2C_ENTER_GAME")
+        return 1
+
+    print(f"[5] logout return char select userID={user_id} ...")
+    logout_body = struct.pack(
+        LOGOUT_REQ_FMT,
+        LOGIN_MODULE,
+        C2S_LOGOUT_REQ,
+        1,  # RETURN_CHAR_SELECT
+    )
+    send_msg(gw, LOGIN_MODULE, C2S_LOGOUT_REQ, logout_body)
+
+    pending = reader.collect({S2C_LOGOUT_RSP, S2C_USER_LIST}, timeout=15.0)
+    logout_ok = False
+    relist_ok = False
+    for mod, sub, data in pending:
+        if mod == LOGIN_MODULE and sub == S2C_LOGOUT_RSP and len(data) >= LOGOUT_RSP_MIN:
+            w = wirePrefixOff(data, mod, sub)
+            code = struct.unpack_from("<i", data, w)[0]
+            action = data[w + 4] if len(data) > w + 4 else 0
+            print(f"    S2C_LOGOUT_RSP code={code} action={action}")
+            logout_ok = code == 0 and action == 1
+        if mod == LOGIN_MODULE and sub == S2C_USER_LIST:
+            ul = parse_user_list(data, mod, sub)
+            if ul:
+                print(f"    S2C_USER_LIST after logout count={ul['count']}")
+                relist_ok = ul["count"] > 0
+
+    if not logout_ok or not relist_ok:
+        gw.close()
+        print("FAIL: logout return char select")
+        return 1
+
+    print(f"[6] re-select userID={user_id} enter world again ...")
+    select_body = struct.pack(
+        SELECT_USER_FMT,
+        LOGIN_MODULE,
+        C2S_SELECT_USER_REQ,
+        user_id,
+        0,
+    )
+    send_msg(gw, LOGIN_MODULE, C2S_SELECT_USER_REQ, select_body)
+
+    pending = reader.collect({S2C_ENTER_GAME}, timeout=20.0)
+    reenter_ok = False
+    for mod, sub, data in pending:
+        if mod == LOGIN_MODULE and sub == S2C_ENTER_GAME and len(data) >= 48:
+            w = wirePrefixOff(data, mod, sub)
+            uid = struct.unpack_from("<Q", data, w)[0]
+            print(f"    S2C_ENTER_GAME re-enter userID={uid}")
+            reenter_ok = uid == user_id
+
     gw.close()
-    if enter_ok:
-        print(f"PASS: enter game OK spawn={'yes' if spawn_ok else 'no'}")
+    if reenter_ok:
+        print(f"PASS: enter game + logout char select + re-enter OK spawn={'yes' if spawn_ok else 'no'}")
         return 0
-    print("FAIL: no S2C_ENTER_GAME")
+    print("FAIL: re-enter after logout")
     return 1
 
 
