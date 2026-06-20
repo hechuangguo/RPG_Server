@@ -68,7 +68,7 @@ Login 的 9010 与 19010 共用同一 `SSL_CTX`。
 
 | 侧 | 行为 |
 |----|------|
-| **Server** | 加载 `cert`+`key`；`verifyPeer=1` 时要求对端出示客户端证书，CA 来自 `ca.crt` |
+| **Server** | 加载 `cert`+`key`；`verifyPeer=1` 时 **区内/注册 accept** 要求对端客户端证书；**玩家客户端口**（Login 9010、Gateway 9005）使用单向 TLS（不要求客户端证书） |
 | **Client** | 校验服务端证书链；出示同一 `server.crt/key` 作为客户端证书（dev 单证书双向复用） |
 | **失败** | WARN 日志 + `Close()`，**不降级明文** |
 
@@ -90,6 +90,26 @@ Login 的 9010 与 19010 共用同一 `SSL_CTX`。
 3. 握手成功后仍发送 **6 字节头 + body**（与明文时代相同）。
 4. Login 9010 与 Gateway 9005 **均须 TLS**。
 
+### 5.1 区列表（9010）接入清单
+
+| 步骤 | 要求 |
+|------|------|
+| 连接 | `connect(serverIp, 9010)` 后立即 `SSL_connect` / 平台 TLS 包装 |
+| CA | 加载仓库 `config/tls/ca.crt`（与 `./scripts/gen_tls_certs.sh` 生成的一致） |
+| 客户端证书 | **不需要**（Login 9010 / Gateway 9005 为单向 TLS；仅校验服务端证书） |
+| 请求 | `MsgHeader`: `bodyLen=1`, `module=0x00`, `sub=0x0B`；body 仅 `gameType`（`0xFF`=全部）；亦兼容 wire v2 完整 `Msg_C2S_ZoneListReq` |
+| 响应 | `sub=0x0C`；body 头 8 字节 + `count × 112` 字节 `Msg_S2C_ZoneEntryWire` |
+| Common | 同步 RPG_Server `Common` 子模块（wire v2 前缀、112B 区条目） |
+
+**症状**：服务端 `login.log` 仅 `登录客户端 TLS 握手未完成即断开`、无 `登录客户端连接` → 客户端仍用明文 TCP。
+
+**自检**（无需客户端）：
+
+```bash
+python3 scripts/test_zone_list_tls.py
+grep "已下发区列表" logs/login.log
+```
+
 详见 [EXTERNAL.md](EXTERNAL.md) 两阶段登录与防火墙说明。
 
 ---
@@ -103,7 +123,10 @@ openssl s_client -connect 127.0.0.1:9010 -CAfile config/tls/ca.crt -brief </dev/
 # 端口 + TLS 脚本
 ./scripts/check_login_ports.sh 127.0.0.1
 
-# E2E（同机，已 wrap TLS）
+# 区列表 TLS 冒烟（9010，无需 Gateway）
+python3 scripts/test_zone_list_tls.py
+
+# E2E（同机，已 wrap TLS；需 Gateway 9005 运行）
 python3 scripts/test_login_gateway_e2e.py
 ```
 

@@ -56,6 +56,11 @@ TlsContext::~TlsContext()
         SSL_CTX_free(m_serverCtx);
         m_serverCtx = nullptr;
     }
+    if (m_serverOneWayCtx)
+    {
+        SSL_CTX_free(m_serverOneWayCtx);
+        m_serverOneWayCtx = nullptr;
+    }
     if (m_clientCtx)
     {
         SSL_CTX_free(m_clientCtx);
@@ -72,6 +77,11 @@ bool TlsContext::init(const TlsConfig& cfg, std::string* errOut)
     {
         SSL_CTX_free(m_serverCtx);
         m_serverCtx = nullptr;
+    }
+    if (m_serverOneWayCtx)
+    {
+        SSL_CTX_free(m_serverOneWayCtx);
+        m_serverOneWayCtx = nullptr;
     }
     if (m_clientCtx)
     {
@@ -96,11 +106,15 @@ bool TlsContext::init(const TlsConfig& cfg, std::string* errOut)
 
     OPENSSL_init_ssl(0, nullptr);
 
-    m_serverCtx = createCtx(true, errOut);
+    m_serverCtx = createCtx(true, cfg.verifyPeer, errOut);
     if (!m_serverCtx)
         return false;
 
-    m_clientCtx = createCtx(false, errOut);
+    m_serverOneWayCtx = createCtx(true, false, errOut);
+    if (!m_serverOneWayCtx)
+        return false;
+
+    m_clientCtx = createCtx(false, cfg.verifyPeer, errOut);
     if (!m_clientCtx)
         return false;
 
@@ -112,7 +126,7 @@ bool TlsContext::init(const TlsConfig& cfg, std::string* errOut)
     return true;
 }
 
-SSL_CTX* TlsContext::createCtx(bool serverSide, std::string* errOut)
+SSL_CTX* TlsContext::createCtx(bool serverSide, bool verifyPeer, std::string* errOut)
 {
     const SSL_METHOD* method = serverSide ? TLS_server_method() : TLS_client_method();
     SSL_CTX* ctx = SSL_CTX_new(method);
@@ -177,8 +191,8 @@ SSL_CTX* TlsContext::createCtx(bool serverSide, std::string* errOut)
     }
 
     SSL_CTX_set_verify(ctx,
-                       m_config.verifyPeer ? (SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT)
-                                           : SSL_VERIFY_NONE,
+                       verifyPeer ? (SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT)
+                                  : SSL_VERIFY_NONE,
                        nullptr);
 
     if (!serverSide)
@@ -196,11 +210,14 @@ SSL_CTX* TlsContext::createCtx(bool serverSide, std::string* errOut)
     return ctx;
 }
 
-SSL* TlsContext::newServerSsl(int fd)
+SSL* TlsContext::newServerSsl(int fd, bool requireClientCert)
 {
-    if (!m_enabled || !m_serverCtx || fd < 0)
+    if (!m_enabled || fd < 0)
         return nullptr;
-    SSL* ssl = SSL_new(m_serverCtx);
+    SSL_CTX* ctx = requireClientCert ? m_serverCtx : m_serverOneWayCtx;
+    if (!ctx)
+        return nullptr;
+    SSL* ssl = SSL_new(ctx);
     if (!ssl)
         return nullptr;
     SSL_set_fd(ssl, fd);

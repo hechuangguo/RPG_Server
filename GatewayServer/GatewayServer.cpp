@@ -61,7 +61,7 @@ bool GatewayServer::Init(uint16_t clientPort,
     if (const ServerEntry* self = list.find(SubServerType::GATEWAY, selfId))
         m_self = *self;
 
-    wireTlsServer(m_clientServer);
+    wireTlsServer(m_clientServer, false);
     if (!m_clientServer.Start("0.0.0.0", clientPort))
     { LOG_FATAL("客户端监听失败"); return false; }
 

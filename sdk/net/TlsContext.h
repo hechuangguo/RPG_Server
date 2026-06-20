@@ -32,8 +32,11 @@ public:
     /** @brief TLS 是否已启用 */
     bool enabled() const { return m_enabled; }
 
-    /** @brief 服务端 SSL_CTX（accept）；未启用时 nullptr */
+    /** @brief 服务端 SSL_CTX（accept，mTLS）；未启用时 nullptr */
     SSL_CTX* serverCtx() const { return m_serverCtx; }
+
+    /** @brief 玩家客户端口 SSL_CTX（不要求对端证书）；未启用时 nullptr */
+    SSL_CTX* serverOneWayCtx() const { return m_serverOneWayCtx; }
 
     /** @brief 客户端 SSL_CTX（connect）；未启用时 nullptr */
     SSL_CTX* clientCtx() const { return m_clientCtx; }
@@ -41,8 +44,10 @@ public:
     /** @brief 当前配置快照 */
     const TlsConfig& config() const { return m_config; }
 
-    /** @brief 为已 accept/connect 的 fd 创建服务端 SSL 对象 */
-    SSL* newServerSsl(int fd);
+    /** @brief 为已 accept 的 fd 创建服务端 SSL 对象
+     *  @param requireClientCert true=mTLS（区内/注册口）；false=玩家客户端口单向 TLS
+     */
+    SSL* newServerSsl(int fd, bool requireClientCert = true);
 
     /** @brief 为已 connect 的 fd 创建客户端 SSL 对象 */
     SSL* newClientSsl(int fd);
@@ -53,10 +58,11 @@ private:
     TlsContext(const TlsContext&) = delete;
     TlsContext& operator=(const TlsContext&) = delete;
 
-    SSL_CTX* createCtx(bool serverSide, std::string* errOut);
+    SSL_CTX* createCtx(bool serverSide, bool verifyPeer, std::string* errOut);
 
     bool        m_enabled   = false;
     TlsConfig   m_config{};
-    SSL_CTX*    m_serverCtx = nullptr;
+    SSL_CTX*    m_serverCtx = nullptr;         /**< mTLS accept（verifyPeer） */
+    SSL_CTX*    m_serverOneWayCtx = nullptr;   /**< 玩家客户端口 accept（不校验对端证书） */
     SSL_CTX*    m_clientCtx = nullptr;
 };

@@ -156,9 +156,11 @@ Gateway **不直连** Login RegisterListen，而是：
 - `login.log` 有 `账号登录成功` 但 **无** `gateway.log` 的 `客户端连接建立` → 9010 通、**9005 未通**（防火墙/安全组常见）
 - 客户端「正在获取角色列表」后「验证账号超时」→ 同上，或 Gateway 鉴权链路未闭环（见 [LOGIN_CHAR_FLOW.md](LOGIN_CHAR_FLOW.md)）
 
-Windows 客户端连不上时，**先看 `logs/login.log` 是否出现 `登录客户端连接`**。若无该日志，说明连接未到达 LoginServer（TLS 握手失败、防火墙或地址错误，非账号/协议问题）。
+Windows 客户端连不上时，**先看 `logs/login.log` 是否出现 `登录客户端连接`**。若无该日志但有 `登录客户端 TLS 握手未完成即断开`，说明 TCP 已到达但 **客户端未启用 TLS**（或 CA 不匹配）；若无任一连接相关日志，则为防火墙/地址错误。
 
-**TLS**：9010/9005 为 TLS 端口（非明文 TCP）。客户端须信任 `config/tls/ca.crt`（dev 执行 `./scripts/gen_tls_certs.sh` 生成）。详见 [TLS.md](TLS.md)。
+**TLS**：9010/9005 为 TLS 端口（非明文 TCP）。客户端须信任 `config/tls/ca.crt`（dev 执行 `./scripts/gen_tls_certs.sh` 生成）；**无需**出示客户端证书。详见 [TLS.md](TLS.md)。
+
+**serverlist.xml IP**：`LoginServer/serverlist.xml` 中 `<Zone ip="..."/>` 须为 Linux 服务器 LAN IP（`hostname -I`），Windows 客户端用该地址连 Gateway；改后重启 LoginServer。
 
 | 检查项 | 说明 |
 |--------|------|
@@ -178,7 +180,8 @@ sudo ./scripts/open_game_ports.sh               # firewalld 永久放行 9010+90
 sudo ./scripts/open_game_ports.sh --check         # 只读检查 firewalld
 python3 scripts/test_login_gateway_e2e.py         # 同机 E2E（TLS）：鉴权 + 角色列表 + 进世界
 openssl s_client -connect 127.0.0.1:9010 -CAfile config/tls/ca.crt -brief </dev/null
-grep "客户端连接建立" logs/gateway.log            # 客户端连上 Gateway 时应有此行
+python3 scripts/test_zone_list_tls.py                  # 区列表 TLS 冒烟（仅需 LoginServer）
+grep "已下发区列表" logs/login.log
 ```
 
 **Windows 侧**（PowerShell，将 IP 换成服务器实际地址）：

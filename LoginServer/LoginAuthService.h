@@ -38,7 +38,7 @@ public:
     /**
      * @brief 处理客户端区列表请求
      * @param connID 客户端连接 ID
-     * @param data   Msg_C2S_ZoneListReq（空 body 视为 gameType=0xFF）
+     * @param data   gameType(1B)；或 wire v2 完整 Msg_C2S_ZoneListReq；空 body 视为 0xFF
      * @param len    长度
      */
     void onClientZoneList(ConnID connID, const char* data, uint16_t len);

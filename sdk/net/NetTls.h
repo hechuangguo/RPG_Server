@@ -27,10 +27,12 @@ inline bool initNetTls(const TlsConfig& cfg)
     return true;
 }
 
-/** @brief 对 TcpServer 启用 TLS（Start/Connect 前调用） */
-inline void wireTlsServer(TcpServer& server)
+/** @brief 对 TcpServer 启用 TLS（Start/Connect 前调用）
+ *  @param requireClientCert false=玩家客户端口（9010/9005）；true=区内/注册 mTLS
+ */
+inline void wireTlsServer(TcpServer& server, bool requireClientCert = true)
 {
-    server.EnableTls();
+    server.EnableTls(requireClientCert);
 }
 
 /** @brief 对 TcpClient 启用 TLS（Connect 前调用） */

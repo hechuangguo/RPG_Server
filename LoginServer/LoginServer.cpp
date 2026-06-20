@@ -126,8 +126,8 @@ bool LoginServer::Init(const LoginExternConfig& cfg)
     if (!initDatabase(cfg.database))
         return false;
 
-    wireTlsServer(m_clientServer);
-    wireTlsServer(m_registerServer);
+    wireTlsServer(m_clientServer, false);
+    wireTlsServer(m_registerServer, true);
 
     if (!m_clientServer.Start(cfg.clientListenIP, cfg.clientListenPort))
     {
@@ -168,6 +168,12 @@ void LoginServer::onClientConnect(ConnID id)
 
 void LoginServer::onClientDisconnect(ConnID id)
 {
+    if (!m_clientServer.connectNotified(id))
+    {
+        LOG_WARN("登录客户端 TLS 握手未完成即断开: conn=%u（客户端可能仍用明文 TCP）",
+                 id);
+        return;
+    }
     LOG_INFO("登录客户端断开: conn=%u", id);
 }
 

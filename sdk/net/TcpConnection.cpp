@@ -5,6 +5,7 @@
 
 #include "TcpConnection.h"
 #include "MsgId.h"
+#include "../log/Logger.h"
 
 #include <openssl/err.h>
 #include <openssl/ssl.h>
@@ -76,6 +77,16 @@ bool TcpConnection::driveTlsHandshake()
     const int err = SSL_get_error(m_ssl, ret);
     if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE)
         return false;
+
+    LOG_WARN("TLS handshake failed: conn=%u side=%s sslErr=%d",
+             m_id, m_serverSide ? "server" : "client", err);
+    unsigned long sslCode = 0;
+    while ((sslCode = ERR_get_error()) != 0)
+    {
+        char buf[256];
+        ERR_error_string_n(sslCode, buf, sizeof(buf));
+        LOG_WARN("TLS handshake detail: conn=%u %s", m_id, buf);
+    }
 
     Close();
     return false;

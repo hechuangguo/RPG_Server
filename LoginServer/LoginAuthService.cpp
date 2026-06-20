@@ -29,9 +29,16 @@ LoginAuthService::LoginAuthService(LoginServer& owner)
 
 void LoginAuthService::onClientZoneList(ConnID connID, const char* data, uint16_t len)
 {
-    uint8_t gameTypeFilter = 0xFF;
-    if (len >= sizeof(Msg_C2S_ZoneListReq))
+    uint8_t gameTypeFilter = ZONE_LIST_ALL_GAME_TYPES;
+    if (len >= sizeof(Msg_C2S_ZoneListReq)
+        && clientMsgBodyMatches(static_cast<uint8_t>(Msg_C2S_ZoneListReq::kModule),
+                                static_cast<uint8_t>(Msg_C2S_ZoneListReq::kSub),
+                                data, len))
+    {
         gameTypeFilter = reinterpret_cast<const Msg_C2S_ZoneListReq*>(data)->gameType;
+    }
+    else if (len >= 1)
+        gameTypeFilter = static_cast<uint8_t>(data[0]);
 
     std::vector<ZoneInfoRow> zones;
     m_owner.zoneInfoStore().listAll(zones, gameTypeFilter);

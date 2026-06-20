@@ -87,11 +87,16 @@ public:
         , m_useTls(false)
     {}
 
-    /** @brief 启用 TLS（须在 Start 之前调用；使用 TlsContext 服务端 SSL_CTX） */
-    void EnableTls()
+    /** @brief 启用 TLS（须在 Start 之前调用；使用 TlsContext 服务端 SSL_CTX）
+     *  @param requireClientCert true=区内/注册 mTLS；false=玩家客户端口单向 TLS
+     */
+    void EnableTls(bool requireClientCert = true)
     {
         if (TlsContext::instance().enabled())
+        {
             m_useTls = true;
+            m_tlsRequireClientCert = requireClientCert;
+        }
     }
 
     /** @brief 是否已启用 TLS */
@@ -152,19 +157,22 @@ public:
                 auto it = m_fdToConn.find(fd);
                 if (it == m_fdToConn.end()) continue;
                 auto& conn = it->second;
-                if (events[i].events & (EPOLLERR | EPOLLHUP))
+                const uint32_t ev = events[i].events;
+
+                /** 先处理 I/O / TLS 握手，再处理 hang-up（避免 EPOLLHUP 与 EPOLLIN 同批时跳过 tryFireConnect） */
+                if (ev & EPOLLIN)  conn->OnReadable();
+                if (ev & EPOLLOUT) conn->OnWritable();
+                if (!conn->IsClosed())
+                    conn->tryFireConnect();
+
+                if (ev & (EPOLLERR | EPOLLHUP | EPOLLRDHUP))
                 {
-                    conn->Close();
-                    RemoveConn(fd);
-                }
-                else
-                {
-                    if (events[i].events & EPOLLIN)  conn->OnReadable();
-                    if (events[i].events & EPOLLOUT) conn->OnWritable();
                     if (!conn->IsClosed())
-                        conn->tryFireConnect();
-                    if (conn->IsClosed()) RemoveConn(fd);
+                        conn->Close();
                 }
+
+                if (conn->IsClosed())
+                    RemoveConn(fd);
             }
         }
     }
@@ -189,6 +197,13 @@ public:
         auto it = m_connMap.find(id);
         if (it == m_connMap.end()) return false;
         return it->second->SendMsg(flatMsgId, data, len);
+    }
+
+    /** @brief 连接是否已触发 OnConnect（TLS 握手完成后为 true；OnDisconnect 回调内可查） */
+    bool connectNotified(ConnID id) const
+    {
+        auto it = m_connMap.find(id);
+        return it != m_connMap.end() && it->second->connectFired();
     }
 
     /**
@@ -293,11 +308,14 @@ private:
             int opt = 1;
             ::setsockopt(cfd, IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(opt));
             ConnID id = m_nextConnID++;
-            SSL* ssl = m_useTls ? TlsContext::instance().newServerSsl(cfd) : nullptr;
+            SSL* ssl = m_useTls
+                ? TlsContext::instance().newServerSsl(cfd, m_tlsRequireClientCert)
+                : nullptr;
             auto conn = std::make_shared<TcpConnection>(cfd, id, m_cb, ssl, true);
             m_fdToConn[cfd]  = conn;
             m_connMap[id]    = conn;
             AddEpoll(cfd, EPOLLIN | EPOLLOUT | EPOLLET | EPOLLRDHUP);
+            /** 明文：立即 OnConnect；TLS：握手完成后由 tryFireConnect() 触发 */
             if (!m_useTls && m_cb)
                 m_cb->OnConnect(id);
         }
@@ -344,6 +362,7 @@ private:
     uint32_t       m_nextConnID;  /**< 自增连接 ID 分配器（从 1 开始） */
     bool           m_running;     /**< 运行状态标记 */
     bool           m_useTls;      /**< 是否对新连接启用 TLS */
+    bool           m_tlsRequireClientCert = true; /**< accept 是否要求对端证书 */
     /** @brief fd → TcpConnection 索引（用于 epoll 事件分发，O(1) 查找） */
     std::unordered_map<int,     std::shared_ptr<TcpConnection>> m_fdToConn;
     /** @brief ConnID → TcpConnection 索引（用于 SendMsg / Kick，O(1) 查找） */
