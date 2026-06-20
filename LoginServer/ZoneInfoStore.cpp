@@ -5,6 +5,7 @@
 
 #include "ZoneInfoStore.h"
 #include "ServerListLoader.h"
+#include "ZoneCommon.pb.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
 
@@ -166,7 +167,7 @@ uint8_t ZoneInfoStore::computeLoadLevel(const ZoneInfoRow& row,
 {
     static const uint64_t processStartMs = TimerMgr::NowMs();
     if (!row.enabled)
-        return static_cast<uint8_t>(ZoneLoadLevel::MAINTENANCE);
+        return static_cast<uint8_t>(rpg::zone::ZONE_LOAD_MAINTENANCE);
 
     const uint64_t nowMs = TimerMgr::NowMs();
     const bool withinStartupGrace =
@@ -177,24 +178,24 @@ uint8_t ZoneInfoStore::computeLoadLevel(const ZoneInfoRow& row,
         nowMs - runtime->lastReportMs > ZONE_RUNTIME_STALE_MS)
     {
         if (withinStartupGrace)
-            return static_cast<uint8_t>(ZoneLoadLevel::SMOOTH);
-        return static_cast<uint8_t>(ZoneLoadLevel::MAINTENANCE);
+            return static_cast<uint8_t>(rpg::zone::ZONE_LOAD_SMOOTH);
+        return static_cast<uint8_t>(rpg::zone::ZONE_LOAD_MAINTENANCE);
     }
 
     if (!runtime->alive || gatewayCount == 0)
     {
         if (withinStartupGrace && gatewayCount > 0)
-            return static_cast<uint8_t>(ZoneLoadLevel::SMOOTH);
-        return static_cast<uint8_t>(ZoneLoadLevel::MAINTENANCE);
+            return static_cast<uint8_t>(rpg::zone::ZONE_LOAD_SMOOTH);
+        return static_cast<uint8_t>(rpg::zone::ZONE_LOAD_MAINTENANCE);
     }
 
     const uint32_t cap = row.maxOnline > 0 ? row.maxOnline : 1;
     const uint64_t pct = (static_cast<uint64_t>(runtime->onlineCount) * 100) / cap;
     if (pct >= 80)
-        return static_cast<uint8_t>(ZoneLoadLevel::FULL);
+        return static_cast<uint8_t>(rpg::zone::ZONE_LOAD_FULL);
     if (pct >= 50)
-        return static_cast<uint8_t>(ZoneLoadLevel::BUSY);
-    return static_cast<uint8_t>(ZoneLoadLevel::SMOOTH);
+        return static_cast<uint8_t>(rpg::zone::ZONE_LOAD_BUSY);
+    return static_cast<uint8_t>(rpg::zone::ZONE_LOAD_SMOOTH);
 }
 
 void ZoneInfoStore::fillGatewayLoadFields(const ZoneInfoRow& row,

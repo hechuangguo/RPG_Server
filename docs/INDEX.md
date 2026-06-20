@@ -20,8 +20,9 @@
 ### 客户端 / 协议对接
 
 1. [PROTOCOL.md](PROTOCOL.md) — 6 字节帧、ClientModule、消息表
-2. [COMMON.md](COMMON.md) — RPG_Common submodule 克隆与双端同步
-3. [Common/LoginMsg.h](../Common/LoginMsg.h) 等各域 `*Msg.h` — wire 结构体（聚合见 [ClientMsg.h](../Common/ClientMsg.h) deprecated）
+2. [3D_DESIGN.md](3D_DESIGN.md) — **Unity 3D 客户端设计、服/客户端目录、迁移路线**
+3. [COMMON.md](COMMON.md) — RPG_Common submodule 克隆与双端同步
+3. [Common/*.proto](../Common/LoginMsg.proto) — 客户端 Protobuf 真源（`Protobuf/` 供 Server 链接）
 4. [GatewayServer/ClientMsgValidator.h](../GatewayServer/ClientMsgValidator.h) — 校验规则
 5. [GatewayServer/ClientMsgRouter.h](../GatewayServer/ClientMsgRouter.h) — 路由目标
 
@@ -63,6 +64,7 @@
 | [EXTERNAL.md](EXTERNAL.md) | Logger/Global/Zone/Login 外联架构 |
 | [TLS.md](TLS.md) | 全链路 TLS/mTLS 配置与证书 |
 | [DATA.md](DATA.md) | MySQL + 策划 Lua 双轨数据 |
+| [3D_DESIGN.md](3D_DESIGN.md) | Unity 3D 客户端设计（含 Protobuf 协议） |
 | [LUA.md](LUA.md) | SceneServer Lua 脚本体系 |
 | [DEVELOPMENT.md](DEVELOPMENT.md) | 扩展开发指南（消息、副本、配表、构建） |
 | [COMMON.md](COMMON.md) | RPG_Common submodule 双端共享协议流程 |
@@ -79,6 +81,7 @@
 | [database/README.md](../database/README.md) | 生成的 Lua 策划配表 |
 | [tables/README.md](../tables/README.md) | MySQL DDL 与初始化 |
 | [DataDoc/README.md](../DataDoc/README.md) | Excel 源表规范 |
+| [maps/README.md](../maps/README.md) | 3D 地图 runtime 数据目录 |
 | [3Party/README.md](../3Party/README.md) | 第三方库离线编译 |
 | [3Party/vendor/README.md](../3Party/vendor/README.md) | vendor 源码 tar.gz 清单 |
 
@@ -98,7 +101,7 @@
 | 主题 | 路径 |
 |------|------|
 | 消息帧 | `sdk/net/NetDefine.h`、`sdk/net/MsgId.h` |
-| 客户端协议 | 各域 `Common/*Msg.h`（RPG_Common submodule；`ClientMsg.h` 为 deprecated 聚合） |
+| 客户端协议 | `Common/*.proto`（RPG_Common submodule；Server 生成 `Protobuf/`） |
 | 服间协议 | `protocal/InternalMsg.h` |
 | 网关校验/路由 | `GatewayServer/ClientMsgValidator.h`、`ClientMsgRouter.h` |
 | 全区场景调度 | `SessionServer/SessionSceneManager.*` |

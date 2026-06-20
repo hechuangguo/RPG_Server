@@ -220,6 +220,19 @@ flowchart LR
 
 ---
 
+## 3. 地图 runtime 数据（Unity 3D）
+
+| 轨道 | 路径 | 说明 |
+|------|------|------|
+| 地图 runtime | [`maps/runtime/`](../maps/runtime/) | JSON + navmesh；SceneServer `MapDataLoader` 加载（Phase 1） |
+| 配置引用 | [`config/server_info.xml`](../config/server_info.xml) | `Map@file` → `maps/runtime/{mapId}` |
+| Unity 导出 | Unity `Editor/MapExporter` | 见 [3D_DESIGN.md](3D_DESIGN.md) §5 |
+| 校验 | [`tools/map_export/validate_map.sh`](../tools/map_export/validate_map.sh) | CI / 本地校验 |
+
+详见 [3D_DESIGN.md](3D_DESIGN.md) §6。
+
+---
+
 ## 4. 初始化命令
 
 ```bash

@@ -8,11 +8,13 @@
 
 ### 1.1 定义协议
 
-协议头按域分布在 [`Common/`](../Common/) 子模块（RPG_Common）：`XxxCommon.h`（子编号）+ `XxxMsg.h`（wire struct）。**在本仓库内编辑 `Common/` 下的文件，在 submodule 内 commit 并 push**，再在 RPG / RPG_Client 主仓库更新 submodule 指针。完整流程见 [COMMON.md](COMMON.md)。
+客户端 wire 真源为 [`Common/*.proto`](../Common/)（RPG_Common 子模块）。**在 submodule 内 commit 并 push**，再在 RPG / RPG_Client 更新 submodule 指针。完整流程见 [COMMON.md](COMMON.md)。
 
-1. 在 `XxxCommon.h` 增加 `XxxMsgSub` 枚举值（含 `/**< */` 注释）
-2. 在 `XxxMsg.h` 定义 wire struct（`kModule`/`kSub` + 字段 `/**< */`；定长字符串用 [`WireStringUtil.h`](../sdk/util/WireStringUtil.h)）
-3. 发送侧：`initClientMsg` 或 [`ClientWireSend.h`](../sdk/net/ClientWireSend.h) 的 `sendClientWire`
+1. 在 `XxxCommon.proto` 增加 `XxxMsgSub` 等 enum（行尾注释：方向、sub、处理方）
+2. 在 `XxxMsg.proto` 定义 message（块注释：方向、module/sub、触发时机）
+3. 运行 `./scripts/gen_proto.sh`（或 `./Build.sh` 自动执行）
+4. 发送侧：[`ClientWireSend.h`](../sdk/net/ClientWireSend.h) 的 `sendClientProto` / `sendClientProtoModule`
+5. 解析侧：[`ClientProtoWire.h`](../sdk/net/ClientProtoWire.h) 的 `parseProto`
 
 对方拉取更新：
 
@@ -28,8 +30,8 @@
 [`GatewayServer/ClientMsgValidator.h`](../GatewayServer/ClientMsgValidator.h)：
 
 - 白名单：允许的状态（未登录/已登录）
-- 包长：`sizeof(Msg_*)` 或范围
-- payload：userId 匹配、坐标边界等
+- 包长：`minLen=1`、`maxLen=CLIENT_PROTO_MAX_BODY`（Protobuf body）
+- payload：`parseProto` + 业务约束（userId、坐标、聊天长度等）
 
 [`GatewayServer/ClientMsgRouter.h`](../GatewayServer/ClientMsgRouter.h)：
 
@@ -49,10 +51,10 @@ Scene Lua 扩展：见 [LUA.md](LUA.md) § 扩展指南。
 
 ### 1.4 自检
 
-- [ ] `*Msg.h` wire struct + Scene/Session/Gateway handler **已实现**
+- [ ] `XxxMsg.proto` message + Scene/Session/Gateway handler **已实现**
+- [ ] `./scripts/gen_proto.sh` 已运行且 `Protobuf/` 已更新
 - [ ] Validator 白名单 + Router 目标（与 handler 同步添加）
-- [ ] 下行 S2C 结构体与 msgId
-- [ ] 未使用 `strncpy` 写 wire 字段
+- [ ] Unity `RpgMessageDispatcher` 注册 S2C handler（若客户端需收包）
 
 ---
 

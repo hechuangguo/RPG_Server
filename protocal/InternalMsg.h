@@ -907,6 +907,7 @@ struct Msg_AOI_SceneRegister
     uint32_t mapId;           /**< 地图模板 ID */
     uint8_t  sceneKind;       /**< 场景类型，取值见 SceneKind */
     uint32_t maxPlayer;       /**< 场景容量上限 */
+    float    aoiGridSize;     /**< 九宫格边长；0=AOIServer 全局默认 */
 };
 
 /** @brief SceneServer → AOIServer：注销场景实例 */

@@ -97,9 +97,9 @@ Login 的 9010 与 19010 共用同一 `SSL_CTX`。
 | 连接 | `connect(serverIp, 9010)` 后立即 `SSL_connect` / 平台 TLS 包装 |
 | CA | 加载仓库 `config/tls/ca.crt`（与 `./scripts/gen_tls_certs.sh` 生成的一致） |
 | 客户端证书 | **不需要**（Login 9010 / Gateway 9005 为单向 TLS；仅校验服务端证书） |
-| 请求 | `MsgHeader`: `bodyLen=1`, `module=0x00`, `sub=0x0B`；body 仅 `gameType`（`0xFF`=全部）；亦兼容 wire v2 完整 `Msg_C2S_ZoneListReq` |
-| 响应 | `sub=0x0C`；body 头 8 字节 + `count × 112` 字节 `Msg_S2C_ZoneEntryWire` |
-| Common | 同步 RPG_Server `Common` 子模块（wire v2 前缀、112B 区条目） |
+| 请求 | `MsgHeader`: `bodyLen=N`, `module=0x00`, `sub=0x0B`；body 为 `C2SZoneListReq` Protobuf（`game_type=0xFF` 表示全部）；亦兼容 body 首字节单字节 gameType |
+| 响应 | `sub=0x0C`；body 为 `S2CZoneListRsp` Protobuf（`repeated ZoneEntry`） |
+| Common | 同步 RPG_Server `Common` 子模块（`ZoneMsg.proto` + `generated/`） |
 
 **症状**：服务端 `login.log` 仅 `登录客户端 TLS 握手未完成即断开`、无 `登录客户端连接` → 客户端仍用明文 TCP。
 

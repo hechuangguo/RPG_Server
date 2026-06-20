@@ -103,3 +103,22 @@ inline bool digestsEqual(const uint8_t a[PASSWORD_DIGEST_LEN],
 {
     return std::memcmp(a, b, PASSWORD_DIGEST_LEN) == 0;
 }
+
+/**
+ * @brief 从 Protobuf bytes 字段拷贝固定长度密码摘要
+ *
+ * LoginMsg 中 password_digest / confirm_password_digest 为 proto **bytes**（非 string）。
+ * C++ 生成代码以 std::string 暴露 bytes，可安全存放 32 字节二进制（含 \\0）；
+ * 此处按 size()==32 校验后用 memcpy 拷入 uint8_t 数组。
+ *
+ * @param bytes proto bytes 字段（req.password_digest() 等）
+ * @param out   输出 32 字节 buffer
+ * @return bytes 长度恰为 PASSWORD_DIGEST_LEN 时 true
+ */
+inline bool copyWireDigest(const std::string& bytes, uint8_t out[PASSWORD_DIGEST_LEN])
+{
+    if (bytes.size() != PASSWORD_DIGEST_LEN)
+        return false;
+    std::memcpy(out, bytes.data(), PASSWORD_DIGEST_LEN);
+    return true;
+}

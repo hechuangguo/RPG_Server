@@ -1,6 +1,6 @@
 # RPG_Common 共享协议（Server / Client）
 
-[RPG_Common](https://github.com/hechuangguo/RPG_Common) 是 Server 与 Client **共用**的客户端 wire 协议独立仓库。双方通过 Git Submodule 挂载到各自主仓库的 `Common/` 目录，保证 `ClientTypes.h` 与各域 `*Msg.h` 同源同版本。
+[RPG_Common](https://github.com/hechuangguo/RPG_Common) 是 Server 与 Client **共用**的客户端 wire 协议独立仓库。双方通过 Git Submodule 挂载到各自主仓库的 `Common/` 目录，保证 `ClientTypes.h` 与各域 `*.proto` 同源同版本。
 
 服间协议（`protocal/InternalMsg.h`）**仅**留在 Server 仓库，不迁入 Common。
 
@@ -11,31 +11,30 @@
 | 文件 | 说明 |
 |------|------|
 | `ClientTypes.h` | 全局 `ClientModule`（指令编号 BYTE） |
-| `ClientMsgBody.h` | body 前缀、`initClientMsg`、`clientMsgBodyMatches` |
-| `XxxCommon.h` | 域内 `XxxMsgSub`、辅助结构、常量 |
-| `XxxMsg.h` | 域内 C2S/S2C wire 消息体 |
-| `ClientMsg.h` | **deprecated 聚合头**（include 全部 `*Msg.h`）；新代码请按域 include |
+| `*Common.proto` | 域内 enum（`XxxMsgSub`、结果码等） |
+| `*Msg.proto` | Protobuf wire message |
 | `NetDefine.h` | 客户端侧 `MsgHeader`（6 字节帧）与缓冲区常量 |
 | `MsgId.h` | `makeMsgId` / `msgModule` / `msgSub` 工具函数 |
+
+Server C++ 生成物在主仓 [`Protobuf/`](../Protobuf/)（`./scripts/gen_proto.sh`）；Client 自行从 `.proto` 生成。
 
 域头文件一览见 [`Common/Common.txt`](../Common/Common.txt)。
 
 ### 协议头注释约定
 
-改协议时须同步补齐 Doxygen 注释（细则见 [`COMMENTS.md`](COMMENTS.md) §Common 协议头）：
+改协议时须同步补齐 Protobuf 注释（细则见 [`COMMENTS.md`](COMMENTS.md) §Common Protobuf）：
 
 | 文件 | 要求 |
 |------|------|
-| `*Common.h` | `XxxMsgSub` 每个枚举值 `/**< C→S/S→C；处理方 */`；辅助 wire struct 字段注释 |
-| `*Msg.h` | 每个 `Msg_C2S_*` / `Msg_S2C_*` 块注释含方向、module/sub、触发时机；变长包写明尾随布局；wire 字段 `/**< */` |
-| 占位域 | `*Msg.h` 用 `RESERVED` 注释块列出已登记 sub/计划 struct/处理方，不新增空 struct |
+| `*Common.proto` | `XxxMsgSub` 每个枚举值行尾注释；结果码 enum |
+| `*Msg.proto` | 每个 message 前块注释含方向、module/sub、触发时机；字段行尾注释 |
 
-范本：`LoginMsg.h` 中 `Msg_C2S_LoginReq`、`Msg_S2C_UserListHeader`（变长）。
+范本：`LoginMsg.proto` 中 `C2SLoginReq`、`S2CUserList`（repeated）。
 
 线上帧格式（双方一致）：
 
 ```
-| bodyLen (2B) | module (1B) | sub (1B) | body |
+| bodyLen (2B) | module (1B) | sub (1B) | Protobuf body |
 ```
 
 Server 运行时网络栈另见 [`sdk/net/NetDefine.h`](../sdk/net/NetDefine.h)；字段布局须与 `Common/NetDefine.h` 保持一致。
@@ -83,7 +82,7 @@ cd RPG
 ./autoinit.sh
 ```
 
-`autoinit.sh` 会自动执行 `git submodule update --init --recursive` 并校验 `Common/ClientTypes.h` 与 `Common/LoginMsg.h` 存在。
+`autoinit.sh` 会自动执行 `git submodule update --init --recursive` 并校验 `Common/ClientTypes.h` 与 `Common/LoginMsg.proto` 存在。
 
 ### 已克隆但未拉 submodule
 
@@ -199,16 +198,16 @@ git push
 include_directories(${CMAKE_SOURCE_DIR}/Common)
 ```
 
-引用方式：按域 `#include "LoginMsg.h"` / `#include "ZoneCommon.h"` 等；仅需路由枚举时用 `ClientTypes.h`。
+引用方式：Server 链接 `Protobuf/*.pb.h`（CMake include）；路由枚举用 `ClientTypes.h`。Client 自行从 `.proto` 生成。
 
-**Server 开放状态**：Common 中已登记的占位 `XxxMsgSub` 未必已在 Gateway Validator 白名单；以 [PROTOCOL.md](PROTOCOL.md) §2.2「实现状态」列为准。
+**Server 开放状态**：Common 中已登记的 proto enum 未必已在 Gateway Validator 白名单；以 [PROTOCOL.md](PROTOCOL.md) §2.2「实现状态」列为准。
 
 示例：
 
 ```cpp
-#include "LoginMsg.h"
-#include "ZoneCommon.h"
-#include "ClientTypes.h"
+#include "../Common/ClientTypes.h"
+#include "LoginMsg.pb.h"
+#include "../sdk/net/ClientProtoWire.h"
 ```
 
 ---

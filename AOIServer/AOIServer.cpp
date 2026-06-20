@@ -22,6 +22,7 @@ bool AOIServer::Init(const std::string& ip, uint16_t port,
                      const ServerConfig& cfg, const ServerList& list, uint32_t selfId)
 {
     Logger::Instance().SetServerName("AOIServer");
+    m_defaultGridSize = cfg.aoiGridSize > 0.f ? cfg.aoiGridSize : GRID_SIZE;
     if (const ServerEntry* self = list.find(SubServerType::AOI, selfId))
         m_self = *self;
     m_externSender.setSelfId(m_self.id ? m_self.id : selfId);
@@ -68,9 +69,18 @@ void AOIServer::registerHandlers()
     AoiInternMsgRegister(*this);
 }
 
-Grid AOIServer::WorldToGrid(float x, float z)
+Grid AOIServer::WorldToGrid(uint32_t mapId, float x, float z)
 {
-    return { (int)floorf(x / GRID_SIZE), (int)floorf(z / GRID_SIZE) };
+    const float gs = gridSizeForMap(mapId);
+    return { static_cast<int>(floorf(x / gs)), static_cast<int>(floorf(z / gs)) };
+}
+
+float AOIServer::gridSizeForMap(uint32_t mapId) const
+{
+    auto it = m_mapGridSize.find(mapId);
+    if (it != m_mapGridSize.end() && it->second > 0.f)
+        return it->second;
+    return m_defaultGridSize;
 }
 
 std::vector<Grid> AOIServer::GetNeighborGrids(const Grid& g)
@@ -103,7 +113,7 @@ void AOIServer::onEnter(ConnID fromConn, const char* data, uint16_t len)
     e.isPlayer    = (req->entityType == 0);
     m_entities[e.entityID] = e;
 
-    Grid g = WorldToGrid(e.x, e.z);
+    Grid g = WorldToGrid(e.mapID, e.x, e.z);
     uint64_t key = ((uint64_t)e.mapID << 32) | (uint32_t)(((uint16_t)g.gx << 16) | (uint16_t)g.gz);
     m_gridMap[key].insert(e.entityID);
     m_entityGrid[e.entityID] = g;
@@ -137,7 +147,7 @@ void AOIServer::onMove(ConnID fromConn, const char* data, uint16_t len)
     if (it == m_entities.end()) return;
     auto& e = it->second;
     Grid oldG = m_entityGrid[e.entityID];
-    Grid newG = WorldToGrid(req->x, req->z);
+    Grid newG = WorldToGrid(e.mapID, req->x, req->z);
 
     if (oldG.gx != newG.gx || oldG.gz != newG.gz)
     {
@@ -157,8 +167,11 @@ void AOIServer::onSceneRegister(ConnID /*fromConn*/, const char* data, uint16_t 
     if (len < sizeof(Msg_AOI_SceneRegister)) return;
     const auto* req = reinterpret_cast<const Msg_AOI_SceneRegister*>(data);
     m_scenes[req->sceneInstanceId] = *req;
-    LOG_INFO("视野场景注册: instance=%llu map=%u server=%u kind=%u",
-             req->sceneInstanceId, req->mapId, req->sceneServerId, req->sceneKind);
+    if (req->aoiGridSize > 0.f)
+        m_mapGridSize[req->mapId] = req->aoiGridSize;
+    LOG_INFO("视野场景注册: instance=%llu map=%u server=%u kind=%u grid=%.0f",
+             req->sceneInstanceId, req->mapId, req->sceneServerId, req->sceneKind,
+             gridSizeForMap(req->mapId));
 }
 
 void AOIServer::onSceneUnregister(ConnID /*fromConn*/, const char* data, uint16_t len)

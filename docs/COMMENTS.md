@@ -7,6 +7,7 @@
 | 类型 | 路径示例 | 注释形式 |
 |------|----------|----------|
 | C++ 头文件 | `**/*.h` | Doxygen：`@file`、`@brief`、`@param`、`@return`、`/**< */` |
+| **Common Protobuf** | `Common/*.proto` | 文件头块注释 + `//` 行注释；见 §Common Protobuf |
 | C++ 实现 | `**/*.cpp` | 文件头 + 非显然逻辑 |
 | 运行时 XML | `config/config.xml`、`config/server_info.xml` | `<!-- -->` |
 | SQL | `tables/*.sql` | `--` 块 + 列 `COMMENT` |
@@ -64,24 +65,112 @@
 
 协议 struct 的字段成员、枚举值列表保持原样；仅 class/struct **内的函数/方法** 适用本规则。
 
-## Common 协议头（RPG_Common）
+## Common 协议（RPG_Common）
 
-路径：`Common/` 子模块（`ClientTypes.h`、`*Common.h`、`*Msg.h`、`ClientMsgBody.h`、`NetDefine.h`）。
+路径：`Common/` 子模块（`ClientTypes.h`、`*.proto`、`generated/`、`NetDefine.h`）。
+
+### Protobuf 注释（必遵）
+
+与 Doxygen 习惯对齐；CI [`scripts/check_common_proto.sh`](../scripts/check_common_proto.sh) 对下列项做冒烟校验，**缺失则 `Build.sh` 阻断**。
 
 | 类型 | 要求 |
 |------|------|
-| **文件头** | `@file`、`@brief`；注明对应 `ClientModule`、关联 `*Msg.h` |
-| **XxxMsgSub** | 每个枚举值 `/**< C→S/S→C: 简述；处理方 Login/Gateway/Scene/Session */` |
-| **业务枚举** | 如 `ZoneLoadLevel`、`GatewayValidateCode`：枚举值 `/**< */` |
-| **wire struct** | 块注释：方向、module/sub、触发时机；变长包补充 `完整 body = header + N×Entry` |
-| **wire 字段** | `module`/`sub` 及业务字段均 `/**< */`（协议 struct 不适用「方法间空行」规则） |
-| **占位域** | `PropertyMsg.h` 等：`*Msg.h` 用 `RESERVED` 注释块登记 sub/计划 struct，不新增空 struct |
-| **内联工具** | `userListBodyLen` 等：`@param` / `@return` |
+| **文件头** | 每个 `.proto` 顶部**块注释**（`//` 多行）：`@file` 文件名、`@brief` 域与 `ClientModule`、`import` 说明 |
+| **`XxxCommon.proto` enum** | 每个枚举值一行注释：**方向**（C→S/S→C）、**sub 十六进制**、**处理进程**（Login/Gateway/Scene/Session）、简述 |
+| **业务 enum** | 如 `MoveType`、`GatewayValidateCode`：每个值 `//` 说明含义与关联配置 |
+| **`message`** | 每个 C2S/S2C message **前**块注释：**方向**、**module/sub**、**触发时机**；`repeated`/变长须写布局（如 `完整列表 = N × Entry`） |
+| **字段** | 每个 field **行尾或上一行** `//`：单位、合法范围、0/空/default 含义、是否必填 |
+| **`reserved`** | 删除 field number 时用 `reserved N;` 并注释原字段名与废弃版本/原因 |
+| **`import`** | 非显然依赖在文件头或 import 行注释用途（如 `// Vec3`） |
+| **占位域** | 未实现的 sub 在 `XxxMsg.proto` 顶部用 `// RESERVED:` 块登记计划 message 名与处理方，不建空 message |
 
-范本：`Common/LoginMsg.h`、`Common/LoginCommon.h`。人类可读工作流见 [`COMMON.md`](COMMON.md) §协议头注释约定。
+**注释形式：** 优先 `//`；块说明可用 `/* ... */`。**勿**在块注释内写未转义的 `*/` 子串（与 C++ 相同）。
 
-批量整理存量头文件可运行：[`tools/format_header_methods.py`](../tools/format_header_methods.py)
+**与 Doxygen 对齐：** 文件头推荐使用 `// @file`、`// @brief`；`protoc --csharp_out` 可将部分注释带入 C# XML 文档（视 `--csharp_opt` 而定）。
 
+范本：`Common/LoginMsg.proto`、`Common/LoginCommon.proto`。人类可读工作流见 [`COMMON.md`](COMMON.md)。
+
+### 范本：`MapDataCommon.proto`（enum）
+
+```protobuf
+// @file MapDataCommon.proto
+// @brief 地图域公共 enum（ClientModule::SCENE = 0x01）
+// 对照 MapDataCommon.h；wire message 见 MapDataMsg.proto
+
+syntax = "proto3";
+package rpg.mapdata;
+
+enum MapDataMsgSub {
+  MAP_DATA_MSG_SUB_UNSPECIFIED = 0;
+  C2S_MOVE_REQ = 1;       // 0x01 C→S 移动请求；Gateway→SceneServer
+  S2C_MOVE_NOTIFY = 2;    // 0x02 S→C 移动广播；Scene→Gateway→客户端
+  S2C_SPAWN_ENTITY = 5;   // 0x05 S→C 实体进视野；AOI/Scene 下行
+}
+
+enum MoveType {
+  MOVE_TYPE_UNSPECIFIED = 0;
+  MOVE_TYPE_WALK = 1;     // 走；步长上限见 map.meta.json maxStepWalk
+  MOVE_TYPE_RUN = 2;      // 跑；步长上限见 maxStepRun
+}
+```
+
+### 范本：`MapDataMsg.proto`（message）
+
+```protobuf
+// @file MapDataMsg.proto
+// @brief 地图域 wire message（module=SCENE/0x01）
+// sub 枚举见 MapDataCommon.proto
+
+syntax = "proto3";
+package rpg.mapdata;
+
+import "ClientCommon.proto";
+import "MapDataCommon.proto";
+
+// C→S module=0x01 sub=0x01（MapDataMsgSub::C2S_MOVE_REQ）
+// 触发：客户端摇杆/点击地面；Gateway Validator 后转 SceneServer
+message C2SMoveReq {
+  uint32 entity_id = 1;       // 移动实体 ID，通常为本角色
+  rpg.client.Vec3 pos = 2;      // 目标世界坐标，Y-up
+  MoveType move_type = 3;       // WALK/RUN；服务端 MoveValidator 校验步长
+}
+
+// S→C module=0x01 sub=0x05（MapDataMsgSub::S2C_SPAWN_ENTITY）
+// 触发：AOI 进视野或首次进图；Gateway 下行
+message S2CSpawnEntity {
+  uint32 entity_id = 1;
+  uint32 template_id = 2;       // 策划模板 ID（配表）
+  rpg.client.Vec3 pos = 3;
+  float rotation_y = 4;         // 绕 Y 轴朝向；弧度或度由双端常量约定
+  uint32 model_id = 5;          // Unity Addressable/Prefab key，0=默认外观
+  uint32 anim_state = 6;        // 客户端动画状态机枚举
+}
+```
+
+### 新增 / 修改消息 workflow
+
+与 [`Common/README.md`](../Common/README.md) workflow 一致：
+
+1. **`ClientTypes.h`** — 新域则补 `ClientModule`
+2. **`XxxCommon.proto`** — 增加 `XxxMsgSub` 枚举值（注释含方向、sub、处理方）
+3. **`XxxMsg.proto`** — `import` 对应 Common；定义 `C2S*` / `S2C*` message 及字段注释
+4. **`scripts/gen_proto.sh`** — 生成 `Protobuf/*.pb.h` / `*.pb.cc`
+5. **Server** — Gateway Validator 登记 module/sub；handler 使用生成 C++ 类型
+6. **Client** — 自行从 Common `.proto` 生成对应语言代码
+
+改协议时同步更新 [`PROTOCOL.md`](PROTOCOL.md) 消息表索引（若已登记）。
+
+### Protobuf 提交前自检
+
+- [ ] 每个 touched 的 `.proto` 有文件头块注释（`@file` / `@brief` / 对照 `.h`）
+- [ ] 每个 `message` 有方向 + module/sub + 触发时机
+- [ ] `XxxCommon.proto` 每个 enum 值有方向、sub、处理方
+- [ ] 非显然字段均有行注释；删除字段已 `reserved` 并说明原因
+- [ ] 已运行 `./scripts/gen_proto.sh`（`Protobuf/` 由 Build 自动生成，默认不入库）
+- [ ] `./scripts/check_common_proto.sh` 通过
+- [ ] `./Build.sh` 编译通过
+
+参考架构说明：[`3D_DESIGN.md`](3D_DESIGN.md) §4.3、§11。
 
 ## XML 配置要求
 
@@ -127,11 +216,12 @@
 
 ## 提交前自检
 
-- [ ] 本次修改涉及的 `.h` / `.xml` / `.sql` 均已补齐注释  
-- [ ] 新 public API、协议 ID、配置项、表字段有说明  
+- [ ] 本次修改涉及的 `.h` / **`.proto`** / `.xml` / `.sql` 均已补齐注释  
+- [ ] 新 public API、协议 ID、**Protobuf message/field**、配置项、表字段有说明  
 - [ ] 注释解释约束与用途，非逐行翻译代码  
 - [ ] C++ 块注释内无 `*/` 子串  
-- [ ] class/struct 内相邻方法声明之间有空行（范本 `SceneServer/SceneUserManager.h`）
+- [ ] class/struct 内相邻方法声明之间有空行（范本 `SceneServer/SceneUserManager.h`）  
+- [ ] 改 `Common/*.proto` 时已跑 `check_common_proto.sh`（见 §Common Protobuf）
 
 ## 示例：SceneServer 管理器
 

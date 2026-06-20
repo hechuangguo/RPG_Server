@@ -192,7 +192,11 @@ private:
      * @param z 世界 Z 坐标（Y 不计入 AOI）
      * @return 所在格子索引
      */
-    Grid WorldToGrid(float x, float z);
+    /** @brief 世界坐标转格子坐标（按 mapId 选用格子边长） */
+    Grid WorldToGrid(uint32_t mapId, float x, float z);
+
+    /** @brief 获取地图 AOI 格子边长 */
+    float gridSizeForMap(uint32_t mapId) const;
 
     /**
      * @brief 获取 3x3 邻域格子列表（含中心格共 9 个）
@@ -286,4 +290,6 @@ private:
      * 避免嵌套 map 的开销，实现 O(1) 的格子查找。
      */
     std::unordered_map<uint64_t, std::unordered_set<uint64_t>> m_gridMap;
+    float m_defaultGridSize = GRID_SIZE;                         /**< 全局默认格子边长 */
+    std::unordered_map<uint32_t, float> m_mapGridSize;           /**< mapId → 格子边长覆盖 */
 };

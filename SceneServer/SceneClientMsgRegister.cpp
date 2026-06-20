@@ -7,19 +7,21 @@
 #include "SceneServer.h"
 #include "../sdk/util/ClientMsgDispatcher.h"
 #include "../sdk/util/MsgHandlerBinder.h"
-#include "../Common/ChatMsg.h"
-#include "../Common/MapDataMsg.h"
+#include "../Common/ClientTypes.h"
+#include "MapDataCommon.pb.h"
+#include "ChatCommon.pb.h"
+#include "NpcCommon.pb.h"
 
 void SceneClientMsgRegister(SceneServer& server)
 {
     auto& d = ClientMsgDispatcher::Instance();
-    registerClientRawU32(d, &server, Msg_C2S_MoveReq::kModule,
-                         static_cast<uint8_t>(SceneMsgSub::C2S_MOVE_REQ),
+    registerClientRawU32(d, &server, static_cast<uint8_t>(ClientModule::SCENE),
+                         static_cast<uint8_t>(rpg::mapdata::C2S_MOVE_REQ),
                          &SceneServer::onMoveReq);
-    registerClientRawU32(d, &server, Msg_C2S_Chat::kModule,
-                         static_cast<uint8_t>(ChatMsgSub::C2S_CHAT_REQ),
+    registerClientRawU32(d, &server, static_cast<uint8_t>(ClientModule::CHAT),
+                         static_cast<uint8_t>(rpg::chat::C2S_CHAT_REQ),
                          &SceneServer::onChatReq);
-    registerClientRawU32(d, &server, Msg_C2S_NpcTalkReq::kModule,
-                         static_cast<uint8_t>(NpcMsgSub::C2S_NPC_TALK_REQ),
+    registerClientRawU32(d, &server, static_cast<uint8_t>(ClientModule::NPC),
+                         static_cast<uint8_t>(rpg::npc::C2S_NPC_TALK_REQ),
                          &SceneServer::onNpcTalkReq);
 }

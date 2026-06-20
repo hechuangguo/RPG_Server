@@ -1,22 +1,23 @@
 /**
  * @file    LoginRegisterService.cpp
- * @brief   LoginServer 客户端注册服务实现
+ * @brief   LoginServer 客户端注册：C2SRegisterReq Protobuf 解析与 GameUser 落库
  */
 
 #include "LoginRegisterService.h"
 #include "LoginServer.h"
-#include "../Common/LoginMsg.h"
-#include "../Common/ClientMsgBody.h"
+#include "../Common/ClientTypes.h"
+#include "LoginMsg.pb.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/util/PasswordUtil.h"
 #include "../sdk/util/PasswordDigestUtil.h"
-#include "../sdk/util/WireStringUtil.h"
 #include "../sdk/net/ClientWireSend.h"
+#include "../sdk/net/ClientProtoWire.h"
 
 #include <mysqld_error.h>
 
 #include <cstdio>
 #include <cstring>
+#include <string>
 
 namespace
 {
@@ -26,13 +27,14 @@ constexpr int32_t REGISTER_BAD_PARAM = 2;
 constexpr int32_t REGISTER_ZONE_UNAVAILABLE = 3;
 constexpr int32_t REGISTER_SERVER_ERROR = -1;
 
-bool isPrintableAscii(const char* str)
+constexpr uint8_t kLoginModule = static_cast<uint8_t>(ClientModule::LOGIN);
+
+bool isPrintableAscii(const std::string& str)
 {
-    if (!str || str[0] == '\0')
+    if (str.empty())
         return false;
-    for (size_t i = 0; str[i] != '\0'; ++i)
+    for (unsigned char ch : str)
     {
-        const unsigned char ch = static_cast<unsigned char>(str[i]);
         if (ch < 33 || ch > 126)
             return false;
     }
@@ -47,38 +49,46 @@ LoginRegisterService::LoginRegisterService(LoginServer& owner)
 
 void LoginRegisterService::sendRegisterRsp(ConnID connID, int32_t code, const char* msg, uint64_t accid)
 {
-    Msg_S2C_RegisterRsp rsp{};
-    initClientMsg(rsp);
-    rsp.code = code;
-    rsp.accid = accid;
-    copyToWire(rsp.msg, sizeof(rsp.msg), msg);
-    sendClientWire(m_owner.clientServer(), connID, rsp);
+    rpg::login::S2CRegisterRsp rsp;
+    rsp.set_code(code);
+    rsp.set_accid(accid);
+    rsp.set_msg(msg ? msg : "");
+    sendClientProtoModule(m_owner.clientServer(), connID, kLoginModule,
+                    static_cast<uint8_t>(rpg::login::S2C_REGISTER_RSP), rsp);
 }
 
 void LoginRegisterService::onClientRegister(ConnID connID, const char* data, uint16_t len)
 {
-    if (len < sizeof(Msg_C2S_RegisterReq))
+    rpg::login::C2SRegisterReq req;
+    if (!parseProto(data, len, req))
     {
         sendRegisterRsp(connID, REGISTER_BAD_PARAM, "注册包体非法");
         return;
     }
-    const auto* req = reinterpret_cast<const Msg_C2S_RegisterReq*>(data);
 
-    char account[sizeof(req->account)];
-    copyToWire(account, sizeof(account), req->account);
+    const std::string& account = req.account();
 
-    if (looksLikePlaintextPassword(req->passwordDigest) ||
-        looksLikePlaintextPassword(req->confirmPasswordDigest))
+    uint8_t passwordDigest[PASSWORD_DIGEST_LEN]{};
+    uint8_t confirmDigest[PASSWORD_DIGEST_LEN]{};
+    if (!copyWireDigest(req.password_digest(), passwordDigest) ||
+        !copyWireDigest(req.confirm_password_digest(), confirmDigest))
+    {
+        sendRegisterRsp(connID, REGISTER_BAD_PARAM, "密码摘要非法");
+        return;
+    }
+
+    if (looksLikePlaintextPassword(passwordDigest) ||
+        looksLikePlaintextPassword(confirmDigest))
     {
         sendRegisterRsp(connID, REGISTER_BAD_PARAM, "请升级客户端（需发送密码摘要）");
         return;
     }
-    if (!digestsEqual(req->passwordDigest, req->confirmPasswordDigest))
+    if (!digestsEqual(passwordDigest, confirmDigest))
     {
         sendRegisterRsp(connID, REGISTER_BAD_PARAM, "两次密码不一致");
         return;
     }
-    if (isZeroDigest(req->passwordDigest))
+    if (isZeroDigest(passwordDigest))
     {
         sendRegisterRsp(connID, REGISTER_BAD_PARAM, "密码摘要非法");
         return;
@@ -88,7 +98,7 @@ void LoginRegisterService::onClientRegister(ConnID connID, const char* data, uin
         sendRegisterRsp(connID, REGISTER_BAD_PARAM, "账号格式非法");
         return;
     }
-    if (!m_owner.zoneInfoStore().isZoneEnabled(req->gameType, req->zoneId))
+    if (!m_owner.zoneInfoStore().isZoneEnabled(static_cast<uint8_t>(req.game_type()), req.zone_id()))
     {
         sendRegisterRsp(connID, REGISTER_ZONE_UNAVAILABLE, "区服不可用");
         return;
@@ -101,13 +111,12 @@ void LoginRegisterService::onClientRegister(ConnID connID, const char* data, uin
         return;
     }
 
-    char escAccount[sizeof(account) * 2 + 1];
-    mysql_real_escape_string(db, escAccount, account, std::strlen(account));
+    char escAccount[256];
+    mysql_real_escape_string(db, escAccount, account.c_str(), account.size());
 
-    char querySql[256];
-    std::snprintf(querySql, sizeof(querySql),
-                  "SELECT accid FROM GameUser WHERE account='%s' LIMIT 1", escAccount);
-    if (mysql_query(db, querySql) != 0)
+    const std::string querySql =
+        "SELECT accid FROM GameUser WHERE account='" + std::string(escAccount) + "' LIMIT 1";
+    if (mysql_query(db, querySql.c_str()) != 0)
     {
         LOG_ERR("注册时查询账号失败: %s", mysql_error(db));
         sendRegisterRsp(connID, REGISTER_SERVER_ERROR, "数据库错误");
@@ -127,7 +136,7 @@ void LoginRegisterService::onClientRegister(ConnID connID, const char* data, uin
         mysql_free_result(res);
 
     std::string passwordHash;
-    if (!hashPasswordDigestBcrypt(req->passwordDigest, passwordHash))
+    if (!hashPasswordDigestBcrypt(passwordDigest, passwordHash))
     {
         sendRegisterRsp(connID, REGISTER_SERVER_ERROR, "密码哈希失败");
         return;
@@ -141,7 +150,7 @@ void LoginRegisterService::onClientRegister(ConnID connID, const char* data, uin
     std::snprintf(insertSql, sizeof(insertSql),
                   "INSERT INTO GameUser (account, password_hash, user_id, gamezone) "
                   "VALUES ('%s', '%s', 0, %u)",
-                  escAccount, escHash, req->zoneId);
+                  escAccount, escHash, req.zone_id());
     if (mysql_query(db, insertSql) != 0)
     {
         if (mysql_errno(db) == ER_DUP_ENTRY)
@@ -157,5 +166,6 @@ void LoginRegisterService::onClientRegister(ConnID connID, const char* data, uin
     const uint64_t accid = static_cast<uint64_t>(mysql_insert_id(db));
     sendRegisterRsp(connID, REGISTER_OK, "注册成功", accid);
     LOG_INFO("账号注册成功: connID=%u accid=%llu account=%s zone=%u gameType=%u",
-             connID, static_cast<unsigned long long>(accid), account, req->zoneId, req->gameType);
+             connID, static_cast<unsigned long long>(accid), account.c_str(),
+             req.zone_id(), req.game_type());
 }

@@ -6,9 +6,11 @@
 #pragma once
 #include "../protocal/InternalMsg.h"
 #include "../sdk/util/SceneInfoLoader.h"
+#include "../sdk/util/MapRuntimeTypes.h"
 #include "../sdk/util/UserBase.h"
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -48,6 +50,12 @@ public:
 
     /** @brief 最大容纳玩家数 */
     uint32_t getMaxPlayer() const { return maxPlayer; }
+
+    /** @brief 地图 runtime 数据（maps/runtime/） */
+    std::shared_ptr<MapRuntimeData> getMapData() const { return mapRuntimeData; }
+
+    /** @brief AOI 格子边长；0 表示使用 AOIServer 全局默认 */
+    float getAoiGridSize() const;
 
     /** @brief 场景生命周期状态 */
     SceneState getState() const { return state; }
@@ -97,6 +105,7 @@ protected:
     std::string         mapName;                                   /**< 地图名称 */
     std::string         mapFile;                                   /**< 地图文件路径 */
     uint32_t            maxPlayer       = 200;                     /**< 最大容纳玩家数 */
+    std::shared_ptr<MapRuntimeData> mapRuntimeData;              /**< 3D runtime 数据 */
     SceneState          state           = SceneState::CREATING;    /**< 生命周期状态 */
     std::vector<UserID> players;                                   /**< 当前玩家 ID 列表 */
     SceneStartedCallback onStarted;                                /**< 场景启动回调 */

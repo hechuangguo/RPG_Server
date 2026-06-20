@@ -52,14 +52,14 @@ step "===== RPG Server AutoInit ====="
 
 # -------------------------------------------------------
 #  第0步：初始化 Git Submodule（Common/）
-#  Common/ 为 RPG_Common 子模块，含 ClientTypes.h 与各域 *Msg.h。
+#  Common/ 为 RPG_Common 子模块，含 ClientTypes.h 与各域 *.proto。
 # -------------------------------------------------------
 step "Initialize Git submodules (Common/)..."
 git submodule update --init --recursive
 [ -f "$SCRIPT_DIR/Common/ClientTypes.h" ] \
     || fail "Common/ClientTypes.h missing — run: git submodule update --init --recursive"
-[ -f "$SCRIPT_DIR/Common/LoginMsg.h" ] \
-    || fail "Common/LoginMsg.h missing — run: git submodule update --init --recursive"
+[ -f "$SCRIPT_DIR/Common/LoginMsg.proto" ] \
+    || fail "Common/LoginMsg.proto missing — run: git submodule update --init --recursive"
 
 # -------------------------------------------------------
 #  第1步：创建必要目录
@@ -112,6 +112,27 @@ else
 fi
 
 # -------------------------------------------------------
+#  第2b步：Protocol Buffers（protoc + libprotobuf.a）
+# -------------------------------------------------------
+step "Building / linking protobuf..."
+chmod +x "$THIRD_DIR/build_protobuf.sh" 2>/dev/null || true
+if [[ -x "$THIRD_DIR/build_protobuf.sh" ]]; then
+    "$THIRD_DIR/build_protobuf.sh" || fail "protobuf build failed"
+else
+    warn "3Party/build_protobuf.sh not found, skip"
+fi
+
+# -------------------------------------------------------
+#  第2c步：生成 Common Protobuf 代码
+# -------------------------------------------------------
+if [[ -x "$SCRIPT_DIR/scripts/gen_proto.sh" ]]; then
+    step "Generating Protobuf from Common/*.proto..."
+    "$SCRIPT_DIR/scripts/gen_proto.sh" || fail "gen_proto.sh failed"
+else
+    warn "scripts/gen_proto.sh not found, skip proto generation"
+fi
+
+# -------------------------------------------------------
 #  第3步：检查配置文件
 #  - config.xml：主配置（各服务器 IP/端口、数据库连接、日志级别等）
 #  - server_info.xml：场景信息配置（地图 ID、分线配置、NPC 分布等）
@@ -141,13 +162,19 @@ fi
 
 # -------------------------------------------------------
 #  第5步：协议文件检查
-#  Common/ClientTypes.h 与各域 *Msg.h 为客户端 wire 协议权威定义。
+#  Common/ClientTypes.h 与各域 *.proto 为客户端 wire 协议权威定义；C++ 生成物在 Protobuf/。
 # -------------------------------------------------------
 [ -f "$SCRIPT_DIR/Common/ClientTypes.h" ] \
     || fail "Common/ClientTypes.h missing after submodule init"
-[ -f "$SCRIPT_DIR/Common/LoginMsg.h" ] \
-    || fail "Common/LoginMsg.h missing after submodule init"
-step "Protocol files OK (ClientTypes.h + LoginMsg.h present)."
+[ -f "$SCRIPT_DIR/Common/LoginMsg.proto" ] \
+    || fail "Common/LoginMsg.proto missing after submodule init"
+[ -f "$SCRIPT_DIR/Protobuf/LoginMsg.pb.h" ] \
+    || fail "Protobuf/ missing — run ./scripts/gen_proto.sh"
+if [[ -x "$SCRIPT_DIR/scripts/check_common_proto.sh" ]]; then
+    step "Checking Common Protobuf..."
+    "$SCRIPT_DIR/scripts/check_common_proto.sh" || fail "Common Protobuf check failed"
+fi
+step "Protocol files OK (ClientTypes.h + LoginMsg.proto + proto)."
 
 # -------------------------------------------------------
 #  第6步：设置脚本执行权限
@@ -159,6 +186,9 @@ chmod +x "$SCRIPT_DIR/StopServer.sh" "$SCRIPT_DIR/StopServer"
 chmod +x "$SCRIPT_DIR/log.sh"
 chmod +x "$SCRIPT_DIR/pull.sh"
 chmod +x build Build.sh 2>/dev/null || true
+chmod +x "$SCRIPT_DIR/scripts/gen_proto.sh" 2>/dev/null || true
+chmod +x "$SCRIPT_DIR/scripts/check_common_proto.sh" 2>/dev/null || true
+chmod +x "$SCRIPT_DIR/tools/map_export/validate_map.sh" 2>/dev/null || true
 
 # -------------------------------------------------------
 #  第7步：CMake 配置

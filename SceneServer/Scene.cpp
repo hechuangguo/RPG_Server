@@ -4,6 +4,7 @@
  */
 
 #include "Scene.h"
+#include "MapDataLoader.h"
 #include "../sdk/log/Logger.h"
 #include <algorithm>
 
@@ -71,9 +72,20 @@ void Scene::shutdown()
 
 bool Scene::onLoadResources()
 {
-    if (mapFile.empty())
-        LOG_WARN("场景 mapFile 为空: map=%u", mapId);
+    mapRuntimeData = loadMapDataFromConfig(mapFile, mapId);
+    if (!mapRuntimeData)
+    {
+        LOG_ERR("场景 map runtime 加载失败: map=%u file=%s", mapId, mapFile.c_str());
+        return false;
+    }
     return true;
+}
+
+float Scene::getAoiGridSize() const
+{
+    if (mapRuntimeData && mapRuntimeData->aoiGridSize > 0.f)
+        return mapRuntimeData->aoiGridSize;
+    return 0.f;
 }
 
 void Scene::onStartedHook()

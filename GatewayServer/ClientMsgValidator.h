@@ -4,13 +4,11 @@
  */
 
 #pragma once
+
 #include "../Common/ClientTypes.h"
-#include "../Common/ClientMsgBody.h"
-#include "../Common/LoginMsg.h"
-#include "../Common/MapDataMsg.h"
+#include "../sdk/net/ClientProtoWire.h"
 #include "../sdk/util/LoginSpawnConfig.h"
 #include "../sdk/util/RoleNameUtil.h"
-#include "../Common/ChatMsg.h"
 #include "GatewayUser.h"
 #include <cstdint>
 #include <cstring>
@@ -18,16 +16,16 @@
 /** @brief 校验结果 */
 enum class ValidateResult : uint8_t
 {
-    OK = 0,       /**< 校验通过 */
-    UNKNOWN_MSG,  /**< 未在白名单中的 module/sub */
-    BAD_LENGTH,   /**< 包长不在允许范围 */
-    BAD_STATE,    /**< 当前连接状态不允许该消息 */
-    BAD_PAYLOAD,  /**< 包体语义非法（如 userID/坐标异常） */
-    RATE_LIMITED, /**< 触发频率限制（预留） */
+    OK = 0,
+    UNKNOWN_MSG,
+    BAD_LENGTH,
+    BAD_STATE,
+    BAD_PAYLOAD,
+    RATE_LIMITED,
 };
 
 /**
- * @brief 客户端消息校验器（查表 + 状态机）
+ * @brief 客户端消息校验器（查表 + 状态机；body 均为 Protobuf）
  */
 class ClientMsgValidator
 {
@@ -45,33 +43,27 @@ public:
             return ValidateResult::BAD_STATE;
         if (len < rule->minLen || len > rule->maxLen)
             return ValidateResult::BAD_LENGTH;
-        if (!clientMsgBodyMatches(module, sub, data, len))
-            return ValidateResult::BAD_PAYLOAD;
         if (rule->needsInWorld && user->getClientState() != ClientState::IN_WORLD)
             return ValidateResult::BAD_STATE;
-        if (rule->checkUserId &&
-            len >= static_cast<uint16_t>(sizeof(ClientMsgBodyHead) + sizeof(uint64_t)))
-        {
-            uint64_t packetUserId = 0;
-            memcpy(&packetUserId, data + sizeof(ClientMsgBodyHead), sizeof(uint64_t));
-            if (user->GetID() != 0 && packetUserId != user->GetID())
-                return ValidateResult::BAD_PAYLOAD;
-        }
-        if (module == Msg_C2S_MoveReq::kModule &&
-            sub == static_cast<uint8_t>(SceneMsgSub::C2S_MOVE_REQ))
-            return validateMove(data, len);
-        if (module == Msg_C2S_Chat::kModule &&
-            sub == static_cast<uint8_t>(ChatMsgSub::C2S_CHAT_REQ))
-            return validateChat(data, len);
-        if (module == Msg_C2S_GatewayAuthReq::kModule &&
-            sub == static_cast<uint8_t>(LoginMsgSub::C2S_GATEWAY_AUTH_REQ))
+
+        if (module == kLoginModule &&
+            sub == static_cast<uint8_t>(rpg::login::C2S_GATEWAY_AUTH_REQ))
             return validateGatewayAuth(data, len);
-        if (module == Msg_C2S_CreateUserReq::kModule &&
-            sub == static_cast<uint8_t>(LoginMsgSub::C2S_CREATE_USER_REQ))
+        if (module == kLoginModule &&
+            sub == static_cast<uint8_t>(rpg::login::C2S_CREATE_USER_REQ))
             return validateCreateUser(data, len);
-        if (module == Msg_C2S_LogoutReq::kModule &&
-            sub == static_cast<uint8_t>(LoginMsgSub::C2S_LOGOUT_REQ))
+        if (module == kLoginModule &&
+            sub == static_cast<uint8_t>(rpg::login::C2S_LOGOUT_REQ))
             return validateLogout(data, len);
+        if (module == kSceneModule &&
+            sub == static_cast<uint8_t>(rpg::mapdata::C2S_MOVE_REQ))
+            return validateMove(user, data, len);
+        if (module == kChatModule &&
+            sub == static_cast<uint8_t>(rpg::chat::C2S_CHAT_REQ))
+            return validateChat(data, len);
+        if (module == kNpcModule &&
+            sub == static_cast<uint8_t>(rpg::npc::C2S_NPC_TALK_REQ))
+            return validateNpcTalk(user, data, len);
         return ValidateResult::OK;
     }
 
@@ -79,17 +71,29 @@ public:
     {
         switch (result)
         {
-        case ValidateResult::OK:           return static_cast<int32_t>(GatewayValidateCode::OK);
-        case ValidateResult::UNKNOWN_MSG:  return static_cast<int32_t>(GatewayValidateCode::UNKNOWN_MSG);
-        case ValidateResult::BAD_LENGTH:   return static_cast<int32_t>(GatewayValidateCode::BAD_LENGTH);
-        case ValidateResult::BAD_STATE:    return static_cast<int32_t>(GatewayValidateCode::BAD_STATE);
-        case ValidateResult::BAD_PAYLOAD:  return static_cast<int32_t>(GatewayValidateCode::BAD_PAYLOAD);
-        case ValidateResult::RATE_LIMITED: return static_cast<int32_t>(GatewayValidateCode::RATE_LIMITED);
+        case ValidateResult::OK:
+            return static_cast<int32_t>(rpg::system::GATEWAY_VALIDATE_OK);
+        case ValidateResult::UNKNOWN_MSG:
+            return static_cast<int32_t>(rpg::system::GATEWAY_VALIDATE_UNKNOWN_MSG);
+        case ValidateResult::BAD_LENGTH:
+            return static_cast<int32_t>(rpg::system::GATEWAY_VALIDATE_BAD_LENGTH);
+        case ValidateResult::BAD_STATE:
+            return static_cast<int32_t>(rpg::system::GATEWAY_VALIDATE_BAD_STATE);
+        case ValidateResult::BAD_PAYLOAD:
+            return static_cast<int32_t>(rpg::system::GATEWAY_VALIDATE_BAD_PAYLOAD);
+        case ValidateResult::RATE_LIMITED:
+            return static_cast<int32_t>(rpg::system::GATEWAY_VALIDATE_RATE_LIMITED);
         }
-        return static_cast<int32_t>(GatewayValidateCode::BAD_PAYLOAD);
+        return static_cast<int32_t>(rpg::system::GATEWAY_VALIDATE_BAD_PAYLOAD);
     }
 
 private:
+    static constexpr uint8_t kLoginModule  = static_cast<uint8_t>(ClientModule::LOGIN);
+    static constexpr uint8_t kSceneModule = static_cast<uint8_t>(ClientModule::SCENE);
+    static constexpr uint8_t kChatModule   = static_cast<uint8_t>(ClientModule::CHAT);
+    static constexpr uint8_t kNpcModule    = static_cast<uint8_t>(ClientModule::NPC);
+    static constexpr uint8_t kSystemModule = static_cast<uint8_t>(ClientModule::SYSTEM);
+
     static constexpr uint8_t STATE_CONNECTED  = 1u << 0;
     static constexpr uint8_t STATE_AUTHING    = 1u << 1;
     static constexpr uint8_t STATE_ACCOUNT_OK = 1u << 2;
@@ -104,7 +108,6 @@ private:
         uint16_t maxLen;
         uint8_t  allowedStates;
         bool     needsInWorld;
-        bool     checkUserId;
     };
 
     static bool isStateAllowed(ClientState state, uint8_t mask)
@@ -124,31 +127,24 @@ private:
     static const MsgRule* findRule(uint8_t module, uint8_t sub)
     {
         static const MsgRule kRules[] = {
-            {Msg_C2S_GatewayAuthReq::kModule, Msg_C2S_GatewayAuthReq::kSub,
-             sizeof(Msg_C2S_GatewayAuthReq), sizeof(Msg_C2S_GatewayAuthReq),
-             STATE_CONNECTED, false, false},
-            {Msg_C2S_SelectUserReq::kModule, Msg_C2S_SelectUserReq::kSub,
-             sizeof(Msg_C2S_SelectUserReq), sizeof(Msg_C2S_SelectUserReq),
-             STATE_ACCOUNT_OK, false, false},
-            {Msg_C2S_CreateUserReq::kModule, Msg_C2S_CreateUserReq::kSub,
-             sizeof(Msg_C2S_CreateUserReq), sizeof(Msg_C2S_CreateUserReq),
-             STATE_ACCOUNT_OK, false, false},
-            {Msg_C2S_LogoutReq::kModule, Msg_C2S_LogoutReq::kSub,
-             sizeof(Msg_C2S_LogoutReq), sizeof(Msg_C2S_LogoutReq),
-             STATE_ENTERING | STATE_IN_WORLD, false, false},
-            {Msg_C2S_Heartbeat::kModule, Msg_C2S_Heartbeat::kSub,
-             sizeof(Msg_C2S_Heartbeat), sizeof(Msg_C2S_Heartbeat),
+            {kLoginModule, static_cast<uint8_t>(rpg::login::C2S_GATEWAY_AUTH_REQ),
+             1, CLIENT_PROTO_MAX_BODY, STATE_CONNECTED, false},
+            {kLoginModule, static_cast<uint8_t>(rpg::login::C2S_SELECT_USER_REQ),
+             1, CLIENT_PROTO_MAX_BODY, STATE_ACCOUNT_OK, false},
+            {kLoginModule, static_cast<uint8_t>(rpg::login::C2S_CREATE_USER_REQ),
+             1, CLIENT_PROTO_MAX_BODY, STATE_ACCOUNT_OK, false},
+            {kLoginModule, static_cast<uint8_t>(rpg::login::C2S_LOGOUT_REQ),
+             1, CLIENT_PROTO_MAX_BODY, STATE_ENTERING | STATE_IN_WORLD, false},
+            {kSystemModule, static_cast<uint8_t>(rpg::system::C2S_HEARTBEAT),
+             1, CLIENT_PROTO_MAX_BODY,
              STATE_CONNECTED | STATE_AUTHING | STATE_ACCOUNT_OK | STATE_ENTERING | STATE_IN_WORLD,
-             false, false},
-            {Msg_C2S_MoveReq::kModule, Msg_C2S_MoveReq::kSub,
-             sizeof(Msg_C2S_MoveReq), sizeof(Msg_C2S_MoveReq),
-             STATE_IN_WORLD, true, true},
-            {Msg_C2S_Chat::kModule, Msg_C2S_Chat::kSub,
-             sizeof(Msg_C2S_Chat), sizeof(Msg_C2S_Chat),
-             STATE_IN_WORLD, true, false},
-            {Msg_C2S_NpcTalkReq::kModule, Msg_C2S_NpcTalkReq::kSub,
-             sizeof(Msg_C2S_NpcTalkReq), sizeof(Msg_C2S_NpcTalkReq),
-             STATE_IN_WORLD, true, true},
+             false},
+            {kSceneModule, static_cast<uint8_t>(rpg::mapdata::C2S_MOVE_REQ),
+             1, CLIENT_PROTO_MAX_BODY, STATE_IN_WORLD, true},
+            {kChatModule, static_cast<uint8_t>(rpg::chat::C2S_CHAT_REQ),
+             1, CLIENT_PROTO_MAX_BODY, STATE_IN_WORLD, true},
+            {kNpcModule, static_cast<uint8_t>(rpg::npc::C2S_NPC_TALK_REQ),
+             1, CLIENT_PROTO_MAX_BODY, STATE_IN_WORLD, true},
         };
         for (const auto& rule : kRules)
         {
@@ -158,62 +154,85 @@ private:
         return nullptr;
     }
 
+    /** @brief C2S_GATEWAY_AUTH_REQ：解析 Protobuf 并校验 account/token 非空 */
     static ValidateResult validateGatewayAuth(const char* data, uint16_t len)
     {
-        if (len < sizeof(Msg_C2S_GatewayAuthReq))
+        rpg::login::C2SGatewayAuthReq req;
+        if (!parseProto(data, len, req))
             return ValidateResult::BAD_LENGTH;
-        const auto* req = reinterpret_cast<const Msg_C2S_GatewayAuthReq*>(data);
-        if (req->account[0] == '\0' || req->loginToken[0] == '\0')
+        if (req.account().empty() || req.login_token().empty())
             return ValidateResult::BAD_PAYLOAD;
         return ValidateResult::OK;
     }
 
+    /** @brief C2S_CREATE_USER_REQ：角色名 UTF-8 与职业/性别上限 */
     static ValidateResult validateCreateUser(const char* data, uint16_t len)
     {
-        if (len < sizeof(Msg_C2S_CreateUserReq))
+        rpg::login::C2SCreateUserReq req;
+        if (!parseProto(data, len, req))
             return ValidateResult::BAD_LENGTH;
-        const auto* req = reinterpret_cast<const Msg_C2S_CreateUserReq*>(data);
-        if (req->name[0] == '\0')
+        if (req.name().empty())
             return ValidateResult::BAD_PAYLOAD;
-        if (!isValidRoleNameUtf8(req->name))
+        if (!isValidRoleNameUtf8(req.name().c_str()))
             return ValidateResult::BAD_PAYLOAD;
-        if (req->vocation > MAX_VOCATION_ID || req->sex > MAX_SEX_ID)
+        if (req.vocation() > MAX_VOCATION_ID || req.sex() > MAX_SEX_ID)
             return ValidateResult::BAD_PAYLOAD;
         return ValidateResult::OK;
     }
 
+    /** @brief C2S_LOGOUT_REQ：action 须为回选角或回登录 */
     static ValidateResult validateLogout(const char* data, uint16_t len)
     {
-        if (len < sizeof(Msg_C2S_LogoutReq))
+        rpg::login::C2SLogoutReq req;
+        if (!parseProto(data, len, req))
             return ValidateResult::BAD_LENGTH;
-        const auto* req = reinterpret_cast<const Msg_C2S_LogoutReq*>(data);
-        if (req->action != static_cast<uint8_t>(LogoutAction::RETURN_CHAR_SELECT) &&
-            req->action != static_cast<uint8_t>(LogoutAction::RETURN_LOGIN))
+        if (req.action() != rpg::login::RETURN_CHAR_SELECT &&
+            req.action() != rpg::login::RETURN_LOGIN)
             return ValidateResult::BAD_PAYLOAD;
         return ValidateResult::OK;
     }
 
-    static ValidateResult validateMove(const char* data, uint16_t len)
+    /** @brief C2S_MOVE_REQ：userId 与坐标边界 */
+    static ValidateResult validateMove(const GatewayUser* user, const char* data, uint16_t len)
     {
-        if (len < sizeof(Msg_C2S_MoveReq))
+        rpg::mapdata::C2SMoveReq req;
+        if (!parseProto(data, len, req))
             return ValidateResult::BAD_LENGTH;
-        const auto* req = reinterpret_cast<const Msg_C2S_MoveReq*>(data);
+        if (!req.has_pos())
+            return ValidateResult::BAD_PAYLOAD;
+        if (user->GetID() != 0 && req.user_id() != user->GetID())
+            return ValidateResult::BAD_PAYLOAD;
         constexpr float kMaxCoord = 100000.0f;
-        if (req->x < -kMaxCoord || req->x > kMaxCoord ||
-            req->y < -kMaxCoord || req->y > kMaxCoord ||
-            req->z < -kMaxCoord || req->z > kMaxCoord)
+        const float x = req.pos().x();
+        const float y = req.pos().y();
+        const float z = req.pos().z();
+        if (x < -kMaxCoord || x > kMaxCoord ||
+            y < -kMaxCoord || y > kMaxCoord ||
+            z < -kMaxCoord || z > kMaxCoord)
             return ValidateResult::BAD_PAYLOAD;
         return ValidateResult::OK;
     }
 
+    /** @brief C2S_CHAT_REQ：频道与 content 长度（≤ MAX_CHAT_CONTENT_BYTES） */
     static ValidateResult validateChat(const char* data, uint16_t len)
     {
-        if (len < sizeof(Msg_C2S_Chat))
+        rpg::chat::C2SChatReq req;
+        if (!parseProto(data, len, req))
             return ValidateResult::BAD_LENGTH;
-        const auto* req = reinterpret_cast<const Msg_C2S_Chat*>(data);
-        if (req->channel > 3)
+        if (req.channel() > rpg::chat::CHAT_CHANNEL_GUILD)
             return ValidateResult::BAD_PAYLOAD;
-        if (req->content[0] == '\0')
+        if (req.content().empty() || req.content().size() > MAX_CHAT_CONTENT_BYTES)
+            return ValidateResult::BAD_PAYLOAD;
+        return ValidateResult::OK;
+    }
+
+    /** @brief C2S_NPC_TALK_REQ：npcId 非零（已进世界用户） */
+    static ValidateResult validateNpcTalk(const GatewayUser* user, const char* data, uint16_t len)
+    {
+        rpg::npc::C2SNpcTalkReq req;
+        if (!parseProto(data, len, req))
+            return ValidateResult::BAD_LENGTH;
+        if (user->GetID() != 0 && req.npc_id() == 0)
             return ValidateResult::BAD_PAYLOAD;
         return ValidateResult::OK;
     }

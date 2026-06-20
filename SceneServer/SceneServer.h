@@ -35,10 +35,7 @@
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
 #include "../protocal/InternalMsg.h"
-#include "../Common/LoginMsg.h"
-#include "../Common/MapDataMsg.h"
-#include "../Common/ChatMsg.h"
-#include "../Common/ClientMsgBody.h"
+#include "../Common/ClientTypes.h"
 #include "../sdk/net/GwClientRelay.h"
 #include "../sdk/util/UserWireUtil.h"
 #include "../sdk/util/WireStringUtil.h"
@@ -128,6 +125,15 @@ public:
     /** @brief NPC 进入 AOI（创建/复活时由 SceneNpc 调用） */
     void notifyNpcEnterAoi(const SceneNpc& npc) { sendAoiEnter(npc, 1); }
 
+    /**
+     * @brief 广播消息给指定地图内的所有用户（可排除指定用户）
+     * @param mapID 目标地图 ID，0 表示所有地图
+     * @param excludeUserID 需要排除的用户 ID
+     */
+    void BroadcastToMap(uint32_t mapID, UserID excludeUserID,
+                        uint8_t module, uint8_t sub,
+                        const char* data, uint16_t len);
+
     /** @brief NPC 离开 AOI（死亡/销毁时由 SceneNpc 调用） */
     void notifyNpcLeaveAoi(EntryID npcId) { sendAoiLeave(npcId); }
 
@@ -207,27 +213,6 @@ private:
     /** @brief 对话失败回包（code: 1=NPC无效 2=不同地图 3=脚本无响应） */
     void sendNpcTalkError(uint32_t clientConnID, uint64_t npcId, int32_t code);
 
-    /**
-     * @brief 广播消息给指定地图内的所有用户（可排除指定用户）
-     *
-     * 广播排除逻辑：
-     * 1. 遍历所有在线用户 m_users；
-     * 2. 跳过不在目标 mapID 中的用户（mapID==0 时广播所有地图）；
-     * 3. 跳过 excludeUserID 指定的用户（通常为消息发起者，避免自己收到自己的广播）；
-     * 4. 跳过 gatewayClientConn==0 的用户（连接无效，无法发送）；
-     * 5. 对剩余用户逐一调用 SendToClient 转发消息。
-     *
-     * @param mapID          目标地图 ID，0 表示所有地图
-     * @param excludeUserID  需要排除的用户 ID
-     * @param module         消息 module
-     * @param sub            消息 sub
-     * @param data           消息体指针
-     * @param len            消息体长度
-     */
-    void BroadcastToMap(uint32_t mapID, UserID excludeUserID,
-                        uint8_t module, uint8_t sub,
-                        const char* data, uint16_t len);
-
     /** @brief Lua 回调：用户进入场景 */
     void callLuaOnEnter(UserID userID, uint32_t mapID);
 
@@ -257,10 +242,6 @@ private:
 
     /** @brief 处理 SessionServer 下发的副本创建指令 */
     void onCopyCreateCmd(ConnID fromConn, const Msg_SES_CopyCreateCmd& cmd);
-
-    /** @brief 将 SceneEntry 填入客户端 SpawnEntity 协议 */
-    static void fillSpawnFromEntry(const SceneEntry& entry, uint8_t entityType,
-                                   Msg_S2C_SpawnEntity& spawn);
 
     /** @brief 实体进入 AOIServer 视野管理 */
     void sendAoiEnter(const SceneEntry& entry, uint8_t entityType);

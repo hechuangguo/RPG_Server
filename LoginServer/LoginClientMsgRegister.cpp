@@ -10,22 +10,22 @@
 #include "../sdk/util/ClientMsgDispatcher.h"
 #include "../sdk/util/MsgHandlerBinder.h"
 #include "../Common/ClientTypes.h"
-#include "../Common/LoginMsg.h"
-#include "../Common/ZoneMsg.h"
+#include "LoginCommon.pb.h"
+#include "ZoneCommon.pb.h"
 
 void LoginClientMsgRegister(LoginServer& server)
 {
     auto& d = ClientMsgDispatcher::Instance();
     registerClientServiceRaw(d, &server.authService(),
                              static_cast<uint8_t>(ClientModule::LOGIN),
-                             static_cast<uint8_t>(LoginMsgSub::C2S_LOGIN_REQ),
+                             static_cast<uint8_t>(rpg::login::C2S_LOGIN_REQ),
                              &LoginAuthService::onClientLogin);
     registerClientServiceRaw(d, &server.registerService(),
                              static_cast<uint8_t>(ClientModule::LOGIN),
-                             static_cast<uint8_t>(LoginMsgSub::C2S_REGISTER_REQ),
+                             static_cast<uint8_t>(rpg::login::C2S_REGISTER_REQ),
                              &LoginRegisterService::onClientRegister);
     registerClientServiceRaw(d, &server.authService(),
                              static_cast<uint8_t>(ClientModule::LOGIN),
-                             static_cast<uint8_t>(ZoneMsgSub::C2S_ZONE_LIST_REQ),
+                             static_cast<uint8_t>(rpg::zone::C2S_ZONE_LIST_REQ),
                              &LoginAuthService::onClientZoneList);
 }

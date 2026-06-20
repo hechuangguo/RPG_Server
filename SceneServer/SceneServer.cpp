@@ -1,6 +1,6 @@
 /**
  * @file SceneServer.cpp
- * @brief SceneServer 非简单成员函数实现，降低头文件编译耦合。
+ * @brief SceneServer 实现：移动/聊天/NPC 等客户端 Protobuf handler 与 AOI 协作
  */
 
 #include "SceneServer.h"
@@ -16,9 +16,80 @@
 #include "SceneUserManager.h"
 #include "SceneNpcManager.h"
 #include "SceneManager.h"
+#include "MoveValidator.h"
+#include "../sdk/net/ClientProtoWire.h"
+#include "../sdk/net/ClientWireSend.h"
+#include "MapDataMsg.pb.h"
+#include "ChatMsg.pb.h"
+#include "NpcMsg.pb.h"
 #include "LuaManager.h"
 
 #include <cstdio>
+
+namespace
+{
+
+void sendSpawnProto(SceneServer& server, uint32_t clientConn, const SceneEntry& entry,
+                    uint8_t entityType, uint32_t modelId = 0, uint32_t animState = 0)
+{
+    rpg::mapdata::S2CSpawnEntity msg;
+    fillProtoSpawnEntity(entry.getEntryId(), entry.getName(), entry.getLevel(),
+                         entry.getPosX(), entry.getPosY(), entry.getPosZ(), 0.f, entityType,
+                         modelId, animState, msg);
+    std::string body;
+    if (!serializeSpawnEntity(msg, body))
+        return;
+    server.SendToClient(clientConn, static_cast<uint8_t>(ClientModule::SCENE),
+                        static_cast<uint8_t>(rpg::mapdata::S2C_SPAWN_ENTITY),
+                        body.data(), static_cast<uint16_t>(body.size()));
+}
+
+void broadcastSpawnProto(SceneServer& server, uint32_t mapId, UserID exclude,
+                         const SceneEntry& entry, uint8_t entityType)
+{
+    rpg::mapdata::S2CSpawnEntity msg;
+    fillProtoSpawnEntity(entry.getEntryId(), entry.getName(), entry.getLevel(),
+                         entry.getPosX(), entry.getPosY(), entry.getPosZ(), 0.f, entityType,
+                         0, 0, msg);
+    std::string body;
+    if (!serializeSpawnEntity(msg, body))
+        return;
+    server.BroadcastToMap(mapId, exclude, static_cast<uint8_t>(ClientModule::SCENE),
+                          static_cast<uint8_t>(rpg::mapdata::S2C_SPAWN_ENTITY),
+                          body.data(), static_cast<uint16_t>(body.size()));
+}
+
+void broadcastDespawnProto(SceneServer& server, uint32_t mapId, UserID exclude, uint64_t entityId)
+{
+    rpg::mapdata::S2CDespawnEntity msg;
+    msg.set_entity_id(entityId);
+    std::string body;
+    if (!serializeDespawnEntity(msg, body))
+        return;
+    server.BroadcastToMap(mapId, exclude, static_cast<uint8_t>(ClientModule::SCENE),
+                          static_cast<uint8_t>(rpg::mapdata::S2C_DESPAWN_ENTITY),
+                          body.data(), static_cast<uint16_t>(body.size()));
+}
+
+void broadcastMoveProto(SceneServer& server, uint32_t mapId, UserID exclude,
+                        uint64_t userId, float x, float y, float z, float dir, uint8_t moveType)
+{
+    rpg::mapdata::S2CMoveNotify msg;
+    msg.set_user_id(userId);
+    msg.mutable_pos()->set_x(x);
+    msg.mutable_pos()->set_y(y);
+    msg.mutable_pos()->set_z(z);
+    msg.set_dir(dir);
+    msg.set_move_type(moveType == 1 ? rpg::mapdata::MOVE_TYPE_RUN : rpg::mapdata::MOVE_TYPE_WALK);
+    std::string body;
+    if (!serializeMoveNotify(msg, body))
+        return;
+    server.BroadcastToMap(mapId, exclude, static_cast<uint8_t>(ClientModule::SCENE),
+                          static_cast<uint8_t>(rpg::mapdata::S2C_MOVE_NOTIFY),
+                          body.data(), static_cast<uint16_t>(body.size()));
+}
+
+} // namespace
 
 SceneServer::SceneServer()
     : m_server(this)
@@ -186,8 +257,6 @@ void SceneServer::sendUserEnterRsp(const Msg_SCE_UserEnterReq* req, int32_t code
 void SceneServer::notifyExistingPlayersOnEnter(const SceneUser& entering)
 {
     const auto& base = entering.Base();
-    Msg_S2C_SpawnEntity spawn{};
-    fillSpawnFromEntry(entering, 0, spawn);
 
     SceneUserManager::Instance().forEach([&](UserID rid, const std::shared_ptr<SceneUser>& user)
     {
@@ -195,27 +264,15 @@ void SceneServer::notifyExistingPlayersOnEnter(const SceneUser& entering)
         if (user->Base().mapID != base.mapID) return;
         if (user->getGatewayClientConn() == 0) return;
 
-        SendToClient(user->getGatewayClientConn(),
-                     Msg_S2C_SpawnEntity::kModule, Msg_S2C_SpawnEntity::kSub,
-                     reinterpret_cast<char*>(&spawn), sizeof(spawn));
-
-        Msg_S2C_SpawnEntity other{};
-        fillSpawnFromEntry(*user, 0, other);
-        SendToClient(entering.getGatewayClientConn(),
-                     Msg_S2C_SpawnEntity::kModule, Msg_S2C_SpawnEntity::kSub,
-                     reinterpret_cast<char*>(&other), sizeof(other));
+        sendSpawnProto(*this, user->getGatewayClientConn(), entering, 0);
+        sendSpawnProto(*this, entering.getGatewayClientConn(), *user, 0);
     });
 
     SceneNpcManager::Instance().forEach([&](EntryID /*npcId*/, const std::shared_ptr<SceneNpc>& npc)
     {
         if (!npc || npc->getMapId() != base.mapID) return;
         if (!npc->isAlive()) return;
-
-        Msg_S2C_SpawnEntity npcSpawn{};
-        fillSpawnFromEntry(*npc, 1, npcSpawn);
-        SendToClient(entering.getGatewayClientConn(),
-                     Msg_S2C_SpawnEntity::kModule, Msg_S2C_SpawnEntity::kSub,
-                     reinterpret_cast<char*>(&npcSpawn), sizeof(npcSpawn));
+        sendSpawnProto(*this, entering.getGatewayClientConn(), *npc, 1);
     });
 }
 
@@ -269,16 +326,8 @@ void SceneServer::onViewNotify(ConnID /*fromConn*/, const char* data, uint16_t l
                 npc->setPos(move->x, move->y, move->z);
         }
 
-        Msg_S2C_MoveNotify notify{};
-        notify.userID = move->entityID;
-        notify.x = move->x;
-        notify.y = move->y;
-        notify.z = move->z;
-        notify.dir = move->dir;
-        notify.moveType = 0;
-        BroadcastToMap(move->mapID, move->entityID,
-                       Msg_S2C_MoveNotify::kModule, Msg_S2C_MoveNotify::kSub,
-                       reinterpret_cast<char*>(&notify), sizeof(notify));
+        broadcastMoveProto(*this, move->mapID, move->entityID, move->entityID,
+                           move->x, move->y, move->z, move->dir, 0);
         return;
     }
 
@@ -300,101 +349,122 @@ void SceneServer::onViewNotify(ConnID /*fromConn*/, const char* data, uint16_t l
 
     if (enter)
     {
-        Msg_S2C_SpawnEntity spawn{};
         if (user)
-            fillSpawnFromEntry(*user, 0, spawn);
+            broadcastSpawnProto(*this, mapId, entityID, *user, 0);
         else
-            fillSpawnFromEntry(*npc, 1, spawn);
-
-        BroadcastToMap(mapId, entityID,
-                       Msg_S2C_SpawnEntity::kModule, Msg_S2C_SpawnEntity::kSub,
-                       reinterpret_cast<char*>(&spawn), sizeof(spawn));
+            broadcastSpawnProto(*this, mapId, entityID, *npc, 1);
     }
     else
     {
-        Msg_S2C_DespawnEntity despawn{};
-        despawn.entityID = entityID;
-        BroadcastToMap(mapId, entityID,
-                       Msg_S2C_DespawnEntity::kModule, Msg_S2C_DespawnEntity::kSub,
-                       reinterpret_cast<char*>(&despawn), sizeof(despawn));
+        broadcastDespawnProto(*this, mapId, entityID, entityID);
     }
 }
 
 void SceneServer::onMoveReq(uint32_t /*clientConnID*/, const char* data, uint16_t len)
 {
-    if (len < sizeof(Msg_C2S_MoveReq)) return;
-    const auto* req = reinterpret_cast<const Msg_C2S_MoveReq*>(data);
-    auto user = SceneUserManager::Instance().findUser(req->userID);
+    rpg::mapdata::C2SMoveReq req;
+    if (!parseMoveReq(data, len, req))
+        return;
+    auto user = SceneUserManager::Instance().findUser(req.user_id());
     if (!user) return;
-    user->Base().posX = req->x;
-    user->Base().posY = req->y;
-    user->Base().posZ = req->z;
+
+    const float dstX = req.has_pos() ? req.pos().x() : user->Base().posX;
+    const float dstY = req.has_pos() ? req.pos().y() : user->Base().posY;
+    const float dstZ = req.has_pos() ? req.pos().z() : user->Base().posZ;
+    const uint8_t moveType = req.move_type() == rpg::mapdata::MOVE_TYPE_RUN ? 1 : 0;
+
+    auto scene = SceneManager::Instance().findNormalSceneByMapId(user->Base().mapID);
+    MapRuntimeData* mapData = scene && scene->getMapData() ? scene->getMapData().get() : nullptr;
+
+    std::string reason;
+    const auto vr = validateMoveRequest(mapData, user->Base().posX, user->Base().posY,
+                                        user->Base().posZ, dstX, dstY, dstZ, moveType, &reason);
+    if (vr != MoveValidateResult::OK)
+    {
+        LOG_WARN("移动校验拒绝 user=%llu map=%u: %s", req.user_id(), user->Base().mapID,
+                 reason.c_str());
+        return;
+    }
+
+    user->Base().posX = dstX;
+    user->Base().posY = dstY;
+    user->Base().posZ = dstZ;
     user->markDirty();
 
-    m_aoiClient.moveEntity(req->userID, user->Base().mapID, req->x, req->y, req->z,
-                             req->dir, 0);
+    m_aoiClient.moveEntity(req.user_id(), user->Base().mapID, dstX, dstY, dstZ,
+                           req.dir(), 0);
 }
 
 void SceneServer::onChatReq(uint32_t clientConnID, const char* data, uint16_t len)
 {
-    if (len < sizeof(Msg_C2S_Chat)) return;
-    const auto* req = reinterpret_cast<const Msg_C2S_Chat*>(data);
+    rpg::chat::C2SChatReq req;
+    if (!parseProto(data, len, req))
+        return;
     auto user = SceneUserManager::Instance().findUserByClientConn(clientConnID);
     if (!user) return;
 
-    Msg_S2C_Chat notify{};
-    notify.fromID = user->GetID();
-    notify.channel = req->channel;
-    copyToWire(notify.fromName, sizeof(notify.fromName), user->GetName());
-    copyToWire(notify.content, sizeof(notify.content), req->content);
+    rpg::chat::S2CChatNotify notify;
+    notify.set_from_id(user->GetID());
+    notify.set_from_name(user->GetName());
+    notify.set_channel(req.channel());
+    notify.set_content(req.content());
+    std::string body;
+    if (!serializeProto(notify, body))
+    {
+        LOG_WARN("聊天广播序列化失败: user=%llu", user->GetID());
+        return;
+    }
     BroadcastToMap(user->Base().mapID, user->GetID(),
-                   Msg_S2C_Chat::kModule, Msg_S2C_Chat::kSub,
-                   reinterpret_cast<char*>(&notify), sizeof(notify));
+                   static_cast<uint8_t>(ClientModule::CHAT),
+                   static_cast<uint8_t>(rpg::chat::S2C_CHAT_NOTIFY),
+                   body.data(), static_cast<uint16_t>(body.size()));
 }
 
 void SceneServer::onNpcTalkReq(uint32_t clientConnID, const char* data, uint16_t len)
 {
-    if (len < sizeof(Msg_C2S_NpcTalkReq))
+    rpg::npc::C2SNpcTalkReq req;
+    if (!parseProto(data, len, req))
         return;
 
-    const auto* req = reinterpret_cast<const Msg_C2S_NpcTalkReq*>(data);
     auto user = SceneUserManager::Instance().findUserByClientConn(clientConnID);
     if (!user || user->getGatewayClientConn() == 0)
         return;
 
-    auto npc = SceneNpcManager::Instance().findNpc(req->npcId);
+    auto npc = SceneNpcManager::Instance().findNpc(req.npc_id());
     if (!npc || npc->isDead())
     {
-        sendNpcTalkError(user->getGatewayClientConn(), req->npcId, 1);
+        sendNpcTalkError(user->getGatewayClientConn(), req.npc_id(), 1);
         return;
     }
 
     if (npc->getMapId() != user->Base().mapID)
     {
-        sendNpcTalkError(user->getGatewayClientConn(), req->npcId, 2);
+        sendNpcTalkError(user->getGatewayClientConn(), req.npc_id(), 2);
         return;
     }
 
     const bool ok = LuaManager::Instance().callScriptBool(npc.get(), "OnNpcTalk", {
         LuaArg::integer(static_cast<int64_t>(user->GetID())),
-        LuaArg::integer(req->dialogStep),
+        LuaArg::integer(req.dialog_step()),
         LuaArg::integer(npc->getTemplateId()),
     });
 
     if (!ok)
-        sendNpcTalkError(user->getGatewayClientConn(), req->npcId, 3);
+        sendNpcTalkError(user->getGatewayClientConn(), req.npc_id(), 3);
 }
 
 void SceneServer::sendNpcTalkError(uint32_t clientConnID, uint64_t npcId, int32_t code)
 {
-    Msg_S2C_NpcTalkRsp rsp{};
-    initClientMsg(rsp);
-    rsp.code = code;
-    rsp.npcId = npcId;
-    rsp.dialogStep = 0;
-    rsp.optionCount = 0;
-    SendToClient(clientConnID, Msg_S2C_NpcTalkRsp::kModule, Msg_S2C_NpcTalkRsp::kSub,
-                 reinterpret_cast<char*>(&rsp), sizeof(rsp));
+    rpg::npc::S2CNpcTalkRsp rsp;
+    rsp.set_code(code);
+    rsp.set_npc_id(npcId);
+    rsp.set_dialog_step(0);
+    std::string body;
+    if (!serializeProto(rsp, body))
+        return;
+    SendToClient(clientConnID, static_cast<uint8_t>(ClientModule::NPC),
+                 static_cast<uint8_t>(rpg::npc::S2C_NPC_TALK_RSP),
+                 body.data(), static_cast<uint16_t>(body.size()));
 }
 
 bool SceneServer::SendToClient(uint32_t clientConnID, uint8_t module, uint8_t sub,
@@ -534,19 +604,6 @@ void SceneServer::onCopyCreateCmd(ConnID /*fromConn*/, const Msg_SES_CopyCreateC
         LOG_INFO("本地创建副本成功: instance=%llu", cmd.copyInstanceId);
     else
         LOG_ERR("本地创建副本失败: instance=%llu", cmd.copyInstanceId);
-}
-
-void SceneServer::fillSpawnFromEntry(const SceneEntry& entry, uint8_t entityType,
-                                     Msg_S2C_SpawnEntity& spawn)
-{
-    spawn.entityID = entry.getEntryId();
-    spawn.level = entry.getLevel();
-    spawn.x = entry.getPosX();
-    spawn.y = entry.getPosY();
-    spawn.z = entry.getPosZ();
-    spawn.dir = 0.f;
-    spawn.entityType = entityType;
-    copyToWire(spawn.name, sizeof(spawn.name), entry.getName().c_str());
 }
 
 void SceneServer::sendAoiEnter(const SceneEntry& entry, uint8_t entityType)

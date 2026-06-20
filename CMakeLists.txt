@@ -129,14 +129,42 @@ find_package(OpenSSL REQUIRED)
 set(GAME_TLS_LIBS OpenSSL::SSL OpenSSL::Crypto)
 
 # -------------------------------------------------------
+# Protocol Buffers — 客户端 wire body（Common/*.proto 生成）
+# -------------------------------------------------------
+set(PROTOBUF_PREFIX "${THIRD_PARTY_DIR}/protobuf")
+set(PROTOBUF_LIB "${PROTOBUF_PREFIX}/lib/libprotobuf.a")
+if(NOT EXISTS "${PROTOBUF_LIB}")
+    if(EXISTS "/usr/local/lib/libprotobuf.a")
+        set(PROTOBUF_LIB "/usr/local/lib/libprotobuf.a")
+        set(PROTOBUF_INCLUDE "/usr/local/include")
+    else()
+        find_library(PROTOBUF_LIB_SYS protobuf)
+        find_path(PROTOBUF_INCLUDE google/protobuf/message.h)
+        if(PROTOBUF_LIB_SYS AND PROTOBUF_INCLUDE)
+            set(PROTOBUF_LIB ${PROTOBUF_LIB_SYS})
+        else()
+            message(FATAL_ERROR "libprotobuf not found. Run: ./3Party/build_protobuf.sh")
+        endif()
+    endif()
+else()
+    set(PROTOBUF_INCLUDE "${PROTOBUF_PREFIX}/include")
+endif()
+message(STATUS "protobuf: ${PROTOBUF_LIB}")
+
+file(GLOB PROTO_GEN_SRC CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/Protobuf/*.cc")
+set(PROTOBUF_LIBS ${PROTOBUF_LIB})
+
+# -------------------------------------------------------
 # 公共头文件搜索路径
 # 所有服务器均可直接引用以下目录中的头文件
 include_directories(
     ${CMAKE_SOURCE_DIR}           # 项目根目录（公共头文件如 Protocol/ Common/ 等）
     ${CMAKE_SOURCE_DIR}/sdk       # SDK 目录（封装的网络协议/序列化等基础工具）
+    ${CMAKE_SOURCE_DIR}/Protobuf
     ${LUA_INCLUDE_DIR}            # Lua 头文件路径
     ${TINYXML2_INCLUDE}           # tinyxml2 头文件路径
     ${MYSQL_INCLUDE}              # MySQL 客户端头文件路径
+    ${PROTOBUF_INCLUDE}           # protobuf 头文件
 )
 
 # -------------------------------------------------------
@@ -157,13 +185,14 @@ macro(add_server SERVER_NAME EXTRA_LIBS)
     )
     # SDK 公共实现源（如 sdk/math/*.cpp）：随各服务器一并编译链接
     file(GLOB_RECURSE SDK_SRC "${CMAKE_SOURCE_DIR}/sdk/*.cpp")
-    add_executable(${SERVER_NAME} ${SERVER_SRC} ${SDK_SRC})
+    add_executable(${SERVER_NAME} ${SERVER_SRC} ${SDK_SRC} ${PROTO_GEN_SRC})
     target_link_libraries(${SERVER_NAME}
         PRIVATE
         pthread          # POSIX 线程库（所有服务器均需多线程支持）
         ${LUA_LIBRARIES} # Lua 脚本引擎（SceneServer 必需，其他可选）
         ${TINYXML2_LIB}  # XML 配置解析库（所有服务器均需读取配置文件）
         ${GAME_TLS_LIBS} # OpenSSL TLS（TcpServer/TcpClient）
+        ${PROTOBUF_LIBS} # Protobuf 客户端 wire
         ${EXTRA_LIBS}    # 服务器特有的额外链接库
     )
     set_target_properties(${SERVER_NAME} PROPERTIES

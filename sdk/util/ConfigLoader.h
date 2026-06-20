@@ -55,6 +55,7 @@ struct ServerConfig
     uint32_t zoneId  = 1;     /**< 本游戏区号（Super/Gateway 上报 Login 用） */
     uint8_t  gameType = 0;    /**< 游戏类型（0=当前 RPG） */
     TlsConfig tls;              /**< TLS 传输层（全区 TCP 加密） */
+    float aoiGridSize = 200.f;  /**< AOI 九宫格默认边长（世界单位） */
     /** @brief 日志输出路径映射：服务器名称 → 日志文件路径 */
     std::unordered_map<std::string, std::string> logPaths;
 };
@@ -99,6 +100,8 @@ public:
             cfg.zoneId = XmlConfig::readUIntAttr(zone, "zoneId", cfg.zoneId);
             cfg.gameType = static_cast<uint8_t>(XmlConfig::readUIntAttr(zone, "gameType", cfg.gameType));
         }
+        if (auto* aoi = root->FirstChildElement("Aoi"))
+            cfg.aoiGridSize = static_cast<float>(XmlConfig::readIntAttr(aoi, "gridSize", static_cast<int>(cfg.aoiGridSize)));
         // Session/Record/AOI/Scene/Gateway 端口已迁移至 DB 的 ServerList。
         // Logger/Global/Zone 外联地址见 loginserverlist.xml，不在此加载。
         if (auto* tls = root->FirstChildElement("Tls"))

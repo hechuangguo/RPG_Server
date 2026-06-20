@@ -30,7 +30,7 @@ public:
     /**
      * @brief 处理客户端登录请求
      * @param connID 客户端连接 ID
-     * @param data   Msg_C2S_LoginReq
+     * @param data   Protobuf C2SLoginReq body
      * @param len    长度
      */
     void onClientLogin(ConnID connID, const char* data, uint16_t len);
@@ -38,7 +38,7 @@ public:
     /**
      * @brief 处理客户端区列表请求
      * @param connID 客户端连接 ID
-     * @param data   gameType(1B)；或 wire v2 完整 Msg_C2S_ZoneListReq；空 body 视为 0xFF
+     * @param data   Protobuf C2SZoneListReq；解析失败时首字节为 gameType 过滤
      * @param len    长度
      */
     void onClientZoneList(ConnID connID, const char* data, uint16_t len);

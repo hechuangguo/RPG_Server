@@ -104,7 +104,7 @@ RPG/
 │   ├── net/       # NetDefine、MsgId、TcpServer/Client/Connection
 │   ├── time/      # 墙钟：TimeUtil、AlarmClock
 │   └── timer/     # 单调时钟：TimerMgr（相对间隔调度）
-├── Common/        # Git Submodule → RPG_Common（各域 *Msg.h；ClientMsg.h deprecated 聚合）
+├── Common/        # Git Submodule → RPG_Common（*.proto；ClientTypes.h）
 ├── protocal/      # 服务器内部协议 InternalMsg.h
 ├── GatewayServer/ # 接入 + ClientMsgValidator/Router
 ├── LoginServer/   # 外联登录 + 网关列表（可选）
@@ -116,12 +116,14 @@ RPG/
 ├── database/      # 生成的 *_config.lua 策划配表
 ├── tables/        # MySQL DDL（入口 init.sql）
 ├── basefile/      # 配表加载工具（data_table.lua）
+├── Protobuf/      # protoc C++ 生成物（scripts/gen_proto.sh；*.pb.* gitignore）
 ├── script/        # Lua 游戏脚本
 ├── 3Party/        # 第三方静态库（vendor/ 源码入库，离线编译）
 │   ├── vendor/    # tar.gz 源码包（纳入 Git）
 │   ├── fetch_vendor.sh
 │   └── download_and_build.sh
 ├── tools/         # gen_datadoc.py（Excel→Lua）
+├── scripts/       # check_common_*.sh、gen_proto.sh
 ├── gen_data.sh    # 配表生成入口
 ├── build          # 编译入口（等价 ./Build.sh）
 ├── Build.sh       # 编译脚本
@@ -144,7 +146,7 @@ git clone --recurse-submodules git@github.com:hechuangguo/RPG.git
 git submodule update --init --recursive
 ```
 
-修改 `Common/*Msg.h` 时：在 submodule 内 commit/push 到 **RPG_Common**，再回到本仓库 commit submodule 指针。完整流程见 [docs/COMMON.md](docs/COMMON.md) 与 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
+修改 `Common/*.proto` 时：在 submodule 内 commit/push 到 **RPG_Common**，回到本仓库运行 `./scripts/gen_proto.sh` 并 commit submodule 指针。完整流程见 [docs/COMMON.md](docs/COMMON.md) 与 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
 
 ### 环境依赖
 

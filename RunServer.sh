@@ -57,6 +57,20 @@ log_info()  { echo -e "${GREEN}[INFO]${NC}  $1"; }
 log_warn()  { echo -e "${YELLOW}[WARN]${NC}  $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
+# 启动前检查 Protobuf 生成物是否与 .proto 同步
+preflight_proto() {
+    if [[ -x "$SCRIPT_DIR/scripts/check_common_proto.sh" ]]; then
+        if ! "$SCRIPT_DIR/scripts/check_common_proto.sh" >/dev/null 2>&1; then
+            log_warn "Protobuf 生成物可能过期，建议先执行: ./Build.sh"
+        fi
+    fi
+    if [[ -x "$SCRIPT_DIR/tools/map_export/validate_map.sh" ]]; then
+        if ! "$SCRIPT_DIR/tools/map_export/validate_map.sh" "$SCRIPT_DIR/maps/runtime" >/dev/null 2>&1; then
+            log_warn "maps/runtime 校验未通过，SceneServer 可能无法加载地图"
+        fi
+    fi
+}
+
 # 各服务器业务日志路径（与 config.xml LogPaths 一致）
 server_log_path() {
     case "$1" in
@@ -110,8 +124,10 @@ failure_hint_for() {
         echo "Upstream dependency failed: ensure SuperServer is running and superIP/superPort in config.xml are correct."
     elif echo "$MSG" | grep -qiE 'scene|server_info|mapID|loadResources'; then
         echo "Scene init failed: check config/server_info.xml and SceneServer map/script resources."
+    elif echo "$MSG" | grep -qiE 'Protobuf|protobuf|ParseFromArray|wire'; then
+        echo "Protobuf wire mismatch: run ./Build.sh to regen Protobuf/; ensure client uses same Common/*.proto version."
     elif echo "$MSG" | grep -qiE 'binary|not found|No such file'; then
-        echo "Missing binary or resource: run ./build.sh first."
+        echo "Missing binary or resource: run ./Build.sh first."
     else
         echo "See log excerpts below for details."
     fi
@@ -311,6 +327,7 @@ EOF
 # -------------------------------------------------------
 start_all_inzone() {
     log_info "===== RPG In-Zone Startup (6 servers) ====="
+    preflight_proto
 
     start_server SuperServer "$CONFIG" || return 1
     log_info "Waiting ${SUPER_WARMUP_SEC}s for SuperServer TLS warmup..."

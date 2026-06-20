@@ -170,7 +170,7 @@ build_lua() {
     local tgz
     tgz="$(vendor_lua_tgz)"
     rm -rf "${SRC_DIR}/lua-${LUA_VERSION}"
-    tar -xzf "$tgz" -C "$SRC_DIR"
+    tar --no-same-owner -xzf "$tgz" -C "$SRC_DIR"
     local dir="${SRC_DIR}/lua-${LUA_VERSION}"
     [[ -d "$dir" ]] || fail "Lua 解压目录不存在"
 
@@ -192,7 +192,7 @@ build_tinyxml2() {
     local tgz
     tgz="$(vendor_tinyxml2_tgz)"
     rm -rf "${SRC_DIR}/tinyxml2-${TINYXML2_VERSION}"
-    tar -xzf "$tgz" -C "$SRC_DIR"
+    tar --no-same-owner -xzf "$tgz" -C "$SRC_DIR"
     local dir="${SRC_DIR}/tinyxml2-${TINYXML2_VERSION}"
     [[ -d "$dir" ]] || fail "tinyxml2 解压目录不存在"
 
@@ -230,7 +230,7 @@ build_mysql() {
     local tgz
     tgz="$(vendor_mariadb_tgz)"
     rm -rf "${SRC_DIR}/mariadb-connector-c-${MARIADB_CONNECTOR_VERSION}-src"
-    tar -xzf "$tgz" -C "$SRC_DIR"
+    tar --no-same-owner -xzf "$tgz" -C "$SRC_DIR"
     local dir="${SRC_DIR}/mariadb-connector-c-${MARIADB_CONNECTOR_VERSION}-src"
     [[ -d "$dir" ]] || fail "MariaDB Connector 解压目录不存在"
 

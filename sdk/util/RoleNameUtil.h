@@ -8,7 +8,16 @@
 
 #pragma once
 
-#include "../../Common/LoginCommon.h"
+#include <cstdint>
+
+/** @brief 角色名最少码点数 */
+constexpr uint32_t MIN_ROLE_NAME_CHAR_COUNT = 2;
+
+/** @brief 角色名最多码点数 */
+constexpr uint32_t MAX_ROLE_NAME_CHAR_COUNT = 12;
+
+/** @brief wire/DB 角色名最大 UTF-8 字节数 */
+constexpr uint32_t MAX_ROLE_NAME_BYTES = 31;
 
 /**
  * @brief 校验创角角色名（UTF-8）

@@ -1,26 +1,33 @@
 /**
  * @file    LoginAuthService.cpp
- * @brief  LoginAuthService 实现
+ * @brief  LoginAuthService 实现：账号登录、区列表与网关地址下发（Protobuf wire）
  */
 
 #include "LoginAuthService.h"
 #include "LoginServer.h"
 #include "LoginTokenUtil.h"
-#include "../Common/LoginMsg.h"
-#include "../Common/ClientMsgBody.h"
-#include "../Common/ZoneMsg.h"
+#include "../Common/ClientTypes.h"
+#include "LoginMsg.pb.h"
+#include "ZoneMsg.pb.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
 #include "../sdk/util/LoginSpawnConfig.h"
 #include "../sdk/util/LoginFlowLog.h"
 #include "../sdk/util/PasswordUtil.h"
 #include "../sdk/util/PasswordDigestUtil.h"
-#include "../sdk/util/WireStringUtil.h"
 #include "../sdk/net/ClientWireSend.h"
+#include "../sdk/net/ClientProtoWire.h"
 
 #include <cstring>
 #include <string>
 #include <vector>
+
+namespace
+{
+
+constexpr uint8_t kLoginModule = static_cast<uint8_t>(ClientModule::LOGIN);
+
+} // namespace
 
 LoginAuthService::LoginAuthService(LoginServer& owner)
     : m_owner(owner)
@@ -29,56 +36,52 @@ LoginAuthService::LoginAuthService(LoginServer& owner)
 
 void LoginAuthService::onClientZoneList(ConnID connID, const char* data, uint16_t len)
 {
-    uint8_t gameTypeFilter = ZONE_LIST_ALL_GAME_TYPES;
-    if (len >= sizeof(Msg_C2S_ZoneListReq)
-        && clientMsgBodyMatches(static_cast<uint8_t>(Msg_C2S_ZoneListReq::kModule),
-                                static_cast<uint8_t>(Msg_C2S_ZoneListReq::kSub),
-                                data, len))
-    {
-        gameTypeFilter = reinterpret_cast<const Msg_C2S_ZoneListReq*>(data)->gameType;
-    }
+    uint8_t gameTypeFilter = static_cast<uint8_t>(ZONE_LIST_ALL_GAME_TYPES);
+    rpg::zone::C2SZoneListReq protoReq;
+    if (parseProto(data, len, protoReq))
+        gameTypeFilter = static_cast<uint8_t>(protoReq.game_type());
     else if (len >= 1)
+    {
         gameTypeFilter = static_cast<uint8_t>(data[0]);
+        LOG_DEBUG("区列表请求非 Protobuf，按首字节 gameType=0x%02X: conn=%u",
+                  gameTypeFilter, connID);
+    }
 
     std::vector<ZoneInfoRow> zones;
     m_owner.zoneInfoStore().listAll(zones, gameTypeFilter);
 
-    Msg_S2C_ZoneListRspHeader header{};
-    initClientMsg(header);
+    rpg::zone::S2CZoneListRsp rsp;
     if (zones.size() > MAX_ZONE_LIST_ENTRIES)
     {
-        header.code = -1;
-        header.count = 0;
+        rsp.set_code(-1);
         LOG_ERR("区列表条目过多: %zu（上限 %u）", zones.size(), MAX_ZONE_LIST_ENTRIES);
-        m_owner.clientServer().SendMsg(connID, Msg_S2C_ZoneListRspHeader::kModule,
-                                       Msg_S2C_ZoneListRspHeader::kSub,
-                                       reinterpret_cast<char*>(&header), sizeof(header));
+        sendClientProtoModule(m_owner.clientServer(), connID, kLoginModule,
+                       static_cast<uint8_t>(rpg::zone::S2C_ZONE_LIST_RSP), rsp);
         return;
     }
 
-    header.code = 0;
-    header.count = static_cast<uint16_t>(zones.size());
-
-    const size_t bodyLen = sizeof(header) + header.count * sizeof(Msg_S2C_ZoneEntryWire);
-    std::vector<char> body(bodyLen);
-    std::memcpy(body.data(), &header, sizeof(header));
-
-    auto* entries = reinterpret_cast<Msg_S2C_ZoneEntryWire*>(body.data() + sizeof(header));
+    rsp.set_code(0);
     auto& registry = m_owner.gatewayRegistry();
-    for (size_t i = 0; i < zones.size(); ++i)
+    for (const ZoneInfoRow& row : zones)
     {
-        Msg_S2C_ZoneEntryWire& wire = entries[i];
-        const ZoneInfoRow& row = zones[i];
-        wire.zoneId = row.zoneId;
-        wire.gameType = row.gameType;
-        wire.enabled = row.enabled ? 1 : 0;
-        copyToWire(wire.name, sizeof(wire.name), row.name.c_str());
-        copyToWire(wire.ip, sizeof(wire.ip), row.ip.c_str());
-        wire.superPort = row.superPort;
+        auto* entry = rsp.add_entries();
+        entry->set_zone_id(row.zoneId);
+        entry->set_game_type(row.gameType);
+        entry->set_enabled(row.enabled ? 1 : 0);
+        entry->set_name(row.name);
+        entry->set_ip(row.ip);
+        entry->set_super_port(row.superPort);
 
+        uint32_t onlineCount = 0;
+        uint8_t gatewayCount = 0;
+        uint8_t loadLevel = 0;
         ZoneInfoStore::fillGatewayLoadFields(row, m_owner.zoneInfoStore(),
                                              registry.countForZone(row.zoneId, row.gameType),
-                                             wire.onlineCount, wire.gatewayCount, wire.loadLevel);
+                                             onlineCount, gatewayCount, loadLevel);
+        entry->set_online_count(onlineCount);
+        entry->set_gateway_count(gatewayCount);
+        entry->set_load_level(static_cast<rpg::zone::ZoneLoadLevel>(loadLevel));
+
         const uint64_t nowMs = TimerMgr::NowMs();
         ZoneRuntimeRow runtime;
         const ZoneRuntimeRow* runtimePtr = nullptr;
@@ -87,52 +90,62 @@ void LoginAuthService::onClientZoneList(ConnID connID, const char* data, uint16_
         const uint64_t runtimeAgeMs = runtimePtr && nowMs >= runtimePtr->lastReportMs
             ? (nowMs - runtimePtr->lastReportMs) : 0;
         LOG_DEBUG("区列表判定: zone=%u gameType=%u enabled=%u online=%u gateway=%u runtimeAlive=%u runtimeAgeMs=%llu loadLevel=%u",
-                  row.zoneId, row.gameType, row.enabled ? 1 : 0, wire.onlineCount, wire.gatewayCount,
+                  row.zoneId, row.gameType, row.enabled ? 1 : 0, onlineCount, gatewayCount,
                   runtimePtr && runtimePtr->alive ? 1 : 0,
-                  static_cast<unsigned long long>(runtimeAgeMs), wire.loadLevel);
-        wire.reserved[0] = 0;
-        wire.reserved[1] = 0;
+                  static_cast<unsigned long long>(runtimeAgeMs), loadLevel);
     }
 
-    m_owner.clientServer().SendMsg(connID, Msg_S2C_ZoneListRspHeader::kModule,
-                                   Msg_S2C_ZoneListRspHeader::kSub,
-                                   body.data(), static_cast<uint16_t>(bodyLen));
-    LOG_INFO("已下发区列表: conn=%u count=%u filter=0x%02X",
-             connID, header.count, gameTypeFilter);
+    sendClientProtoModule(m_owner.clientServer(), connID, kLoginModule,
+                   static_cast<uint8_t>(rpg::zone::S2C_ZONE_LIST_RSP), rsp);
+    LOG_INFO("已下发区列表: conn=%u count=%d filter=0x%02X",
+             connID, rsp.entries_size(), gameTypeFilter);
 }
 
 void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t len)
 {
-    if (len < sizeof(Msg_C2S_LoginReq))
+    rpg::login::C2SLoginReq req;
+    if (!parseProto(data, len, req))
         return;
-    const auto* req = reinterpret_cast<const Msg_C2S_LoginReq*>(data);
 
-    Msg_S2C_LoginRsp loginRsp{};
-    initClientMsg(loginRsp);
-    loginRsp.userID = 0;
-    loginRsp.accid = 0;
-    loginRsp.loginToken[0] = '\0';
-    loginRsp.tokenExpireMs = 0;
+    rpg::login::S2CLoginRsp loginRsp;
+    loginRsp.set_user_id(0);
+    loginRsp.set_accid(0);
 
     if (m_owner.dbRequired() && !m_owner.db())
     {
-        loginRsp.code = -1;
-        copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "登录服不可用");
-        sendClientWire(m_owner.clientServer(), connID, loginRsp);
-        logLoginFlow(LoginFlowPhase::ACCOUNT_LOGIN, 0, 0, connID, loginRsp.code, loginRsp.msg);
+        loginRsp.set_code(-1);
+        loginRsp.set_msg("登录服不可用");
+        sendClientProtoModule(m_owner.clientServer(), connID, kLoginModule,
+                       static_cast<uint8_t>(rpg::login::S2C_LOGIN_RSP), loginRsp);
+        logLoginFlow(LoginFlowPhase::ACCOUNT_LOGIN, 0, 0, connID, loginRsp.code(),
+                     loginRsp.msg().c_str());
         sendGatewayInfo(connID, -1, "无可用网关");
         return;
     }
 
-    char accName[sizeof(req->account)];
-    copyToWire(accName, sizeof(accName), req->account);
+    const std::string& account = req.account();
 
-    if (looksLikePlaintextPassword(req->passwordDigest))
+    uint8_t passwordDigest[PASSWORD_DIGEST_LEN]{};
+    if (!copyWireDigest(req.password_digest(), passwordDigest))
     {
-        loginRsp.code = 1;
-        copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "请升级客户端（需发送密码摘要）");
-        sendClientWire(m_owner.clientServer(), connID, loginRsp);
-        logLoginFlow(LoginFlowPhase::ACCOUNT_LOGIN, 0, 0, connID, loginRsp.code, loginRsp.msg);
+        loginRsp.set_code(1);
+        loginRsp.set_msg("密码摘要非法");
+        sendClientProtoModule(m_owner.clientServer(), connID, kLoginModule,
+                       static_cast<uint8_t>(rpg::login::S2C_LOGIN_RSP), loginRsp);
+        logLoginFlow(LoginFlowPhase::ACCOUNT_LOGIN, 0, 0, connID, loginRsp.code(),
+                     loginRsp.msg().c_str());
+        sendGatewayInfo(connID, -1, "登录失败");
+        return;
+    }
+
+    if (looksLikePlaintextPassword(passwordDigest))
+    {
+        loginRsp.set_code(1);
+        loginRsp.set_msg("请升级客户端（需发送密码摘要）");
+        sendClientProtoModule(m_owner.clientServer(), connID, kLoginModule,
+                       static_cast<uint8_t>(rpg::login::S2C_LOGIN_RSP), loginRsp);
+        logLoginFlow(LoginFlowPhase::ACCOUNT_LOGIN, 0, 0, connID, loginRsp.code(),
+                     loginRsp.msg().c_str());
         sendGatewayInfo(connID, -1, "登录失败");
         return;
     }
@@ -140,13 +153,13 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
     MYSQL* db = m_owner.db();
     if (!db)
     {
-        loginRsp.code = -1;
-        copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "数据库不可用");
+        loginRsp.set_code(-1);
+        loginRsp.set_msg("数据库不可用");
     }
     else
     {
-        char escAccount[sizeof(accName) * 2 + 1];
-        mysql_real_escape_string(db, escAccount, accName, strlen(accName));
+        char escAccount[256];
+        mysql_real_escape_string(db, escAccount, account.c_str(), account.size());
 
         char sql[384];
         snprintf(sql, sizeof(sql),
@@ -155,8 +168,8 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
         if (mysql_query(db, sql) != 0)
         {
             LOG_ERR("查询 GameUser 失败: %s", mysql_error(db));
-            loginRsp.code = -1;
-            copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "数据库错误");
+            loginRsp.set_code(-1);
+            loginRsp.set_msg("数据库错误");
         }
         else
         {
@@ -164,35 +177,35 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
             MYSQL_ROW row = res ? mysql_fetch_row(res) : nullptr;
             if (!row)
             {
-                loginRsp.code = 1;
-                copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "账号不存在");
+                loginRsp.set_code(1);
+                loginRsp.set_msg("账号不存在");
             }
             else
             {
                 const char* hash = row[1] ? row[1] : "";
                 const uint32_t gameZone = row[3] ? static_cast<uint32_t>(strtoul(row[3], nullptr, 10)) : 0;
-                if (!verifyPasswordDigestBcrypt(req->passwordDigest, hash))
+                if (!verifyPasswordDigestBcrypt(passwordDigest, hash))
                 {
-                    loginRsp.code = 1;
-                    copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "账号或密码错误");
+                    loginRsp.set_code(1);
+                    loginRsp.set_msg("账号或密码错误");
                 }
-                else if (gameZone != 0 && gameZone != req->zoneId)
+                else if (gameZone != 0 && gameZone != req.zone_id())
                 {
-                    loginRsp.code = 1;
-                    copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "区服不匹配");
+                    loginRsp.set_code(1);
+                    loginRsp.set_msg("区服不匹配");
                 }
                 else
                 {
-                    loginRsp.code = 0;
-                    loginRsp.accid = row[0] ? static_cast<uint64_t>(strtoull(row[0], nullptr, 10)) : 0;
-                    loginRsp.userID = row[2] ? static_cast<uint64_t>(strtoull(row[2], nullptr, 10)) : 0;
-                    copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "登录成功");
+                    loginRsp.set_code(0);
+                    loginRsp.set_accid(row[0] ? static_cast<uint64_t>(strtoull(row[0], nullptr, 10)) : 0);
+                    loginRsp.set_user_id(row[2] ? static_cast<uint64_t>(strtoull(row[2], nullptr, 10)) : 0);
+                    loginRsp.set_msg("登录成功");
 
                     char token[65] = {};
                     if (!generateLoginToken(token, sizeof(token)))
                     {
-                        loginRsp.code = -1;
-                        copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "登录票据生成失败");
+                        loginRsp.set_code(-1);
+                        loginRsp.set_msg("登录票据生成失败");
                     }
                     else
                     {
@@ -200,25 +213,25 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
                         mysql_real_escape_string(db, escToken, token, strlen(token));
                         snprintf(sql, sizeof(sql),
                                  "DELETE FROM LoginSession WHERE accid=%llu AND zone_id=%u",
-                                 static_cast<unsigned long long>(loginRsp.accid), req->zoneId);
+                                 static_cast<unsigned long long>(loginRsp.accid()), req.zone_id());
                         mysql_query(db, sql);
                         snprintf(sql, sizeof(sql),
                                  "INSERT INTO LoginSession (token, accid, zone_id, game_type, expire_time) "
                                  "VALUES ('%s', %llu, %u, %u, DATE_ADD(NOW(), INTERVAL %u SECOND))",
                                  escToken,
-                                 static_cast<unsigned long long>(loginRsp.accid),
-                                 req->zoneId, req->gameType, LOGIN_TOKEN_TTL_SEC);
+                                 static_cast<unsigned long long>(loginRsp.accid()),
+                                 req.zone_id(), req.game_type(), LOGIN_TOKEN_TTL_SEC);
                         if (mysql_query(db, sql) != 0)
                         {
                             LOG_ERR("写入 LoginSession 失败: %s", mysql_error(db));
-                            loginRsp.code = -1;
-                            copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "会话写入失败");
+                            loginRsp.set_code(-1);
+                            loginRsp.set_msg("会话写入失败");
                         }
                         else
                         {
-                            copyToWire(loginRsp.loginToken, sizeof(loginRsp.loginToken), token);
-                            loginRsp.tokenExpireMs =
-                                TimerMgr::NowMs() + static_cast<uint64_t>(LOGIN_TOKEN_TTL_SEC) * 1000ULL;
+                            loginRsp.set_login_token(token);
+                            loginRsp.set_token_expire_ms(
+                                TimerMgr::NowMs() + static_cast<uint64_t>(LOGIN_TOKEN_TTL_SEC) * 1000ULL);
                         }
                     }
                 }
@@ -228,23 +241,24 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
         }
     }
 
-    sendClientWire(m_owner.clientServer(), connID, loginRsp);
-    if (loginRsp.code == 0)
+    sendClientProtoModule(m_owner.clientServer(), connID, kLoginModule,
+                   static_cast<uint8_t>(rpg::login::S2C_LOGIN_RSP), loginRsp);
+    if (loginRsp.code() == 0)
     {
         LOG_INFO("账号登录成功: connID=%u zone=%u gameType=%u userID=%llu",
-                 connID, req->zoneId, req->gameType,
-                 static_cast<unsigned long long>(loginRsp.userID));
-        logLoginFlow(LoginFlowPhase::ACCOUNT_LOGIN, loginRsp.accid, loginRsp.userID, connID, 0,
+                 connID, req.zone_id(), req.game_type(),
+                 static_cast<unsigned long long>(loginRsp.user_id()));
+        logLoginFlow(LoginFlowPhase::ACCOUNT_LOGIN, loginRsp.accid(), loginRsp.user_id(), connID, 0,
                      nullptr);
     }
     else
     {
-        logLoginFlow(LoginFlowPhase::ACCOUNT_LOGIN, loginRsp.accid, loginRsp.userID, connID,
-                     loginRsp.code, loginRsp.msg);
+        logLoginFlow(LoginFlowPhase::ACCOUNT_LOGIN, loginRsp.accid(), loginRsp.user_id(), connID,
+                     loginRsp.code(), loginRsp.msg().c_str());
     }
 
-    if (loginRsp.code == 0)
-        sendGatewayInfo(connID, 0, "成功", req->zoneId, req->gameType);
+    if (loginRsp.code() == 0)
+        sendGatewayInfo(connID, 0, "成功", req.zone_id(), static_cast<uint8_t>(req.game_type()));
     else
         sendGatewayInfo(connID, -1, "登录失败");
 }
@@ -252,16 +266,15 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
 void LoginAuthService::sendGatewayInfo(ConnID connID, int32_t code, const char* msg,
                                        uint32_t zoneId, uint8_t gameType)
 {
-    Msg_S2C_GatewayInfo info{};
-    initClientMsg(info);
-    info.code = code;
-    copyToWire(info.msg, sizeof(info.msg), msg);
+    rpg::login::S2CGatewayInfo info;
+    info.set_code(code);
+    info.set_msg(msg ? msg : "");
     if (code == 0)
     {
         if (zoneId == 0)
         {
-            info.code = -1;
-            copyToWire(info.msg, sizeof(info.msg), "区服无效");
+            info.set_code(-1);
+            info.set_msg("区服无效");
         }
         else
         {
@@ -271,13 +284,13 @@ void LoginAuthService::sendGatewayInfo(ConnID connID, int32_t code, const char* 
             ZoneInfoRow zone;
             if (!zoneStore.findZone(gameType, zoneId, zone))
             {
-                info.code = -1;
-                copyToWire(info.msg, sizeof(info.msg), "区服不存在");
+                info.set_code(-1);
+                info.set_msg("区服不存在");
             }
             else if (!zone.enabled)
             {
-                info.code = -1;
-                copyToWire(info.msg, sizeof(info.msg), "区服维护中");
+                info.set_code(-1);
+                info.set_msg("区服维护中");
             }
             else
             {
@@ -287,10 +300,10 @@ void LoginAuthService::sendGatewayInfo(ConnID connID, int32_t code, const char* 
                 ZoneInfoStore::fillGatewayLoadFields(zone, zoneStore,
                                                      registry.countForZone(zoneId, gameType),
                                                      onlineCount, gatewayCount, loadLevel);
-                if (loadLevel == static_cast<uint8_t>(ZoneLoadLevel::MAINTENANCE))
+                if (loadLevel == static_cast<uint8_t>(rpg::zone::ZONE_LOAD_MAINTENANCE))
                 {
-                    info.code = -1;
-                    copyToWire(info.msg, sizeof(info.msg), "区服不可用");
+                    info.set_code(-1);
+                    info.set_msg("区服不可用");
                 }
                 else
                 {
@@ -303,10 +316,10 @@ void LoginAuthService::sendGatewayInfo(ConnID connID, int32_t code, const char* 
                         {
                             clientGatewayIp = zone.ip;
                         }
-                        copyToWire(info.gatewayIP, sizeof(info.gatewayIP), clientGatewayIp.c_str());
-                        info.gatewayPort = gw.port;
+                        info.set_gateway_ip(clientGatewayIp);
+                        info.set_gateway_port(gw.port);
                         if (!zone.name.empty())
-                            copyToWire(info.msg, sizeof(info.msg), zone.name.c_str());
+                            info.set_msg(zone.name);
                     }
                     else
                     {
@@ -314,24 +327,26 @@ void LoginAuthService::sendGatewayInfo(ConnID connID, int32_t code, const char* 
                         LOG_WARN("无可用网关: zone=%u gameType=%u zoneGatewayCount=%zu registryTotal=%zu "
                                  "（检查 Gateway 进程、Super→Login 外联、login.log 网关注册成功）",
                                  zoneId, gameType, zoneGwCount, registry.size());
-                        info.code = -1;
-                        copyToWire(info.msg, sizeof(info.msg), "无可用网关");
+                        info.set_code(-1);
+                        info.set_msg("无可用网关");
                     }
                 }
             }
         }
     }
-    sendClientWire(m_owner.clientServer(), connID, info);
+    sendClientProtoModule(m_owner.clientServer(), connID, kLoginModule,
+                   static_cast<uint8_t>(rpg::login::S2C_GATEWAY_INFO), info);
     LOG_INFO("已下发网关信息: conn=%u code=%d ip=%s port=%u",
-             connID, info.code, info.gatewayIP, info.gatewayPort);
-    if (info.code == 0)
+             connID, info.code(), info.gateway_ip().c_str(), info.gateway_port());
+    if (info.code() == 0)
     {
         char detail[80];
-        snprintf(detail, sizeof(detail), "gateway=%s:%u", info.gatewayIP, info.gatewayPort);
+        snprintf(detail, sizeof(detail), "gateway=%s:%u",
+                 info.gateway_ip().c_str(), info.gateway_port());
         logLoginFlow(LoginFlowPhase::ACCOUNT_LOGIN, 0, 0, connID, 0, detail);
     }
     else
     {
-        logLoginFlow(LoginFlowPhase::ACCOUNT_LOGIN, 0, 0, connID, info.code, info.msg);
+        logLoginFlow(LoginFlowPhase::ACCOUNT_LOGIN, 0, 0, connID, info.code(), info.msg().c_str());
     }
 }

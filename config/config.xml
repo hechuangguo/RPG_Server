@@ -51,6 +51,9 @@
     <!-- 本游戏区身份：Super/Gateway 向 LoginServer 上报区状态时使用；须与 serverlist.xml zoneId 一致 -->
     <Zone zoneId="1" gameType="0"/>
 
+    <!-- AOI 九宫格默认边长（世界单位）；单图可在 map.meta.json aoiGridSize 覆盖 -->
+    <Aoi gridSize="200"/>
+
     <!-- ================================================================ -->
     <!--  各服务器内部监听端口配置                                         -->
     <!--  说明：Session/Record/AOI/Scene/Gateway 端口已迁移至 DB 的         -->

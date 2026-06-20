@@ -18,6 +18,10 @@ run/
 
 LoginServer/serverlist.xml
 
+# Protobuf C++ 生成物（scripts/gen_proto.sh 自动生成；README.md 保留）
+Protobuf/*.pb.h
+Protobuf/*.pb.cc
+
 # TLS 私钥与 CA（执行 gen_tls_certs.sh 生成；ca.crt/server.crt 可分发）
 config/tls/*.key
 config/tls/ca.key

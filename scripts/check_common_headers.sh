@@ -39,13 +39,14 @@ else
     done
 fi
 
-echo "=== ClientMsg.h aggregate present ==="
-if [[ ! -f "${COMMON}/ClientMsg.h" ]]; then
-    echo "MISSING: Common/ClientMsg.h (deprecated aggregate)"
+echo "=== Server must not include deleted Common legacy headers ==="
+LEGACY_INC='Common/(LoginMsg|LoginCommon|MapDataMsg|MapDataCommon|ChatMsg|ChatCommon|ZoneMsg|ZoneCommon|ClientMsg|PropertyMsg|PropertyCommon|EquipMsg|EquipCommon|SpellMsg|SpellCommon|RelationMsg|RelationCommon|GoldMsg|GoldCommon|generated)\.h'
+while IFS= read -r hit; do
+    [[ -z "${hit}" ]] && continue
+    echo "LEGACY INCLUDE: ${hit}"
     FAIL=1
-else
-    echo "OK: Common/ClientMsg.h"
-fi
+done < <(grep -R --include='*.cpp' --include='*.h' -n -E "#include.*${LEGACY_INC}" "${ROOT}" \
+    --exclude-dir='.build' --exclude-dir='3Party' --exclude-dir='.cursor' 2>/dev/null || true)
 
 if [[ "${FAIL}" -eq 0 ]]; then
     echo "PASS: Common headers check"

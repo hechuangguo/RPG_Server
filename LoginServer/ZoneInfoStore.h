@@ -8,7 +8,6 @@
 
 #pragma once
 
-#include "../Common/ZoneCommon.h"
 #include "../protocal/InternalMsg.h"
 
 #include <cstddef>

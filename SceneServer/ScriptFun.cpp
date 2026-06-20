@@ -1,15 +1,6 @@
 /**
  * @file    ScriptFun.cpp
- * @brief  Lua → C++ 绑定实现（LUA_*_FUNC 宏自动注册）
- *
- * 新增接口示例：
- * @code
- *   LUA_GLOBAL_FUNC("foo", foo)
- *   {
- *       // luaL_check* 取参
- *       return 0;
- *   }
- * @endcode
+ * @brief  Lua → C++ 绑定；含 send_npc_talk_rsp（S2CNpcTalkRsp Protobuf 下发）
  */
 
 #include "ScriptFun.h"
@@ -17,10 +8,10 @@
 #include "SceneServer.h"
 #include "SceneUserManager.h"
 #include "SceneEntry.h"
-#include "../Common/MapDataMsg.h"
-#include "../Common/ClientMsgBody.h"
+#include "../Common/ClientTypes.h"
+#include "NpcMsg.pb.h"
 #include "../sdk/log/Logger.h"
-#include "../sdk/util/WireStringUtil.h"
+#include "../sdk/net/ClientProtoWire.h"
 
 extern "C"
 {
@@ -64,18 +55,16 @@ LUA_GLOBAL_FUNC("send_npc_talk_rsp", sendNpcTalkRsp)
     int32_t dialogStep = static_cast<int32_t>(luaL_checkinteger(L, 3));
     const char* text = luaL_checkstring(L, 4);
 
-    Msg_S2C_NpcTalkRsp rsp{};
-    initClientMsg(rsp);
-    rsp.code = 0;
-    rsp.npcId = npcId;
-    rsp.dialogStep = dialogStep;
-    copyToWire(rsp.text, sizeof(rsp.text), text);
-    rsp.optionCount = 0;
+    rpg::npc::S2CNpcTalkRsp rsp;
+    rsp.set_code(0);
+    rsp.set_npc_id(npcId);
+    rsp.set_dialog_step(dialogStep);
+    rsp.set_text(text);
 
     if (lua_istable(L, 5))
     {
         const lua_Integer n = luaL_len(L, 5);
-        for (lua_Integer i = 1; i <= n && rsp.optionCount < MAX_NPC_TALK_OPTIONS; ++i)
+        for (lua_Integer i = 1; i <= n && rsp.options_size() < static_cast<int>(MAX_NPC_TALK_OPTIONS); ++i)
         {
             lua_rawgeti(L, 5, i);
             if (!lua_istable(L, -1))
@@ -84,18 +73,17 @@ LUA_GLOBAL_FUNC("send_npc_talk_rsp", sendNpcTalkRsp)
                 continue;
             }
 
-            auto& opt = rsp.options[rsp.optionCount];
+            auto* opt = rsp.add_options();
             lua_getfield(L, -1, "text");
             if (lua_isstring(L, -1))
-                copyToWire(opt.text, sizeof(opt.text), lua_tostring(L, -1));
+                opt->set_text(lua_tostring(L, -1));
             lua_pop(L, 1);
 
             lua_getfield(L, -1, "next");
-            opt.nextStep = static_cast<int32_t>(luaL_optinteger(L, -1, -1));
+            opt->set_next_step(static_cast<int32_t>(luaL_optinteger(L, -1, -1)));
             lua_pop(L, 1);
 
             lua_pop(L, 1);
-            ++rsp.optionCount;
         }
     }
 
@@ -107,9 +95,14 @@ LUA_GLOBAL_FUNC("send_npc_talk_rsp", sendNpcTalkRsp)
     if (!user || user->getGatewayClientConn() == 0)
         return 0;
 
+    std::string body;
+    if (!serializeProto(rsp, body))
+        return 0;
+
     server->sendToClient(user->getGatewayClientConn(),
-                         Msg_S2C_NpcTalkRsp::kModule, Msg_S2C_NpcTalkRsp::kSub,
-                         reinterpret_cast<char*>(&rsp), sizeof(rsp));
+                         static_cast<uint8_t>(ClientModule::NPC),
+                         static_cast<uint8_t>(rpg::npc::S2C_NPC_TALK_RSP),
+                         body.data(), static_cast<uint16_t>(body.size()));
     return 0;
 }
 

@@ -26,8 +26,6 @@
 #include "../sdk/util/Singleton.h"
 #include "../sdk/util/WireStringUtil.h"
 #include "../sdk/log/Logger.h"
-#include "../Common/LoginMsg.h"
-#include "../Common/ZoneMsg.h"
 #include "../protocal/InternalMsg.h"
 
 #include <mysql/mysql.h>

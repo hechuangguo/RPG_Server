@@ -24,7 +24,7 @@ public:
     /**
      * @brief 处理客户端注册请求
      * @param connID 客户端连接 ID
-     * @param data   Msg_C2S_RegisterReq
+     * @param data   Protobuf C2SRegisterReq body
      * @param len    长度
      */
     void onClientRegister(ConnID connID, const char* data, uint16_t len);

@@ -20,6 +20,7 @@ void AOIClient::registerScene(uint32_t sceneServerId, const Scene& scene)
     req.mapId = scene.getMapId();
     req.sceneKind = static_cast<uint8_t>(scene.getSceneKind());
     req.maxPlayer = scene.getMaxPlayer();
+    req.aoiGridSize = scene.getAoiGridSize();
 
     if (!isConnected())
     {
