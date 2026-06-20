@@ -310,6 +310,10 @@ void LoginAuthService::sendGatewayInfo(ConnID connID, int32_t code, const char* 
                     }
                     else
                     {
+                        const size_t zoneGwCount = registry.countForZone(zoneId, gameType);
+                        LOG_WARN("无可用网关: zone=%u gameType=%u zoneGatewayCount=%zu registryTotal=%zu "
+                                 "（检查 Gateway 进程、Super→Login 外联、login.log 网关注册成功）",
+                                 zoneId, gameType, zoneGwCount, registry.size());
                         info.code = -1;
                         copyToWire(info.msg, sizeof(info.msg), "无可用网关");
                     }

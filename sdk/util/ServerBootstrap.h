@@ -58,8 +58,8 @@ inline uint32_t resolveServerID()
 inline bool fetchServerList(const ServerConfig& cfg, SubServerType selfType,
                             uint32_t selfId, ServerList& out)
 {
-    constexpr int kMaxAttempts = 3;
-    constexpr int kRetryDelayMs = 200;
+    constexpr int kMaxAttempts = 5;
+    constexpr int kRetryDelayMs = 1000;
     for (int attempt = 1; attempt <= kMaxAttempts; ++attempt)
     {
         if (ServerListClient::fetch(cfg.superIP, (uint16_t)cfg.superPort,

@@ -188,6 +188,35 @@ grep '\[登录链路\]' logs/gateway.log logs/login.log logs/super.log
 | 有 `客户端消息被拒绝` | vr=BAD_LENGTH/BAD_PAYLOAD 等 | wire 格式与协议不一致 |
 | 鉴权后无列表 | 有 `Record转发Login校验` 无 `phase=角色列表` | Record/Login 票据校验失败 |
 
+### 6.4 无可用网关（账号登录成功但客户端提示无可用网关）
+
+**症状**：Login 日志 `账号登录成功` 后紧跟 `已下发网关信息: code=-1` 或 `[登录链路] ... code=-1 无可用网关`；区列表日志 `gateway=0`。
+
+**根因**：[`LoginGatewayRegistry`](../LoginServer/LoginGatewayRegistry.h) 内存表为空或未含所选 `zoneId/gameType` 的网关。常见触发场景：
+
+1. **Gateway 未运行** — `fetchServerList` TLS 连 Super 失败时 [`GatewayServer/main.cpp`](../GatewayServer/main.cpp) 直接退出
+2. **仅重启 Login** — 网关表随进程清空；需 Gateway 仍在运行并通过 Super 重新 `LOGIN_GATEWAY_REGISTER`（约 10s 内心跳补注册）
+3. **Super→Login 外联未通** — `loginserverlist.xml` 未启用 Login 或 Super 日志出现 `登录外联: 登录服未连接`
+
+**推荐启动顺序**：
+
+```bash
+./StopServer.sh
+./RunServer.sh          # 区内 6 服（Super 默认 warmup 5s 后再拉子服）
+./RunServer.sh login    # 外联 Login（RegisterListen 19010）
+```
+
+**验证（四项均应有输出）**：
+
+```bash
+grep '网关服启动完成' logs/gateway.log | tail -1
+grep '网关注册成功' logs/login.log | tail -1
+grep '登录外联: 网关包装消息已转发' logs/super.log | tail -1
+grep 'gateway=[1-9]' logs/login.log | tail -1
+```
+
+失败时 Login 会输出 `无可用网关: zone=... zoneGatewayCount=... registryTotal=...` 便于定位。
+
 Gateway 额外诊断日志：
 
 - `客户端首条上行: conn=... mod=... sub=... len=...` — CONNECTED 态收到首包

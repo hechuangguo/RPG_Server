@@ -265,7 +265,8 @@ void GatewayServer::onLoginGatewayWrapRsp(ConnID /*fromConn*/, const Msg_SS_Logi
     }
     else
     {
-        LOG_WARN("登录网关注册回包失败: code=%d gatewayId=%u",
+        m_reportedToLogin = false;
+        LOG_WARN("登录网关注册回包失败: code=%d gatewayId=%u（下次心跳将重试注册）",
                  rsp.body.code, rsp.body.gatewayServerId);
     }
 }

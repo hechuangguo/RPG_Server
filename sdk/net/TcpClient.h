@@ -156,13 +156,15 @@ public:
             {
                 if (!m_tcpConnectDone)
                     m_tcpConnectDone = true;
-                /** IN 已在 OnReadable 末尾刷过发送区；OUT 仅补未写尽的数据 */
-                if (m_conn && !m_conn->IsClosed() && m_conn->hasPendingSend())
+                /** 握手 WANT_WRITE 或发送区有数据时需 OnWritable；应用数据 IN 已刷过则 OUT 可跳过 */
+                if (m_conn && !m_conn->IsClosed() &&
+                    (m_conn->isTlsHandshaking() || m_conn->hasPendingSend()))
                     m_conn->OnWritable();
             }
-            else if (m_conn && !m_conn->IsClosed() && m_conn->hasPendingSend())
+            else if (m_conn && !m_conn->IsClosed() &&
+                     (m_conn->isTlsHandshaking() || m_conn->hasPendingSend()))
             {
-                /** 无 EPOLLOUT（如 ET 漏边）：补刷 SendMsg / 定时器入队的待发数据 */
+                /** 无 EPOLLOUT（如 ET 漏边）：补刷 TLS 握手或待发数据 */
                 m_conn->OnWritable();
             }
             if (!m_connectNotified && m_conn && !m_conn->IsClosed())

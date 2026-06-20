@@ -164,12 +164,14 @@ public:
                     conn->OnReadable();
                 if (ev & EPOLLOUT)
                 {
-                    if (!conn->IsClosed() && conn->hasPendingSend())
+                    if (!conn->IsClosed() &&
+                        (conn->isTlsHandshaking() || conn->hasPendingSend()))
                         conn->OnWritable();
                 }
-                else if (!conn->IsClosed() && conn->hasPendingSend())
+                else if (!conn->IsClosed() &&
+                         (conn->isTlsHandshaking() || conn->hasPendingSend()))
                 {
-                    /** 无 EPOLLOUT（如 ET 漏边）：补刷 SendMsg / 定时器入队的待发数据 */
+                    /** 无 EPOLLOUT（如 ET 漏边）：补刷 TLS 握手或待发数据 */
                     conn->OnWritable();
                 }
                 if (!conn->IsClosed())
