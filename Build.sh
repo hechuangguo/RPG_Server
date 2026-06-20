@@ -307,6 +307,17 @@ gen_datadoc() {
     fi
 }
 
+check_common_headers() {
+    if [[ -x "${SCRIPT_DIR}/scripts/check_common_headers.sh" ]]; then
+        info "校验 Common 子模块头文件..."
+        if "${SCRIPT_DIR}/scripts/check_common_headers.sh"; then
+            success "Common 头文件校验通过"
+        else
+            warn "Common 头文件校验失败，可执行: ./scripts/check_common_headers.sh"
+        fi
+    fi
+}
+
 # ──────────────────────────────────────────────
 # 主流程控制
 # 执行顺序：参数解析 -> 依赖检查 -> 环境信息 -> (清理?) -> (cmake配置?) -> 编译 -> 结果展示
@@ -315,6 +326,7 @@ main() {
     parse_args "$@"          # 步骤1：解析命令行参数
 
     check_deps               # 步骤2：检查工具链和第三方依赖
+    check_common_headers     # 步骤2a：Common include 冒烟
     gen_datadoc              # 步骤2b：Excel 配表 -> Lua
     print_env                 # 步骤3：打印构建环境信息摘要
 

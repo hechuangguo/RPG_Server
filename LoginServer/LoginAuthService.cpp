@@ -14,6 +14,7 @@
 #include "../sdk/util/LoginSpawnConfig.h"
 #include "../sdk/util/LoginFlowLog.h"
 #include "../sdk/util/PasswordUtil.h"
+#include "../sdk/util/PasswordDigestUtil.h"
 #include "../sdk/util/WireStringUtil.h"
 #include "../sdk/net/ClientWireSend.h"
 
@@ -116,9 +117,16 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
     }
 
     char accName[sizeof(req->account)];
-    char password[sizeof(req->password)];
     copyToWire(accName, sizeof(accName), req->account);
-    copyToWire(password, sizeof(password), req->password);
+
+    if (looksLikePlaintextPassword(req->passwordDigest))
+    {
+        loginRsp.code = 1;
+        copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "请升级客户端（需发送密码摘要）");
+        sendClientWire(m_owner.clientServer(), connID, loginRsp);
+        sendGatewayInfo(connID, -1, "登录失败");
+        return;
+    }
 
     MYSQL* db = m_owner.db();
     if (!db)
@@ -154,7 +162,7 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
             {
                 const char* hash = row[1] ? row[1] : "";
                 const uint32_t gameZone = row[3] ? static_cast<uint32_t>(strtoul(row[3], nullptr, 10)) : 0;
-                if (!verifyPasswordBcrypt(password, hash))
+                if (!verifyPasswordDigestBcrypt(req->passwordDigest, hash))
                 {
                     loginRsp.code = 1;
                     copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "账号或密码错误");

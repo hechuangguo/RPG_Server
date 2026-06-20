@@ -14,7 +14,7 @@
 | `ClientMsgBody.h` | body 前缀、`initClientMsg`、`clientMsgBodyMatches` |
 | `XxxCommon.h` | 域内 `XxxMsgSub`、辅助结构、常量 |
 | `XxxMsg.h` | 域内 C2S/S2C wire 消息体 |
-| `ClientMsg.h` | **已移除**；按域 include `*Msg.h` |
+| `ClientMsg.h` | **deprecated 聚合头**（include 全部 `*Msg.h`）；新代码请按域 include |
 | `NetDefine.h` | 客户端侧 `MsgHeader`（6 字节帧）与缓冲区常量 |
 | `MsgId.h` | `makeMsgId` / `msgModule` / `msgSub` 工具函数 |
 

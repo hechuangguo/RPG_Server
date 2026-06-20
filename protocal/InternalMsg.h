@@ -443,12 +443,12 @@ struct Msg_REC_LoadUserRsp
  * - 反序列化：从接收缓冲区 memcpy 到此结构体即可恢复，建议先校验缓冲区长度
  *   不小于 sizeof(UserBaseWire) 以防止越界读取。
  * - 字符串字段（如 name）使用定长 char 数组，空终止字符串，不足部分补零。
- * - 数值字段使用网络字节序（大端）传输，发送/接收时需调用 hton 与 ntoh 系列函数转换。
+ * - 数值字段为 **小端 host order**（与 x86/Linux 一致），直接 memcpy，**不**使用 hton/ntoh。
  * - 若需扩展字段，应在结构体末尾追加并同步更新版本号，确保向后兼容。
  */
 struct UserBaseWire
 {
-    uint64_t userID   = 0;                /**< 全局唯一用户 ID（8 字节大端，与 DB 主键一致） */
+    uint64_t userID   = 0;                /**< 全局唯一用户 ID（小端 uint64，与 DB 主键一致） */
     char     name[32] = {};               /**< 用户昵称（空终止字符串，最多 31 个有效字符） */
     uint32_t level    = 1;                /**< 等级（默认 1，范围 1~999） */
     uint32_t vocation = 0;                /**< 职业类型（0=战士 1=法师 2=弓手 3=刺客） */

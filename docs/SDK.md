@@ -52,6 +52,8 @@ UserBase（数据结构）
 
 Wire 序列化：[`sdk/util/UserWireUtil.h`](../sdk/util/UserWireUtil.h)（`UserBase` ↔ `UserBaseWire`）
 
+**字节序**：所有 wire struct 数值字段为 **小端 host order**，直接赋值/`memcpy`，不对协议体使用 `hton`/`ntoh`（详见 [PROTOCOL.md](PROTOCOL.md) §1.1）。
+
 ---
 
 ## 2. sdk/net/ — TCP / TLS 栈

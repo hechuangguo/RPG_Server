@@ -23,6 +23,12 @@ struct TlsConfig
     std::string caPath     = "config/tls/ca.crt";     /**< CA（校验对端 + mTLS） */
     bool        verifyPeer = true;  /**< 是否校验对端证书（区内 mTLS 应为 true） */
     std::string minVersion = "1.2"; /**< 最低 TLS 版本（1.2 / 1.3） */
+    /** @brief TLS 1.2 及以下允许的密码套件（OpenSSL cipher list 语法） */
+    std::string cipherSuites =
+        "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:"
+        "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384";
+    /** @brief TLS 1.3 密码套件（OpenSSL ciphersuites 语法） */
+    std::string tls13CipherSuites = "TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384";
 };
 
 /**
@@ -40,4 +46,6 @@ inline void loadTlsConfigFromXml(const tinyxml2::XMLElement* tlsNode, TlsConfig&
     XmlConfig::readStrAttr(tlsNode, "ca", cfg.caPath);
     cfg.verifyPeer = XmlConfig::readIntAttr(tlsNode, "verifyPeer", cfg.verifyPeer ? 1 : 0) != 0;
     XmlConfig::readStrAttr(tlsNode, "minVersion", cfg.minVersion);
+    XmlConfig::readStrAttr(tlsNode, "cipherSuites", cfg.cipherSuites);
+    XmlConfig::readStrAttr(tlsNode, "tls13CipherSuites", cfg.tls13CipherSuites);
 }

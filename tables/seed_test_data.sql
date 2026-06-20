@@ -9,10 +9,12 @@
 
 USE rpg_login;
 
--- 测试账号（与 CharBase accid=1 对齐；密码 bcrypt 对应明文 123456）
+-- 测试账号（与 CharBase accid=1 对齐；wire 传 SHA-256 摘要，存库 bcrypt(hex(digest))）
+-- 明文 123456 → sha256 8d969eef... → 见 ./scripts/gen_password_digest.sh
 INSERT IGNORE INTO GameUser (accid, account, password_hash, user_id, gamezone)
 VALUES
-    (1, 'test001', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', 1, 1);
+    (1, 'test001', '$2b$12$XNwxnI6R/brmoCk7q2Qsc.kkGKjS8mczYvU39YJIIRR5LzWnQRnJ6', 1, 1),
+    (2, 'autotest_e2e', '$2b$12$68V4uzaOgOdTLEG8KpKI8unX9IlQ.tkzz10LNSqdshJcQIp3x/E5S', 0, 1);
 
 USE rpg_game;
 

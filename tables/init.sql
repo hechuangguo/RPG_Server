@@ -22,12 +22,12 @@ USE rpg_login;
 -- 表：GameUser（账号主表 —— LoginServer 注册/登录真源）
 -- 设计意图：独立于 CharBase 的账号体系，保存账号、密码哈希、所属区服与绑定角色。
 --           注册成功仅创建账号行并分配 accid，user_id 初始为 0，待后续创角后回填。
---           密码字段存 bcrypt 哈希，不保存明文或可逆密文。
+--           密码字段存 bcrypt(hex(SHA-256(UTF-8 明文)))，wire 禁止明文；生成见 scripts/gen_password_digest.sh
 -- -----------------------------------------------------------
 CREATE TABLE IF NOT EXISTS GameUser (
     accid         BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '账号ID，自增主键',
     account       VARCHAR(64) NOT NULL COMMENT '账号名，登录唯一键',
-    password_hash VARCHAR(128) NOT NULL COMMENT '密码 bcrypt 哈希（不可逆）',
+    password_hash VARCHAR(128) NOT NULL COMMENT 'bcrypt(hex(SHA-256(密码)))，wire 传 32B digest',
     user_id       INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '绑定角色ID（0表示尚未创角）',
     gamezone      INT UNSIGNED NOT NULL COMMENT '注册时选择的游戏区号',
     create_time   DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '账号创建时间',

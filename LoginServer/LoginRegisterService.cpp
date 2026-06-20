@@ -9,6 +9,7 @@
 #include "../Common/ClientMsgBody.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/util/PasswordUtil.h"
+#include "../sdk/util/PasswordDigestUtil.h"
 #include "../sdk/util/WireStringUtil.h"
 #include "../sdk/net/ClientWireSend.h"
 
@@ -64,25 +65,27 @@ void LoginRegisterService::onClientRegister(ConnID connID, const char* data, uin
     const auto* req = reinterpret_cast<const Msg_C2S_RegisterReq*>(data);
 
     char account[sizeof(req->account)];
-    char password[sizeof(req->password)];
-    char confirmPassword[sizeof(req->confirmPassword)];
     copyToWire(account, sizeof(account), req->account);
-    copyToWire(password, sizeof(password), req->password);
-    copyToWire(confirmPassword, sizeof(confirmPassword), req->confirmPassword);
 
-    if (!isPrintableAscii(account) || !isPrintableAscii(password) || !isPrintableAscii(confirmPassword))
+    if (looksLikePlaintextPassword(req->passwordDigest) ||
+        looksLikePlaintextPassword(req->confirmPasswordDigest))
     {
-        sendRegisterRsp(connID, REGISTER_BAD_PARAM, "账号或密码格式非法");
+        sendRegisterRsp(connID, REGISTER_BAD_PARAM, "请升级客户端（需发送密码摘要）");
         return;
     }
-    if (std::strcmp(password, confirmPassword) != 0)
+    if (!digestsEqual(req->passwordDigest, req->confirmPasswordDigest))
     {
         sendRegisterRsp(connID, REGISTER_BAD_PARAM, "两次密码不一致");
         return;
     }
-    if (std::strlen(password) < 6)
+    if (isZeroDigest(req->passwordDigest))
     {
-        sendRegisterRsp(connID, REGISTER_BAD_PARAM, "密码过短");
+        sendRegisterRsp(connID, REGISTER_BAD_PARAM, "密码摘要非法");
+        return;
+    }
+    if (!isPrintableAscii(account))
+    {
+        sendRegisterRsp(connID, REGISTER_BAD_PARAM, "账号格式非法");
         return;
     }
     if (!m_owner.zoneInfoStore().isZoneEnabled(req->gameType, req->zoneId))
@@ -124,7 +127,7 @@ void LoginRegisterService::onClientRegister(ConnID connID, const char* data, uin
         mysql_free_result(res);
 
     std::string passwordHash;
-    if (!hashPasswordBcrypt(password, passwordHash))
+    if (!hashPasswordDigestBcrypt(req->passwordDigest, passwordHash))
     {
         sendRegisterRsp(connID, REGISTER_SERVER_ERROR, "密码哈希失败");
         return;

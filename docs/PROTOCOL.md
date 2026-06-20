@@ -20,6 +20,27 @@
 | `initClientMsg(msg)` | 写入 struct 默认 `module`/`sub` |
 | `clientMsgBodyMatches(hdrMod, hdrSub, body, len)` | 校验头与 body 前缀一致 |
 
+### 1.1 字节序
+
+| 范围 | 约定 |
+|------|------|
+| `MsgHeader.bodyLen` 及所有 wire struct 数值字段 | **小端（LE）host order**，与 x86/Linux 一致 |
+| 序列化 | `#pragma pack(1)` + 直接 `memcpy` / `reinterpret_cast`，**禁止**对协议字段使用 `htons`/`ntohl` |
+| socket API | `sockaddr_in.sin_port` 等 OS 结构仍用 `htons`（与协议层无关） |
+
+服间定长结构（如 `UserBaseWire`）与客户端 `*Msg.h` 遵循同一 LE 策略。若未来需支持大端平台，须单独版本化协议，不得混用 ntoh。
+
+### 1.2 登录密码（应用层）
+
+| 项 | 约定 |
+|----|------|
+| wire 字段 | `Msg_C2S_LoginReq.passwordDigest[32]` = **SHA-256(UTF-8 明文密码)** 原始 32 字节 |
+| 存库 | `GameUser.password_hash` = **bcrypt(hex(digest))** |
+| 禁止 | 明文密码、可打印 ASCII 短串（legacy 客户端将被 LoginServer 拒绝） |
+| 工具 | `./scripts/gen_password_digest.sh` 生成 dev 种子哈希 |
+
+TLS 仍必须启用；摘要避免 TLS 解密后 payload/日志中出现明文。
+
 ---
 
 ## 2. 客户端协议（ClientModule）
@@ -68,7 +89,7 @@
 
 | module | sub | 名称 | 方向 | 结构体 | 实现状态 | 说明 |
 |--------|-----|------|------|--------|----------|------|
-| 0x00 | 0x01 | C2S_LOGIN_REQ | C→S | `Msg_C2S_LoginReq` | LoginServer | 账号密码登录（非 Gateway） |
+| 0x00 | 0x01 | C2S_LOGIN_REQ | C→S | `Msg_C2S_LoginReq` | LoginServer | 账号 + **SHA-256 密码摘要**（32B，非明文） |
 | 0x00 | 0x02 | S2C_LOGIN_RSP | S→C | `Msg_S2C_LoginRsp` | 已实现 | 登录结果（含 accid/loginToken/tokenExpireMs） |
 | 0x00 | 0x03 | C2S_REGISTER_REQ | C→S | `Msg_C2S_RegisterReq` | LoginServer | 注册账号（非 Gateway） |
 | 0x00 | 0x04 | S2C_REGISTER_RSP | S→C | `Msg_S2C_RegisterRsp` | 已实现 | 注册结果（含 accid） |

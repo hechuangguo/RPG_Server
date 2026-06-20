@@ -72,6 +72,15 @@ Login 的 9010 与 19010 共用同一 `SSL_CTX`。
 | **Client** | 校验服务端证书链；出示同一 `server.crt/key` 作为客户端证书（dev 单证书双向复用） |
 | **失败** | WARN 日志 + `Close()`，**不降级明文** |
 
+### 4.1 密码套件
+
+| 配置项 | 说明 |
+|--------|------|
+| `cipherSuites` | TLS 1.2 及以下 OpenSSL cipher list（默认仅 ECDHE + AES-GCM） |
+| `tls13CipherSuites` | TLS 1.3 套件（默认 `TLS_AES_128_GCM_SHA256` / `TLS_AES_256_GCM_SHA384`） |
+
+`TlsContext` 另禁用 SSLv2/SSLv3 与 TLS 压缩（`SSL_OP_NO_COMPRESSION`）。配置无效时进程 init 失败。
+
 ---
 
 ## 5. 客户端（RPG_Client）

@@ -62,7 +62,7 @@
 |------|------|
 | `accid` | 账号自增主键 |
 | `account` | 账号名，唯一 |
-| `password_hash` | bcrypt 密码哈希 |
+| `password_hash` | bcrypt(hex(SHA-256(UTF-8 密码)))；wire 传 32B digest，见 [PROTOCOL.md](PROTOCOL.md) §1.2 |
 | `user_id` | 绑定角色 ID；注册后默认为 0（未创角） |
 | `gamezone` | 注册时选择的区号 |
 | `create_time`, `update_time` | 时间戳 |

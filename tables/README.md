@@ -100,7 +100,7 @@ mysql -h 127.0.0.1 -u rpg_table -prpg_table rpg_game < tables/examples_batch_upd
 
 | 表 | 说明 |
 |----|------|
-| `GameUser` | 账号/密码哈希/区号/绑定角色 |
+| `GameUser` | 账号/密码哈希/区号/绑定角色（password_hash = bcrypt(hex(SHA-256))） |
 | `ZoneInfo` | 区服入口参考/种子 |
 
 **rpg_game（区内）**

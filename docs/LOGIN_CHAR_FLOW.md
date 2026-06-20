@@ -8,7 +8,7 @@
 
 | UI 步骤 | 客户端动作 | 服务端处理 | 关键消息 |
 |---------|-----------|-----------|---------|
-| 1 登录后进选角 | Login 9010 登录 → 断开 → 连 Gateway 9005 | LoginServer 发 token；Gateway 鉴权 | `C2S_LOGIN_REQ` → `S2C_LOGIN_RSP` + `S2C_GATEWAY_INFO`；`C2S_GATEWAY_AUTH_REQ` |
+| 1 登录后进选角 | Login 9010 登录 → 断开 → 连 Gateway 9005 | LoginServer 发 token；Gateway 鉴权 | `C2S_LOGIN_REQ`（**SHA-256 密码摘要**）→ `S2C_LOGIN_RSP` + `S2C_GATEWAY_INFO`；`C2S_GATEWAY_AUTH_REQ` |
 | 2 右上角角色列表 | 等待列表 | Gateway 鉴权成功后**主动推送**（无 `C2S_USER_LIST_REQ`） | `S2C_USER_LIST`（变长，`count` 条 `EntryWire`） |
 | 3 无角色点「创建角色」 | 打开创角 UI | Gateway 校验 `ACCOUNT_OK` | — |
 | 4 输入名字 + 选职业 | 发创角包 | Gateway → Record 写 `CharBase` | `C2S_CREATE_USER_REQ` → `S2C_CREATE_USER_RSP`；成功后刷新 `S2C_USER_LIST` |

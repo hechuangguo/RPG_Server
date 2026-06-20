@@ -15,5 +15,7 @@
          key="config/tls/server.key"
          ca="config/tls/ca.crt"
          verifyPeer="1"
-         minVersion="1.2"/>
+         minVersion="1.2"
+         cipherSuites="ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384"
+         tls13CipherSuites="TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384"/>
 </ExternServer>

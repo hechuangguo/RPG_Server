@@ -25,3 +25,5 @@
 将 `ca.crt` 安装到 RPG_Client 信任库，或 dev 跳过校验。
 
 详见 `docs/TLS.md`。
+
+默认仅允许 ECDHE + AES-GCM 套件；可在 `config.xml` / `extern_*.xml` 的 `<Tls cipherSuites="..." tls13CipherSuites="..."/>` 覆盖。

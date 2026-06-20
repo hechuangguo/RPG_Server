@@ -294,13 +294,12 @@ void TcpConnection::processMessages()
             break;
 
         m_recvBuf.Consume(MSG_HEADER_SIZE);
-        char body[MAX_PACKET_SIZE];
         if (hdr.bodyLen > 0)
-            m_recvBuf.Read(body, hdr.bodyLen);
+            m_recvBuf.Read(m_msgBody.data(), hdr.bodyLen);
         if (m_cb)
         {
             m_cb->OnMessage(m_id, hdr.module, hdr.sub,
-                            hdr.bodyLen > 0 ? body : nullptr, hdr.bodyLen);
+                            hdr.bodyLen > 0 ? m_msgBody.data() : nullptr, hdr.bodyLen);
         }
     }
 }

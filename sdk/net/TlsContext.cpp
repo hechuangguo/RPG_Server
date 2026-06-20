@@ -126,6 +126,36 @@ SSL_CTX* TlsContext::createCtx(bool serverSide, std::string* errOut)
 
     SSL_CTX_set_min_proto_version(ctx, tlsMinVersion(m_config.minVersion));
 
+    const long sslOpts = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_COMPRESSION;
+    SSL_CTX_set_options(ctx, sslOpts);
+
+    const std::string& ciphers = m_config.cipherSuites.empty()
+        ? "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:"
+          "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384"
+        : m_config.cipherSuites;
+    if (SSL_CTX_set_cipher_list(ctx, ciphers.c_str()) <= 0)
+    {
+        if (errOut)
+            *errOut = "TLS cipherSuites 配置无效: " + ciphers;
+        logOpenSslErrors("cipher_list");
+        SSL_CTX_free(ctx);
+        return nullptr;
+    }
+
+#if OPENSSL_VERSION_NUMBER >= 0x10101000L
+    const std::string& tls13 = m_config.tls13CipherSuites.empty()
+        ? "TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384"
+        : m_config.tls13CipherSuites;
+    if (SSL_CTX_set_ciphersuites(ctx, tls13.c_str()) <= 0)
+    {
+        if (errOut)
+            *errOut = "TLS tls13CipherSuites 配置无效: " + tls13;
+        logOpenSslErrors("ciphersuites");
+        SSL_CTX_free(ctx);
+        return nullptr;
+    }
+#endif
+
     if (SSL_CTX_use_certificate_file(ctx, m_config.certPath.c_str(), SSL_FILETYPE_PEM) <= 0 ||
         SSL_CTX_use_PrivateKey_file(ctx, m_config.keyPath.c_str(), SSL_FILETYPE_PEM) <= 0 ||
         SSL_CTX_check_private_key(ctx) <= 0)

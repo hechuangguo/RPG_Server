@@ -49,7 +49,7 @@ constexpr ConnID INVALID_CONN_ID = 0;
  */
 struct MsgHeader
 {
-    uint16_t bodyLen;  /**< 消息体长度（不含本头部） */
+    uint16_t bodyLen;  /**< 消息体长度（不含本头部；小端 uint16，与 host 一致） */
     uint8_t  module;   /**< 功能模块号 */
     uint8_t  sub;      /**< 模块内子消息号 */
 };

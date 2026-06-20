@@ -41,7 +41,7 @@ Gateway 校验后，Scene 侧由 `SceneClientMsgRegister` + `ClientMsgDispatcher
 | 0x05/0x01 | 地图聊天广播 |
 | 0x08/0x01 | NPC 对话 → `OnNpcTalk` |
 
-`skill_mgr.lua`、`OnSkillReq`、`OnMsg_{MMSS}` 等 **未接线**；新增 C2S 须在 `ClientMsg.h` + Validator + Router + `SceneClientMsgRegister`（或 Session，见 [SERVERS.md](SERVERS.md)）登记。
+`skill_mgr.lua`、`OnSkillReq`、`OnMsg_{MMSS}` 等 **未接线**；新增 C2S 须在对应 `Common/*Msg.h` + Validator + Router + `SceneClientMsgRegister`（或 Session，见 [SERVERS.md](SERVERS.md)）登记。
 
 ---
 

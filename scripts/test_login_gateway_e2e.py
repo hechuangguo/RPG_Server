@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Login → Gateway 鉴权 → 角色列表 → 创角(可选) → 选角进世界 E2E 冒烟（TLS）。"""
 
+import hashlib
 import os
 import socket
 import ssl
@@ -202,10 +203,15 @@ def parse_create_user_rsp(data, hdrMod=LOGIN_MODULE, hdrSub=S2C_CREATE_USER_RSP)
     return None
 
 
+def password_digest(plain: str) -> bytes:
+    """32 字节 SHA-256(UTF-8 密码)，与 Msg_C2S_LoginReq.passwordDigest 一致。"""
+    return hashlib.sha256(plain.encode("utf-8")).digest()
+
+
 def login(account, password, zone_id=1, game_type=0):
     body = struct.pack("<BB", LOGIN_MODULE, C2S_LOGIN_REQ)
     body += pad_str(account, 32)
-    body += pad_str(password, 32)
+    body += password_digest(password)
     body += struct.pack("<IB3x", zone_id, game_type)
 
     sock = tls_connect(HOST, LOGIN_PORT, 5)

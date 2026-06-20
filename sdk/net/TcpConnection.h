@@ -8,6 +8,8 @@
 #include "NetDefine.h"
 #include "RingBuffer.h"
 
+#include <array>
+
 struct ssl_st;
 typedef struct ssl_st SSL;
 
@@ -73,4 +75,5 @@ private:
     bool          m_serverSide;
     bool          m_closed;
     bool          m_connectFired;
+    std::array<char, MAX_PACKET_SIZE> m_msgBody; /**< 拆包临时缓冲，避免栈上大数组 */
 };
