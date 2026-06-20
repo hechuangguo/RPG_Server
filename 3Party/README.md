@@ -18,7 +18,8 @@
 ├── src/                      # 解压临时目录（gitignore）
 ├── lua/                      # 编译产物 liblua.a（gitignore）
 ├── tinyxml2/
-└── mysql/
+├── mysql/
+└── protobuf/                 # protoc + libprotobuf.a（gitignore，build_protobuf.sh 生成）
 ```
 
 ## Clone 后快速构建
