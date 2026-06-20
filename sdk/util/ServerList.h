@@ -94,10 +94,10 @@ public:
      * @param selfType   请求方服务器类型
      * @param selfID     请求方服务器实例编号
      * @param out        [out] 解析得到的 ServerList
-     * @param timeoutMs  最长等待毫秒数（默认 5000）
+     * @param timeoutMs  TLS 就绪与 RPC 响应各自的上限毫秒数（默认 10000，两阶段独立计时）
      * @return 成功返回 true；连接失败或超时返回 false
      */
     static bool fetch(const std::string& superIP, uint16_t superPort,
                       SubServerType selfType, uint32_t selfID,
-                      ServerList& out, int timeoutMs = 5000);
+                      ServerList& out, int timeoutMs = 10000);
 };

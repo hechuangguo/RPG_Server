@@ -1,13 +1,13 @@
 #!/bin/bash
 # ============================================================
 #  StopServer.sh —— 停止所有 RPG 服务器进程并释放端口
-#  用法：./StopServer.sh
+#  用法：./StopServer.sh  或  ./StopServer（兼容入口）
 #
 #  停止策略：
 #    1. 按依赖反序对已知服务器发 SIGTERM（与 RunServer 启动顺序相反）
 #    2. 扫描 run/*.pid 与项目目录下残留二进制进程（补杀孤儿/多开实例）
 #    3. 等待 STOP_WAIT_SEC 秒；仍存活则 SIGKILL
-#    4. 清理 run/*.pid，并打印 9000–9008 端口占用情况
+#    4. 清理 run/*.pid，并打印区内 9000–9008 与 Login 9010/19010 端口占用
 # ============================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -145,13 +145,13 @@ for NAME in "${ALL_SERVERS[@]}"; do
     fi
 done
 
-# 默认端口占用（与 config.xml 一致）
+# 默认端口占用（区内 config.xml + LoginServer extern_login.xml）
 echo ""
-echo "端口检查 (9000-9008)："
+echo "端口检查 (9000-9008, Login 9010/19010)："
 if command -v ss &>/dev/null; then
-    ss -ltnp 2>/dev/null | grep -E ':900[0-8]\b' || echo "  (无监听)"
+    ss -ltnp 2>/dev/null | grep -E ':900[0-8]\b|:9010\b|:19010\b' || echo "  (无监听)"
 elif command -v netstat &>/dev/null; then
-    netstat -ltnp 2>/dev/null | grep -E ':900[0-8]\b' || echo "  (无监听)"
+    netstat -ltnp 2>/dev/null | grep -E ':900[0-8]\b|:9010\b|:19010\b' || echo "  (无监听)"
 else
     log_warn "未找到 ss/netstat，跳过端口检查"
 fi

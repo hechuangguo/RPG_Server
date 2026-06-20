@@ -49,10 +49,9 @@ void superLoginOnGatewayWrapReq(SuperServer& super, ConnID fromConn,
     const auto* wrap = reinterpret_cast<const Msg_SS_LoginGatewayWrap*>(data);
     g_gatewayConnByServerId[wrap->body.gatewayServerId] = fromConn;
 
-    TcpClient* login = super.externHub().client(SubServerType::LOGIN);
-    if (!login || !login->IsConnected())
+    auto replyGatewayWrapFailed = [&](const char* reason)
     {
-        LOG_WARN("登录外联: 登录服未连接");
+        LOG_WARN("登录外联: %s id=%u", reason, wrap->body.gatewayServerId);
         Msg_SS_LoginGatewayWrapRsp rsp{};
         rsp.gatewayConnID = fromConn;
         rsp.body.code = -1;
@@ -60,11 +59,26 @@ void superLoginOnGatewayWrapReq(SuperServer& super, ConnID fromConn,
         super.tcpServer().SendMsg(fromConn,
             static_cast<uint16_t>(InternalMsgID::SS_LOGIN_GATEWAY_WRAP_RSP),
             reinterpret_cast<char*>(&rsp), sizeof(rsp));
+    };
+
+    TcpClient* login = super.externHub().client(SubServerType::LOGIN);
+    if (!login || !login->IsConnected())
+    {
+        replyGatewayWrapFailed("登录服未连接");
+        return;
+    }
+    if (!login->canSend())
+    {
+        replyGatewayWrapFailed("登录外联 TLS 未就绪");
         return;
     }
 
-    login->SendMsg(static_cast<uint16_t>(InternalMsgID::LOGIN_GATEWAY_REGISTER_REQ),
-                   reinterpret_cast<const char*>(&wrap->body), sizeof(wrap->body));
+    if (!login->SendMsg(static_cast<uint16_t>(InternalMsgID::LOGIN_GATEWAY_REGISTER_REQ),
+                        reinterpret_cast<const char*>(&wrap->body), sizeof(wrap->body)))
+    {
+        replyGatewayWrapFailed("登录网关注册转发失败");
+        return;
+    }
     LOG_INFO("登录外联: 网关包装消息已转发 id=%u conn=%u",
              wrap->body.gatewayServerId, wrap->gatewayConnID);
 }
@@ -95,7 +109,7 @@ void superLoginOnGatewayHeartbeat(SuperServer& super, ConnID /*fromConn*/,
                                   const char* data, uint16_t len)
 {
     TcpClient* login = super.externHub().client(SubServerType::LOGIN);
-    if (!login || !login->IsConnected())
+    if (!login || !login->canSend())
         return;
 
     login->SendMsg(static_cast<uint16_t>(InternalMsgID::LOGIN_GATEWAY_HEARTBEAT),

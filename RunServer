@@ -1,0 +1,3 @@
+#!/bin/bash
+# 兼容入口：./RunServer → RunServer.sh
+exec "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/RunServer.sh" "$@"

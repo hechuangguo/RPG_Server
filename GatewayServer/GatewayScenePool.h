@@ -55,8 +55,11 @@ public:
     /** @deprecated 不再用于业务路由兜底；仅测试/诊断 */
     SceneClient* firstConnected();
 
-    /** @brief 是否至少有一条 Scene 连接存活 */
+    /** @brief 是否至少有一条 Scene TCP 连接存活（含 TLS 握手中） */
     bool hasAnyConnected() const;
+
+    /** @brief 是否至少有一条 Scene 连接 TLS 就绪、可 SendMsg */
+    bool hasAnyCanSend() const;
 
 private:
     INetCallback* m_cb;                         /**< 出站回调（非拥有） */

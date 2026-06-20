@@ -21,6 +21,7 @@
 #include "../sdk/util/LoginEnterErrorCode.h"
 
 #include <cstring>
+#include <cstdio>
 #include <vector>
 
 SuperServer::SuperServer()
@@ -124,8 +125,9 @@ void SuperServer::Run()
 
 void SuperServer::setupExternalClients(const LoginServerList& list)
 {
+    /** Super 为外联枢纽：代码侧启用四类连接，具体地址仍来自 loginserverlist.xml */
     ServerBootstrap::initGameZoneExtern(m_externHub, list, SubServerType::UNKNOWN,
-                                        true, true, true);
+                                          true, true, true);
 }
 
 void SuperServer::OnConnect(ConnID id)
@@ -201,7 +203,7 @@ void SuperServer::onHeartbeat(ConnID connID, const char* data, uint16_t len)
 void SuperServer::reportZoneStatusToLogin()
 {
     TcpClient* login = m_externHub.client(SubServerType::LOGIN);
-    if (!login || !login->IsConnected())
+    if (!login || !login->canSend())
         return;
 
     uint32_t onlineTotal = 0;
@@ -430,6 +432,9 @@ void SuperServer::onLoadUserRsp(ConnID /*connID*/, const char* data, uint16_t le
             ? hdr->code
             : static_cast<int32_t>(SuperEnterError::LOAD_USER_FAILED);
         sendLoginFailToGateway(pit->second.gatewayConnID, pit->second.gatewayClientConnID, code);
+        logLoginFlow(LoginFlowPhase::SUPER_ENTER, 0, hdr->userID,
+                     pit->second.gatewayClientConnID, code, "加载角色失败",
+                     pit->second.loginTxnId);
         m_pendingLogins.erase(pit);
         return;
     }
@@ -445,6 +450,10 @@ void SuperServer::onLoadUserRsp(ConnID /*connID*/, const char* data, uint16_t le
         LOG_WARN("用户登录失败: 无会话服可选图 userID=%llu", hdr->userID);
         sendLoginFailToGateway(pit->second.gatewayConnID, pit->second.gatewayClientConnID,
                                static_cast<int32_t>(SuperEnterError::NO_SESSION));
+        logLoginFlow(LoginFlowPhase::SUPER_ENTER, 0, hdr->userID,
+                     pit->second.gatewayClientConnID,
+                     static_cast<int32_t>(SuperEnterError::NO_SESSION), "无会话服",
+                     pit->second.loginTxnId);
         m_pendingLogins.erase(pit);
         return;
     }
@@ -456,6 +465,10 @@ void SuperServer::onLoadUserRsp(ConnID /*connID*/, const char* data, uint16_t le
     m_server.SendMsg(sesConn, (uint16_t)InternalMsgID::SES_RESOLVE_MAP_REQ,
                      reinterpret_cast<char*>(&req), sizeof(req));
     LOG_INFO("已请求地图解析: map=%u userID=%llu", req.mapId, hdr->userID);
+    char detail[48];
+    snprintf(detail, sizeof(detail), "加载角色成功 map=%u", pit->second.mapId);
+    logLoginFlow(LoginFlowPhase::SUPER_ENTER, 0, hdr->userID,
+                 pit->second.gatewayClientConnID, 0, detail, pit->second.loginTxnId);
 }
 
 void SuperServer::onResolveMapRsp(ConnID /*connID*/, const Msg_SES_ResolveMapRsp& rsp)
@@ -472,6 +485,10 @@ void SuperServer::onResolveMapRsp(ConnID /*connID*/, const Msg_SES_ResolveMapRsp
         LOG_WARN("用户登录失败: 地图未注册 map=%u userID=%llu", rsp.mapId, rsp.userID);
         sendLoginFailToGateway(pending.gatewayConnID, pending.gatewayClientConnID,
                                static_cast<int32_t>(SuperEnterError::MAP_NOT_REGISTERED));
+        logLoginFlow(LoginFlowPhase::SUPER_ENTER, 0, rsp.userID,
+                     pending.gatewayClientConnID,
+                     static_cast<int32_t>(SuperEnterError::MAP_NOT_REGISTERED),
+                     "地图未注册", pending.loginTxnId);
         m_pendingLogins.erase(pit);
         return;
     }
@@ -482,11 +499,19 @@ void SuperServer::onResolveMapRsp(ConnID /*connID*/, const Msg_SES_ResolveMapRsp
         LOG_WARN("用户登录失败: 场景服未连接 sceneServerId=%u", rsp.sceneServerId);
         sendLoginFailToGateway(pending.gatewayConnID, pending.gatewayClientConnID,
                                static_cast<int32_t>(SuperEnterError::SCENE_OFFLINE));
+        logLoginFlow(LoginFlowPhase::SUPER_ENTER, 0, rsp.userID,
+                     pending.gatewayClientConnID,
+                     static_cast<int32_t>(SuperEnterError::SCENE_OFFLINE),
+                     "场景服未连接", pending.loginTxnId);
         m_pendingLogins.erase(pit);
         return;
     }
 
     pending.phase = LoginTxnPhase::ENTER_SCENE;
+    char detail[64];
+    snprintf(detail, sizeof(detail), "地图解析 map=%u scene=%u", rsp.mapId, rsp.sceneServerId);
+    logLoginFlow(LoginFlowPhase::SUPER_ENTER, 0, rsp.userID, pending.gatewayClientConnID,
+                 0, detail, pending.loginTxnId);
     sendUserEnterToScene(pending);
 }
 
@@ -522,6 +547,11 @@ void SuperServer::sendUserEnterToScene(PendingLogin& pending)
                      reinterpret_cast<char*>(&enter), sizeof(enter));
     LOG_INFO("已发送用户入场: userID=%llu map=%u sceneConn=%u",
              wire.userID, pending.mapId, pending.sceneConnID);
+    char detail[64];
+    snprintf(detail, sizeof(detail), "下发Scene入场 map=%u sceneConn=%u",
+             pending.mapId, pending.sceneConnID);
+    logLoginFlow(LoginFlowPhase::SUPER_ENTER, 0, wire.userID, pending.gatewayClientConnID,
+                 0, detail, pending.loginTxnId);
 }
 
 void SuperServer::onUserEnterRsp(ConnID /*connID*/, const Msg_SCE_UserEnterRsp& rsp)

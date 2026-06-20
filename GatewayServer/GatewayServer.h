@@ -230,6 +230,22 @@ private:
      */
     void registerToSuper();
 
+    /** @brief TLS 就绪后延迟注册 Super（握手未完成时 500ms 重试） */
+    void scheduleSuperRegister();
+
+    /** @brief scheduleSuperRegister 定时器回调（内部重试，不递归 scheduleSuperRegister） */
+    void onSuperRegisterTimerFired();
+
+    /**
+     * @brief 取消当前 Super 注册定时器并重新登记
+     * @param delayMs 延迟毫秒（TimerMgr 一次性定时器）
+     * @note Update() 触发回调前已 erase 到期项；此处 Cancel 为防御性，避免重复 Register
+     */
+    void rescheduleSuperRegisterTimer(uint64_t delayMs);
+
+    /** @brief Super 出站断开后重连并重新注册 */
+    void tryReconnectSuper();
+
     /**
      * @brief 向 SuperServer 发送心跳
      *
@@ -245,12 +261,16 @@ private:
     TcpClient m_recordClient;   /**< 出站 RecordServer（账号验证） */
     TcpClient m_sessionClient;  /**< 出站 SessionServer（社交/任务） */
     GatewayScenePool m_scenePool; /**< 出站多 SceneServer 连接池 */
+    std::string m_superIP;      /**< SuperServer 地址（重连用） */
+    uint16_t  m_superPort = 0;  /**< SuperServer 端口（重连用） */
     uint32_t  m_hbSeq = 0;      /**< 心跳序列号，每次发送心跳递增 */
     uint16_t  m_clientPort = 9005;   /**< 客户端监听端口 */
     ServerEntry m_self;              /**< 本进程在 ServerList 中的拓扑条目（注册上报用） */
     ServerList m_serverList;         /**< 启动期拉取的集群拓扑（延迟出站用） */
     bool m_upstreamReady = false;    /**< 是否已完成区内出站连接 */
     bool m_reportedToLogin = false;  /**< 是否已向 Login 上报网关（经 Super） */
+    bool m_superRegisterPending = false; /**< Super 注册重试链进行中（防并发定时器） */
+    TimerID m_superRegisterTimerId = INVALID_TIMER_ID; /**< 当前 Super 注册定时器 ID */
     uint32_t m_zoneId = 1;           /**< 本游戏区号（config.xml Zone） */
     uint8_t m_gameType = 0;          /**< 游戏类型 */
     // --- 客户端管理 ---

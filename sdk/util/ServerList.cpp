@@ -10,10 +10,10 @@
 #include "../net/NetTls.h"
 #include "../net/TcpClient.h"
 #include "../net/MsgId.h"
+#include "../log/Logger.h"
 
 #include <chrono>
 #include <cstring>
-#include <thread>
 
 // ============================================================
 //  ServerList 容器
@@ -142,31 +142,72 @@ bool ServerListClient::fetch(const std::string& superIP, uint16_t superPort,
     wireTlsClient(client);
     if (!client.Connect(superIP, superPort))
     {
+        LOG_ERR("ServerList fetch: 无法连接 SuperServer %s:%u",
+                superIP.c_str(), superPort);
         return false;
     }
 
-    // 请求缓冲后由首个 EPOLLOUT 刷出，无需等待 OnConnect
+    /** 阶段 1：等待 TLS 就绪（独立超时，不计入 RPC 响应窗口） */
+    const auto tlsStart = std::chrono::steady_clock::now();
+    while (!client.canSend() && client.IsConnected())
+    {
+        client.Poll(20);
+        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - tlsStart).count();
+        if (elapsed >= timeoutMs)
+            break;
+    }
+    if (!client.IsConnected())
+    {
+        LOG_ERR("ServerList fetch: SuperServer 连接断开 %s:%u", superIP.c_str(), superPort);
+        client.Disconnect();
+        return false;
+    }
+    if (!client.canSend())
+    {
+        LOG_ERR("ServerList fetch: TLS 未在 %dms 内就绪（%s:%u）",
+                timeoutMs, superIP.c_str(), superPort);
+        client.Disconnect();
+        return false;
+    }
+
     Msg_S2S_ServerListReq req{};
     req.serverType = (uint8_t)selfType;
     req.serverID   = selfID;
-    client.SendMsg((uint16_t)InternalMsgID::S2S_SERVERLIST_REQ,
-                   reinterpret_cast<char*>(&req), sizeof(req));
+    if (!client.SendMsg((uint16_t)InternalMsgID::S2S_SERVERLIST_REQ,
+                        reinterpret_cast<char*>(&req), sizeof(req)))
+    {
+        LOG_ERR("ServerList fetch: 发送 S2S_SERVERLIST_REQ 失败");
+        client.Disconnect();
+        return false;
+    }
 
-    const auto start = std::chrono::steady_clock::now();
+    /** 阶段 2：等待 S2S_SERVERLIST_RSP（自发送后起算超时） */
+    bool disconnected = false;
+    const auto rspStart = std::chrono::steady_clock::now();
     while (!cb.done())
     {
         client.Poll(20);
         if (!client.IsConnected())
         {
-            break;  // 连接异常断开
-        }
-        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - start).count();
-        if (elapsed >= timeoutMs)
-        {
+            disconnected = true;
             break;
         }
+
+        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - rspStart).count();
+        if (elapsed >= timeoutMs)
+            break;
     }
     client.Disconnect();
-    return cb.done();
+
+    if (cb.done())
+        return true;
+
+    if (disconnected)
+        LOG_ERR("ServerList fetch: SuperServer 连接断开 %s:%u", superIP.c_str(), superPort);
+    else
+        LOG_ERR("ServerList fetch: 等待 S2S_SERVERLIST_RSP 超时 %dms（%s:%u）",
+                timeoutMs, superIP.c_str(), superPort);
+    return false;
 }

@@ -18,12 +18,13 @@
   ============================================================================
 -->
 <LoginServerList>
-    <!-- 集中日志（可选） -->
-    <LoggerServer ip="127.0.0.1" port="9006" reconnect="1"/>
-    <!-- 全区共享数据（可选） -->
-    <GlobalServer ip="127.0.0.1" port="9007" reconnect="1"/>
-    <!-- 跨区转发（可选） -->
-    <ZoneServer ip="127.0.0.1" port="9008" reconnect="0"/>
+    <!--
+      仅登记已单独启动的外联服；未启动且 reconnect=1 的条目会导致 Super 刷 TLS 警告。
+      启用某外联服：先 ./RunServer.sh logger|global|zone|login，再取消注释对应节点并重启 Super。
+    -->
+    <!-- <LoggerServer ip="127.0.0.1" port="9006" reconnect="1"/> -->
+    <!-- <GlobalServer ip="127.0.0.1" port="9007" reconnect="1"/> -->
+    <!-- <ZoneServer ip="127.0.0.1" port="9008" reconnect="0"/> -->
     <!-- 外联登录：port 为网关注册口（与 extern_login.xml RegisterListen 一致，非玩家 ClientListen 9010） -->
     <LoginServer ip="127.0.0.1" port="19010" reconnect="1"/>
 </LoginServerList>

@@ -3,13 +3,13 @@
 #  RunServer.sh —— 按依赖顺序启动 RPG 服务器
 #
 #  用法：
-#    ./RunServer.sh              启动区内 6 服（不含 Logger/Global/Zone）
+#    ./RunServer.sh              启动区内 6 服（Super → Record/AOI → Session → Scene → Gateway）
 #    ./RunServer.sh all          同上
 #    ./RunServer.sh <子命令>     仅启动指定服务器
 #    ./RunServer.sh help         显示子命令列表
 #
 #  区内子命令：super | session | record | aoi | scene | gateway
-#  外联子命令：logger | global | zone | login
+#  外联子命令：logger | global | zone | login（须单独启动，如 ./RunServer.sh login）
 #
 #  二进制守护：./SceneServer/SceneServer -d（-d 后台运行，非配置路径）
 #  配置默认：config/config.xml、config/server_info.xml（Scene）
@@ -287,11 +287,13 @@ In-zone commands:
   scene    SceneServer
   gateway  GatewayServer
 
-External commands:
+External commands (start separately):
   logger   LoggerServer  (LoggerServer/extern_logger.xml)
   global   GlobalServer  (GlobalServer/extern_global.xml)
   zone     ZoneServer    (ZoneServer/extern_zone.xml)
   login    LoginServer   (LoginServer/extern_login.xml)
+
+Or run external binary directly, e.g. ./LoginServer/LoginServer
 
 Daemon mode (binary directly):
   ./SceneServer/SceneServer -d   Fork to background; -d is not a config path
@@ -302,7 +304,8 @@ EOF
 }
 
 # -------------------------------------------------------
-#  启动区内 6 服（Super → Record → AOI → Session → Scene → Gateway）
+#  启动区内 6 服（Super → Record/AOI → Session → Scene → Gateway）
+#  外联服（Login/Logger/Global/Zone）须单独：./RunServer.sh login 等
 #  任一失败则中止并输出诊断信息
 # -------------------------------------------------------
 start_all_inzone() {
@@ -323,7 +326,8 @@ start_all_inzone() {
 
     start_server GatewayServer "$CONFIG" || return 1
 
-    log_info "===== In-zone servers started ====="
+    log_info "===== In-zone 6 servers started ====="
+    log_info "External (optional): ./RunServer.sh login | logger | global | zone"
     return 0
 }
 

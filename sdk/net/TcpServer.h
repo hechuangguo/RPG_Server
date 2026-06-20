@@ -159,9 +159,19 @@ public:
                 auto& conn = it->second;
                 const uint32_t ev = events[i].events;
 
-                /** 先处理 I/O / TLS 握手，再处理 hang-up（避免 EPOLLHUP 与 EPOLLIN 同批时跳过 tryFireConnect） */
-                if (ev & EPOLLIN)  conn->OnReadable();
-                if (ev & EPOLLOUT) conn->OnWritable();
+                /** 先 IN 后 OUT：TLS 常需 read 后再 write；hang-up 最后再 Close */
+                if (ev & EPOLLIN)
+                    conn->OnReadable();
+                if (ev & EPOLLOUT)
+                {
+                    if (!conn->IsClosed() && conn->hasPendingSend())
+                        conn->OnWritable();
+                }
+                else if (!conn->IsClosed() && conn->hasPendingSend())
+                {
+                    /** 无 EPOLLOUT（如 ET 漏边）：补刷 SendMsg / 定时器入队的待发数据 */
+                    conn->OnWritable();
+                }
                 if (!conn->IsClosed())
                     conn->tryFireConnect();
 

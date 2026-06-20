@@ -7,6 +7,7 @@
 #include "LoginServer.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/util/GameZoneReply.h"
+#include "../sdk/util/LoginFlowLog.h"
 #include "../sdk/util/MsgHandlerBinder.h"
 #include "../sdk/util/WireStringUtil.h"
 #include "../protocal/InternalMsg.h"
@@ -92,11 +93,13 @@ void onVerifyTokenReq(LoginServer& server, ConnID fromConn, const Msg_Login_Veri
     {
         LOG_INFO("登录服票据校验成功: seq=%u accid=%llu zone=%u",
                  rsp.requestSeq, static_cast<unsigned long long>(rsp.accid), req.zoneId);
+        logLoginFlow(LoginFlowPhase::GATEWAY_AUTH, rsp.accid, 0, 0, 0, "Login校验token");
     }
     else
     {
         LOG_WARN("登录服票据校验失败: seq=%u zone=%u gameType=%u",
                  rsp.requestSeq, req.zoneId, req.gameType);
+        logLoginFlow(LoginFlowPhase::GATEWAY_AUTH, 0, 0, 0, rsp.code, "Login校验token失败");
     }
 
     sendVerifyTokenForwardRsp(server, fromConn, rsp);

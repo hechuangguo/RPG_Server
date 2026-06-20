@@ -41,9 +41,9 @@ void AOIServer::Run()
 {
     while (true)
     {
-        m_superClient.Poll(0);
         m_server.Poll(10);
         TimerMgr::Instance().Update();
+        m_superClient.Poll(0);
     }
 }
 
@@ -194,6 +194,8 @@ void AOIServer::RegisterToSuper()
 
 void AOIServer::sendHeartbeat()
 {
+    if (!m_superClient.canSend())
+        return;
     Msg_S2S_Heartbeat hb{}; hb.seq = ++m_hbSeq; hb.timestamp = TimerMgr::NowMs();
     m_superClient.SendMsg((uint16_t)InternalMsgID::S2S_HEARTBEAT,
                           reinterpret_cast<char*>(&hb), sizeof(hb));

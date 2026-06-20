@@ -41,6 +41,11 @@ bool SceneClient::isConnected() const
     return m_client && m_client->IsConnected();
 }
 
+bool SceneClient::canSend() const
+{
+    return m_client && m_client->canSend();
+}
+
 bool SceneClient::forwardClientMsg(uint32_t clientConnId, uint8_t module, uint8_t sub,
                                    const char* data, uint16_t len)
 {

@@ -28,12 +28,29 @@ enum class ClientState : uint8_t
 class GatewayUser : public IUser
 {
 public:
-    /** @brief 构造会话并记录 connId、初始化心跳时间 */
+    /** @brief 构造会话并记录 connId、初始化心跳与连接时间 */
     explicit GatewayUser(ConnID connId)
         : IUser(makeBase(connId))
     {
-        lastHeartbeat = TimerMgr::NowMs();
+        const uint64_t nowMs = TimerMgr::NowMs();
+        lastHeartbeat = nowMs;
+        connectedAtMs = nowMs;
     }
+
+    /** @brief TCP 连接建立时刻（ms） */
+    uint64_t getConnectedAtMs() const { return connectedAtMs; }
+
+    /** @brief 是否已记录「连接后未鉴权超时」告警 */
+    bool isAuthWarnSent() const { return authWarnSent; }
+
+    /** @brief 标记已输出未鉴权超时告警（避免重复 WARN） */
+    void setAuthWarnSent(bool sent) { authWarnSent = sent; }
+
+    /** @brief 是否已记录 CONNECTED 态首条上行（诊断用） */
+    bool isFirstUplinkLogged() const { return firstUplinkLogged; }
+
+    /** @brief 标记 CONNECTED 态首条上行已记录 */
+    void setFirstUplinkLogged(bool logged) { firstUplinkLogged = logged; }
 
     /** @brief 当前客户端登录状态 */
     ClientState getClientState() const { return clientState; }
@@ -122,6 +139,9 @@ private:
     }
     ClientState clientState = ClientState::CONNECTED; /**< 会话状态机状态 */
     uint64_t    lastHeartbeat = 0;                    /**< 最近心跳时间戳（ms） */
+    uint64_t    connectedAtMs = 0;                    /**< TCP 连接建立时刻（ms） */
+    bool        authWarnSent = false;                   /**< 已输出未鉴权超时告警 */
+    bool        firstUplinkLogged = false;              /**< CONNECTED 态首条上行已记录 */
     uint32_t    sceneServerId = 0;                    /**< 绑定的 SceneServer 实例 ID */
     uint64_t    accid = 0;                            /**< 账号 ID（票据鉴权后） */
     uint32_t    zoneId = 0;                           /**< 游戏区号 */

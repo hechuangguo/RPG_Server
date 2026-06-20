@@ -10,12 +10,15 @@
 #include "../sdk/net/NetTls.h"
 #include "ScenePeerClient.h"
 #include "../sdk/util/ServerBootstrap.h"
+#include "../sdk/util/LoginFlowLog.h"
 #include "../sdk/util/GameZoneExternSender.h"
 #include "SceneLoginMsg.h"
 #include "SceneUserManager.h"
 #include "SceneNpcManager.h"
 #include "SceneManager.h"
 #include "LuaManager.h"
+
+#include <cstdio>
 
 SceneServer::SceneServer()
     : m_server(this)
@@ -74,12 +77,12 @@ void SceneServer::Run()
 {
     while (true)
     {
+        m_server.Poll(10);
+        TimerMgr::Instance().Update();
         m_superClient.Poll(0);
         m_sessionClient.poll();
         m_recordClient.poll();
         m_aoiClient.poll();
-        m_server.Poll(10);
-        TimerMgr::Instance().Update();
     }
 }
 
@@ -128,6 +131,8 @@ void SceneServer::onUserEnter(ConnID /*fromConn*/, const Msg_SCE_UserEnterReq& r
     if (!scene)
     {
         LOG_WARN("场景服未找到地图: map=%u sceneID=%u", mapID, m_sceneID);
+        logLoginFlow(LoginFlowPhase::SCENE_ENTER, 0, req.userID, req.gatewayClientConnID,
+                     -1, "地图不存在");
         sendUserEnterRsp(&req, -1);
         return;
     }
@@ -160,6 +165,10 @@ void SceneServer::onUserEnter(ConnID /*fromConn*/, const Msg_SCE_UserEnterReq& r
 
     notifyExistingPlayersOnEnter(*user);
     sendUserEnterRsp(&req, 0);
+    char detail[32];
+    snprintf(detail, sizeof(detail), "入场成功 map=%u", mapID);
+    logLoginFlow(LoginFlowPhase::SCENE_ENTER, 0, req.userID, req.gatewayClientConnID,
+                 0, detail);
     callLuaOnEnter(req.userID, mapID);
 }
 
@@ -563,6 +572,8 @@ void SceneServer::registerToSuper()
 
 void SceneServer::sendHeartbeat()
 {
+    if (!m_superClient.canSend())
+        return;
     Msg_S2S_Heartbeat hb{};
     hb.seq = ++m_hbSeq;
     hb.timestamp = TimerMgr::NowMs();

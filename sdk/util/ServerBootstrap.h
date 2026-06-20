@@ -20,6 +20,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <chrono>
+#include <thread>
 
 namespace ServerBootstrap {
 
@@ -56,15 +58,25 @@ inline uint32_t resolveServerID()
 inline bool fetchServerList(const ServerConfig& cfg, SubServerType selfType,
                             uint32_t selfId, ServerList& out)
 {
-    if (!ServerListClient::fetch(cfg.superIP, (uint16_t)cfg.superPort,
-                                 selfType, selfId, out))
+    constexpr int kMaxAttempts = 3;
+    constexpr int kRetryDelayMs = 200;
+    for (int attempt = 1; attempt <= kMaxAttempts; ++attempt)
     {
-        std::fprintf(stderr,
-                     "Failed to fetch ServerList from SuperServer %s:%d\n",
-                     cfg.superIP.c_str(), cfg.superPort);
-        return false;
+        if (ServerListClient::fetch(cfg.superIP, (uint16_t)cfg.superPort,
+                                    selfType, selfId, out))
+            return true;
+        if (attempt < kMaxAttempts)
+        {
+            std::fprintf(stderr,
+                         "ServerList fetch attempt %d/%d failed, retrying...\n",
+                         attempt, kMaxAttempts);
+            std::this_thread::sleep_for(std::chrono::milliseconds(kRetryDelayMs));
+        }
     }
-    return true;
+    std::fprintf(stderr,
+                 "Failed to fetch ServerList from SuperServer %s:%d after %d attempts\n",
+                 cfg.superIP.c_str(), cfg.superPort, kMaxAttempts);
+    return false;
 }
 
 /**
@@ -182,7 +194,11 @@ inline const char* externConfigPath(int argc, char* argv[], int argIndex,
 }
 
 /**
- * @brief 装配游戏区外联连接（仅 SuperServer 应开启全部外联）
+ * @brief 装配游戏区外联连接
+ * @param wantGlobal 本进程是否尝试连接 Global（仍须在 list 中有对应条目且 port>0）
+ * @param wantZone    本进程是否尝试连接 Zone
+ * @param wantLogin   本进程是否尝试连接 Login（网关注册口等）
+ * @note SuperServer 应传 true,true,true；wantLogger 恒 true（区服日志汇聚）
  */
 inline void initGameZoneExtern(ExternalServerHub& hub, const LoginServerList& list,
                                SubServerType selfType, bool wantGlobal, bool wantZone,

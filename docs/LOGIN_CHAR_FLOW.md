@@ -149,7 +149,53 @@ sequenceDiagram
 
 ---
 
-## 6. 错误码速查
+## 6. 日志排查
+
+全链路统一格式由 [`sdk/util/LoginFlowLog.h`](../sdk/util/LoginFlowLog.h) 输出，grep 关键字：
+
+```bash
+grep '\[登录链路\]' logs/*.log
+# 或单服
+grep '\[登录链路\]' logs/gateway.log logs/login.log logs/super.log
+```
+
+### 6.1 phase 含义
+
+| phase（日志字段） | 典型进程 | 含义 |
+|-------------------|----------|------|
+| 账号登录 | LoginServer | 客户端账号密码登录、下发网关地址 |
+| 网关鉴权 | Gateway / Record / Login | 票据校验、连接后鉴权超时 |
+| 角色列表 | Gateway / Record | 拉取/下发角色列表 |
+| 创角 | Gateway / Record | 创建角色 |
+| 选角 | Gateway | 选角进世界请求 |
+| 超级服进世界 | Super / Record / Session | 加载角色、地图解析、下发 Scene 入场 |
+| 场景入场 | Scene / Super | 用户进入场景实例 |
+| 角色离世界 / 退出登录 | Gateway / Super | 离世界、回选角/回登录 |
+
+### 6.2 正常成功顺序（E2E 参考）
+
+```
+账号登录 → 网关鉴权 → 角色列表 → 选角 → 超级服进世界 → 场景入场
+```
+
+### 6.3 常见卡住场景
+
+| 现象 | 日志特征 | 可能原因 |
+|------|----------|----------|
+| UI 停在「获取角色列表」 | `gateway.log` 仅有 `客户端连接建立`，无 `Gateway 票据鉴权` / `phase=网关鉴权` | 客户端连上 Gateway 但未发 `C2S_GATEWAY_AUTH_REQ` |
+| 同上，约 10s 后出现 WARN | `phase=网关鉴权 code=-1 连接后未鉴权超时` | 同上（服务端诊断日志） |
+| 有 `客户端首条上行` 但无鉴权 | mod/sub 不是 `0x00/0x0D` | 客户端发了错误消息号 |
+| 有 `客户端消息被拒绝` | vr=BAD_LENGTH/BAD_PAYLOAD 等 | wire 格式与协议不一致 |
+| 鉴权后无列表 | 有 `Record转发Login校验` 无 `phase=角色列表` | Record/Login 票据校验失败 |
+
+Gateway 额外诊断日志：
+
+- `客户端首条上行: conn=... mod=... sub=... len=...` — CONNECTED 态收到首包
+- `Gateway 票据鉴权: account=...` — 收到合法鉴权请求
+
+---
+
+## 7. 错误码速查
 
 ### CreateCharacterError（`S2C_CREATE_USER_RSP.code`）
 
@@ -172,18 +218,18 @@ sequenceDiagram
 
 ---
 
-## 7. 本地冒烟
+## 8. 本地冒烟
 
 ```bash
 ./RunServer.sh && ./RunServer.sh login
 python3 scripts/test_login_gateway_e2e.py autotest_e2e test1234
 ```
 
-期望：`gateway.log` 出现 `鉴权成功` → `phase=角色列表` → `选角进世界` → `进入游戏成功`；E2E 脚本还会测 `C2S_LOGOUT_REQ` 返回选角。
+期望：`grep '[登录链路]' logs/*.log` 出现完整 phase 链；`gateway.log` 出现 `鉴权成功` → `phase=角色列表` → `选角进世界` → `进入游戏成功`；E2E 脚本还会测 `C2S_LOGOUT_REQ` 返回选角。
 
 ---
 
-## 8. 后续（未实现）
+## 9. 后续（未实现）
 
 - 客户端主动 `C2S_USER_LIST_REQ` 刷新列表
 - `S2C_ENTER_MAP`（当前用 `S2C_ENTER_GAME` + `S2C_SPAWN_ENTITY`）

@@ -214,9 +214,11 @@ mysql -u root -p < tables/seed_test_data.sql
 ### 启动
 
 ```bash
-./RunServer.sh                          # 核心 7 服
-ENABLE_GLOBAL=1 ./RunServer.sh          # 含 GlobalServer
-ENABLE_ZONE=1 ./RunServer.sh            # 含 ZoneServer
+./RunServer.sh                          # 区内 6 服
+./RunServer.sh login                    # 外联 LoginServer（客户端两阶段登录需先启动）
+./RunServer.sh logger                   # 外联 LoggerServer（可选）
+./RunServer.sh global                   # 外联 GlobalServer（可选）
+./RunServer.sh zone                     # 外联 ZoneServer（可选）
 ./log.sh                                # 查看日志
 ./StopServer.sh                         # 停止
 ```

@@ -154,8 +154,8 @@ step "Protocol files OK (ClientTypes.h + LoginMsg.h present)."
 #  确保后续可直接调用 ./RunServer.sh 等脚本，
 #  特别是在 git clone 后文件权限可能丢失的场景
 # -------------------------------------------------------
-chmod +x "$SCRIPT_DIR/RunServer.sh"
-chmod +x "$SCRIPT_DIR/StopServer.sh"
+chmod +x "$SCRIPT_DIR/RunServer.sh" "$SCRIPT_DIR/RunServer"
+chmod +x "$SCRIPT_DIR/StopServer.sh" "$SCRIPT_DIR/StopServer"
 chmod +x "$SCRIPT_DIR/log.sh"
 chmod +x "$SCRIPT_DIR/pull.sh"
 chmod +x build Build.sh 2>/dev/null || true

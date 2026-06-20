@@ -26,14 +26,30 @@ if ! command -v openssl >/dev/null 2>&1; then
     exit 1
 fi
 
-# 可选：从 server_info / config 读取内网 IP（此处仅 dev 常用地址）
+# 从 serverlist / 配置收集客户端可达 IP，写入证书 SAN（避免连 LAN IP 时校验失败）
 SAN="DNS:localhost,IP:127.0.0.1"
-if [[ -f "${ROOT}/config/server_info.xml" ]]; then
-    EXTRA_IP="$(grep -oP '192\.168\.[0-9]+\.[0-9]+' "${ROOT}/config/config.xml" 2>/dev/null | head -1 || true)"
-    if [[ -n "${EXTRA_IP}" ]]; then
-        SAN="${SAN},IP:${EXTRA_IP}"
-    fi
+append_san_ip() {
+    local ip="$1"
+    [[ -z "${ip}" ]] && return
+    [[ "${SAN}" == *"IP:${ip}"* ]] && return
+    SAN="${SAN},IP:${ip}"
+}
+for cfg in \
+    "${ROOT}/LoginServer/serverlist.xml" \
+    "${ROOT}/config/config.xml" \
+    "${ROOT}/config/server_info.xml"; do
+    [[ -f "${cfg}" ]] || continue
+    while IFS= read -r ip; do
+        append_san_ip "${ip}"
+    done < <(grep -oE '192\.168\.[0-9]+\.[0-9]+|10\.[0-9]+\.[0-9]+\.[0-9]+' "${cfg}" | sort -u)
+done
+# serverlist.xml Zone ip="..." 属性
+if [[ -f "${ROOT}/LoginServer/serverlist.xml" ]]; then
+    while IFS= read -r ip; do
+        append_san_ip "${ip}"
+    done < <(grep -oP 'ip="\K[0-9.]+' "${ROOT}/LoginServer/serverlist.xml" 2>/dev/null || true)
 fi
+echo "[gen_tls] SAN=${SAN}"
 
 echo "[gen_tls] 输出目录: ${OUT_DIR}"
 

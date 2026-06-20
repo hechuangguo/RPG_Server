@@ -137,11 +137,9 @@ public:
      *
      * 处理流程：
      * 1. epoll_wait 等待事件（最多 16 个）
-     * 2. EPOLLOUT 事件：
-     *    - 首次触发时表示非阻塞 connect() 完成，触发 OnConnect 回调
-     *    - 后续触发时调用 OnWritable() 刷新发送缓冲区
-     * 3. EPOLLIN 事件：调用 OnReadable() 接收数据并拆包
-     * 4. EPOLLERR / EPOLLHUP：调用 Close() 关闭连接
+     * 2. EPOLLIN 事件：调用 OnReadable() 接收数据并拆包
+     * 3. EPOLLOUT 事件：刷新发送缓冲区（须在 IN 之后，便于 TLS read-then-write）
+     * 4. EPOLLERR / EPOLLHUP / EPOLLRDHUP：先完成 I/O 与 TLS 握手，再 Close
      */
     void Poll(int timeout_ms = 10)
     {
@@ -150,22 +148,35 @@ public:
         int n = ::epoll_wait(m_epollFd, events, 16, timeout_ms);
         for (int i = 0; i < n; ++i)
         {
-            if (events[i].events & EPOLLOUT)
+            const uint32_t ev = events[i].events;
+
+            if (ev & EPOLLIN)
+                m_conn->OnReadable();
+            if (ev & EPOLLOUT)
             {
                 if (!m_tcpConnectDone)
                     m_tcpConnectDone = true;
+                /** IN 已在 OnReadable 末尾刷过发送区；OUT 仅补未写尽的数据 */
+                if (m_conn && !m_conn->IsClosed() && m_conn->hasPendingSend())
+                    m_conn->OnWritable();
+            }
+            else if (m_conn && !m_conn->IsClosed() && m_conn->hasPendingSend())
+            {
+                /** 无 EPOLLOUT（如 ET 漏边）：补刷 SendMsg / 定时器入队的待发数据 */
                 m_conn->OnWritable();
             }
-            if (events[i].events & EPOLLIN)
-                m_conn->OnReadable();
             if (!m_connectNotified && m_conn && !m_conn->IsClosed())
             {
                 m_conn->tryFireConnect();
                 if (m_conn->connectFired())
                     m_connectNotified = true;
             }
-            if (events[i].events & (EPOLLERR | EPOLLHUP))
-                m_conn->Close();
+
+            if (ev & (EPOLLERR | EPOLLHUP | EPOLLRDHUP))
+            {
+                if (m_conn && !m_conn->IsClosed())
+                    m_conn->Close();
+            }
         }
     }
 
@@ -204,6 +215,12 @@ public:
 
     /** @brief 连接是否存活（未关闭） */
     bool IsConnected() const { return m_conn && !m_conn->IsClosed(); }
+
+    /** @brief TLS 握手是否完成、连接可 SendMsg（明文 TCP 连通后即可） */
+    bool canSend() const
+    {
+        return m_conn && !m_conn->IsClosed() && m_conn->isTlsReady();
+    }
 
 private:
     INetCallback*  m_cb;       /**< 事件回调接口（不负责释放） */

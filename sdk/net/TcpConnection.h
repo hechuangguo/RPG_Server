@@ -56,6 +56,9 @@ public:
     void OnWritable();
     void Close();
 
+    /** @brief 发送缓冲区是否仍有未写出的数据（TLS 可能需先读再写） */
+    bool hasPendingSend() const { return m_sendBuf.ReadableBytes() > 0; }
+
 private:
     bool driveTlsHandshake();
     void readPlain();
@@ -75,5 +78,7 @@ private:
     bool          m_serverSide;
     bool          m_closed;
     bool          m_connectFired;
+    bool          m_inReadHandler = false; /**< 正在 processMessages，禁止 SendMsg 同步写 */
+    bool          m_tlsFailLogged = false; /**< 本连接已记录 TLS 握手失败 WARN，避免 Poll 重复刷 */
     std::array<char, MAX_PACKET_SIZE> m_msgBody; /**< 拆包临时缓冲，避免栈上大数组 */
 };

@@ -119,6 +119,7 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
         loginRsp.code = -1;
         copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "登录服不可用");
         sendClientWire(m_owner.clientServer(), connID, loginRsp);
+        logLoginFlow(LoginFlowPhase::ACCOUNT_LOGIN, 0, 0, connID, loginRsp.code, loginRsp.msg);
         sendGatewayInfo(connID, -1, "无可用网关");
         return;
     }
@@ -131,6 +132,7 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
         loginRsp.code = 1;
         copyToWire(loginRsp.msg, sizeof(loginRsp.msg), "请升级客户端（需发送密码摘要）");
         sendClientWire(m_owner.clientServer(), connID, loginRsp);
+        logLoginFlow(LoginFlowPhase::ACCOUNT_LOGIN, 0, 0, connID, loginRsp.code, loginRsp.msg);
         sendGatewayInfo(connID, -1, "登录失败");
         return;
     }
@@ -235,6 +237,11 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
         logLoginFlow(LoginFlowPhase::ACCOUNT_LOGIN, loginRsp.accid, loginRsp.userID, connID, 0,
                      nullptr);
     }
+    else
+    {
+        logLoginFlow(LoginFlowPhase::ACCOUNT_LOGIN, loginRsp.accid, loginRsp.userID, connID,
+                     loginRsp.code, loginRsp.msg);
+    }
 
     if (loginRsp.code == 0)
         sendGatewayInfo(connID, 0, "成功", req->zoneId, req->gameType);
@@ -313,4 +320,14 @@ void LoginAuthService::sendGatewayInfo(ConnID connID, int32_t code, const char* 
     sendClientWire(m_owner.clientServer(), connID, info);
     LOG_INFO("已下发网关信息: conn=%u code=%d ip=%s port=%u",
              connID, info.code, info.gatewayIP, info.gatewayPort);
+    if (info.code == 0)
+    {
+        char detail[80];
+        snprintf(detail, sizeof(detail), "gateway=%s:%u", info.gatewayIP, info.gatewayPort);
+        logLoginFlow(LoginFlowPhase::ACCOUNT_LOGIN, 0, 0, connID, 0, detail);
+    }
+    else
+    {
+        logLoginFlow(LoginFlowPhase::ACCOUNT_LOGIN, 0, 0, connID, info.code, info.msg);
+    }
 }

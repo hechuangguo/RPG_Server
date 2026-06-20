@@ -8,6 +8,7 @@
 #include "../sdk/net/MsgIngress.h"
 #include "../sdk/net/NetTls.h"
 #include "RecordCharService.h"
+#include "../sdk/util/LoginFlowLog.h"
 #include "../sdk/util/ServerBootstrap.h"
 
 #include <cstring>
@@ -74,9 +75,9 @@ void RecordServer::Run()
 {
     while (true)
     {
-        m_superClient.Poll(0);
         m_server.Poll(10);
         TimerMgr::Instance().Update();
+        m_superClient.Poll(0);
     }
 }
 
@@ -120,6 +121,8 @@ void RecordServer::registerHandlers()
 
 void RecordServer::RegisterToSuper()
 {
+    if (!m_superClient.canSend())
+        return;
     Msg_S2S_Register reg{};
     reg.serverType = (uint8_t)SubServerType::RECORD;
     reg.serverID = m_self.id;
@@ -132,6 +135,8 @@ void RecordServer::RegisterToSuper()
 
 void RecordServer::sendHeartbeat()
 {
+    if (!m_superClient.canSend())
+        return;
     Msg_S2S_Heartbeat hb{};
     hb.seq = ++m_hbSeq;
     hb.timestamp = TimerMgr::NowMs();
@@ -161,6 +166,7 @@ void RecordServer::onLoadUser(ConnID /*fromConn*/, const char* data, uint16_t le
         hdr.code = -1;
         m_superClient.SendMsg((uint16_t)InternalMsgID::REC_LOAD_USER_RSP,
                               reinterpret_cast<char*>(&hdr), sizeof(hdr));
+        logLoginFlow(LoginFlowPhase::SUPER_ENTER, 0, rid, 0, hdr.code, "Record加载角色");
         return;
     }
 
@@ -187,6 +193,7 @@ void RecordServer::onLoadUser(ConnID /*fromConn*/, const char* data, uint16_t le
     memcpy(buf.data() + sizeof(hdr), &wire, sizeof(wire));
     m_superClient.SendMsg((uint16_t)InternalMsgID::REC_LOAD_USER_RSP,
                           buf.data(), static_cast<uint16_t>(buf.size()));
+    logLoginFlow(LoginFlowPhase::SUPER_ENTER, 0, rid, 0, 0, "Record加载角色");
 }
 
 void RecordServer::onSaveUser(ConnID fromConn, const char* data, uint16_t len)
@@ -393,7 +400,13 @@ void RecordServer::onValidateTokenReq(ConnID fromConn, const Msg_REC_ValidateTok
         failRsp.gatewayConnID = req.gatewayConnID;
         m_server.SendMsg(fromConn, static_cast<uint16_t>(InternalMsgID::REC_VALIDATE_TOKEN_RSP),
                          reinterpret_cast<char*>(&failRsp), sizeof(failRsp));
+        logLoginFlow(LoginFlowPhase::GATEWAY_AUTH, 0, 0, req.gatewayConnID, 1,
+                     "转发Login失败");
+        return;
     }
+
+    logLoginFlow(LoginFlowPhase::GATEWAY_AUTH, 0, 0, req.gatewayConnID, 0,
+                 "Record转发Login校验");
 }
 
 void RecordServer::onLoginVerifyTokenExternFail(uint32_t requestSeq)
@@ -406,11 +419,14 @@ void RecordServer::onLoginVerifyTokenExternFail(uint32_t requestSeq)
     failRsp.code = 1;
     failRsp.accid = 0;
     failRsp.gatewayConnID = it->second.gatewayConnID;
+    const ConnID gatewayConnID = it->second.gatewayConnID;
     m_server.SendMsg(it->second.replyConn,
                      static_cast<uint16_t>(InternalMsgID::REC_VALIDATE_TOKEN_RSP),
                      reinterpret_cast<char*>(&failRsp), sizeof(failRsp));
     m_pendingVerifyToken.erase(it);
     LOG_WARN("票据校验外联回包失败: seq=%u", requestSeq);
+    logLoginFlow(LoginFlowPhase::GATEWAY_AUTH, 0, 0, gatewayConnID, 1,
+                 "Login校验外联失败");
 }
 
 void RecordServer::onExternForwardRsp(ConnID /*fromConn*/, const char* data, uint16_t len)
@@ -473,6 +489,8 @@ void RecordServer::onLoginVerifyTokenRsp(ConnID /*fromConn*/, const Msg_Login_Ve
     m_server.SendMsg(it->second.replyConn,
                      static_cast<uint16_t>(InternalMsgID::REC_VALIDATE_TOKEN_RSP),
                      reinterpret_cast<char*>(&out), sizeof(out));
+    logLoginFlow(LoginFlowPhase::GATEWAY_AUTH, rsp.accid, 0, out.gatewayConnID, rsp.code,
+                 rsp.code == 0 ? "Record校验token成功" : "Record校验token失败");
     m_pendingVerifyToken.erase(it);
 }
 
@@ -503,6 +521,8 @@ void RecordServer::CleanupPendingVerifyTokenTimeout()
                          reinterpret_cast<char*>(&rsp), sizeof(rsp));
         m_pendingVerifyToken.erase(it);
         LOG_WARN("票据校验超时已回收: seq=%u", seq);
+        logLoginFlow(LoginFlowPhase::GATEWAY_AUTH, 0, 0, rsp.gatewayConnID, 1,
+                     "Login校验超时");
     }
 }
 

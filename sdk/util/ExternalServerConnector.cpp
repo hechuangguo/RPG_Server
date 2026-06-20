@@ -5,6 +5,7 @@
 
 #include "ExternalServerConnector.h"
 
+#include "../log/Logger.h"
 #include "../net/NetTls.h"
 #include "../timer/TimerMgr.h"
 
@@ -14,6 +15,18 @@ namespace
 {
 constexpr uint32_t MIN_RETRY_MS = 1000;
 constexpr uint32_t MAX_RETRY_MS = 30000;
+
+const char* externalServerName(SubServerType type)
+{
+    switch (type)
+    {
+    case SubServerType::LOGGER: return "LoggerServer";
+    case SubServerType::GLOBAL: return "GlobalServer";
+    case SubServerType::ZONE:   return "ZoneServer";
+    case SubServerType::LOGIN:  return "LoginServer";
+    default:                    return "ExternalServer";
+    }
+}
 }  // namespace
 
 ExternalServerConnector::ExternalServerConnector(INetCallback* cb)
@@ -73,6 +86,8 @@ void ExternalServerConnector::tickReconnect(uint64_t nowMs)
     wireTlsClient(m_client);
     if (!m_client.Connect(m_entry.ip, m_entry.port))
     {
+        LOG_DEBUG("外联 TCP 连接失败: %s %s:%u（进程未启动时可忽略）",
+                  externalServerName(m_entry.type), m_entry.ip.c_str(), m_entry.port);
         m_retryDelayMs = std::min(m_retryDelayMs * 2, MAX_RETRY_MS);
     }
     m_nextRetryMs = nowMs + m_retryDelayMs;

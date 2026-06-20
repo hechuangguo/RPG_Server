@@ -78,14 +78,28 @@ bool TcpConnection::driveTlsHandshake()
     if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE)
         return false;
 
-    LOG_WARN("TLS handshake failed: conn=%u side=%s sslErr=%d",
-             m_id, m_serverSide ? "server" : "client", err);
-    unsigned long sslCode = 0;
-    while ((sslCode = ERR_get_error()) != 0)
+    if (!m_tlsFailLogged)
     {
-        char buf[256];
-        ERR_error_string_n(sslCode, buf, sizeof(buf));
-        LOG_WARN("TLS handshake detail: conn=%u %s", m_id, buf);
+        m_tlsFailLogged = true;
+        /** 出站重连时对端未就绪常见 SYSCALL 错误，降级 DEBUG 避免刷 WARN */
+        const bool expectedClientRetry = !m_serverSide && err == SSL_ERROR_SYSCALL;
+        if (expectedClientRetry)
+        {
+            LOG_DEBUG("TLS handshake failed: conn=%u side=client sslErr=%d (peer not ready?)",
+                      m_id, err);
+        }
+        else
+        {
+            LOG_WARN("TLS handshake failed: conn=%u side=%s sslErr=%d",
+                     m_id, m_serverSide ? "server" : "client", err);
+            unsigned long sslCode = 0;
+            while ((sslCode = ERR_get_error()) != 0)
+            {
+                char buf[256];
+                ERR_error_string_n(sslCode, buf, sizeof(buf));
+                LOG_WARN("TLS handshake detail: conn=%u %s", m_id, buf);
+            }
+        }
     }
 
     Close();
@@ -107,7 +121,7 @@ bool TcpConnection::SendMsg(uint8_t module, uint8_t sub, const char* data, uint1
         return false;
     if (len > 0 && data && !m_sendBuf.Write(data, len))
         return false;
-    if (!m_closed)
+    if (!m_closed && !m_inReadHandler)
         OnWritable();
     return true;
 }
@@ -194,7 +208,15 @@ void TcpConnection::OnReadable()
         readPlain();
 
     if (!m_closed)
+    {
+        m_inReadHandler = true;
         processMessages();
+        m_inReadHandler = false;
+    }
+
+    /** 读完成后刷新 handler 内入队的回复（避免 SSL_write 重入 read 栈） */
+    if (!m_closed && m_sendBuf.ReadableBytes() > 0)
+        OnWritable();
 }
 
 void TcpConnection::writePlain()
@@ -267,10 +289,14 @@ void TcpConnection::freeSsl()
 {
     if (m_ssl)
     {
-        SSL_shutdown(m_ssl);
+        /** 仅 Established 做 graceful shutdown；握手中 SSL_free 即可释放会话状态 */
+        if (m_tlsState == TlsState::Established)
+            SSL_shutdown(m_ssl);
         SSL_free(m_ssl);
         m_ssl = nullptr;
     }
+    m_tlsState = TlsState::None;
+    m_tlsFailLogged = false;
 }
 
 void TcpConnection::Close()

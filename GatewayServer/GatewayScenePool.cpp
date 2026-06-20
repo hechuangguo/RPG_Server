@@ -72,3 +72,13 @@ bool GatewayScenePool::hasAnyConnected() const
     }
     return false;
 }
+
+bool GatewayScenePool::hasAnyCanSend() const
+{
+    for (const auto& client : m_clients)
+    {
+        if (client && client->canSend())
+            return true;
+    }
+    return false;
+}

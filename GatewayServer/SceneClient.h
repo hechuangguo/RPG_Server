@@ -40,6 +40,9 @@ public:
     /** @brief 是否已连接 */
     bool isConnected() const;
 
+    /** @brief TLS 握手完成、可 SendMsg */
+    bool canSend() const;
+
     /** @brief 底层 TcpClient（兼容现有 clientFor 指针 API） */
     TcpClient* tcpClient() { return m_client.get(); }
 

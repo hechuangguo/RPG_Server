@@ -13,8 +13,10 @@
 #include "SessionSceneManager.h"
 #include "SessionLoginMsg.h"
 #include "../sdk/net/GwClientRelay.h"
+#include "../sdk/util/LoginFlowLog.h"
 
 #include <vector>
+#include <cstdio>
 
 namespace {
 
@@ -101,10 +103,10 @@ bool SessionServer::Init(const std::string& ip, uint16_t port,
     registerHandlers();
 
     const uint64_t connectDeadline = TimerMgr::NowMs() + 5000;
-    while (!m_recordClient.IsConnected() && TimerMgr::NowMs() < connectDeadline)
+    while (!m_recordClient.canSend() && TimerMgr::NowMs() < connectDeadline)
         pollForRelationSync();
 
-    if (!m_recordClient.IsConnected())
+    if (!m_recordClient.canSend())
     {
         LOG_FATAL("存档服连接未就绪（请先启动存档服）");
         return false;
@@ -128,10 +130,10 @@ void SessionServer::Run()
 {
     while (true)
     {
-        m_superClient.Poll(0);
-        m_recordClient.Poll(0);
         m_server.Poll(10);
         TimerMgr::Instance().Update();
+        m_superClient.Poll(0);
+        m_recordClient.Poll(0);
     }
 }
 
@@ -170,19 +172,37 @@ bool SessionServer::preloadRelations()
     m_relationPreloadDone = false;
     m_relationPreloadOk   = false;
 
-    Msg_REC_RelationPreloadReq req{};
-    if (!m_recordClient.SendMsg((uint16_t)InternalMsgID::REC_RELATION_PRELOAD_REQ,
-                                reinterpret_cast<char*>(&req), sizeof(req)))
+    if (!m_recordClient.canSend())
     {
-        LOG_ERR("发送 REC_RELATION_PRELOAD_REQ 失败");
+        LOG_ERR("REC_RELATION_PRELOAD_REQ 未发送：存档服 TLS 未就绪");
+        return false;
+    }
+
+    Msg_REC_RelationPreloadReq req{};
+    if (!m_recordClient.SendMsg(
+            (uint16_t)InternalMsgID::REC_RELATION_PRELOAD_REQ,
+            reinterpret_cast<char*>(&req), sizeof(req)))
+    {
+        LOG_ERR("REC_RELATION_PRELOAD_REQ 未发送：SendMsg 失败");
         return false;
     }
 
     const uint64_t deadline = TimerMgr::NowMs() + RELATION_SYNC_TIMEOUT_MS;
     while (!m_relationPreloadDone && TimerMgr::NowMs() < deadline)
+    {
         pollForRelationSync();
+        if (!m_recordClient.IsConnected())
+        {
+            LOG_ERR("REC_RELATION_PRELOAD_REQ 响应等待中存档服连接已断开");
+            return false;
+        }
+    }
 
-    return m_relationPreloadDone && m_relationPreloadOk;
+    if (m_relationPreloadDone && m_relationPreloadOk)
+        return true;
+
+    LOG_ERR("REC_RELATION_PRELOAD_REQ 响应超时（%ums）", RELATION_SYNC_TIMEOUT_MS);
+    return false;
 }
 
 bool SessionServer::loadRelationSync(UserID userID, RelationRowData& out)
@@ -281,6 +301,8 @@ void SessionServer::onRelationLoadRsp(ConnID /*fromConn*/, const char* data, uin
 
 void SessionServer::registerToSuper()
 {
+    if (!m_superClient.canSend())
+        return;
     Msg_S2S_Register reg{};
     reg.serverType = (uint8_t)SubServerType::SESSION;
     reg.serverID = m_self.id;
@@ -293,6 +315,8 @@ void SessionServer::registerToSuper()
 
 void SessionServer::sendHeartbeat()
 {
+    if (!m_superClient.canSend())
+        return;
     Msg_S2S_Heartbeat hb{};
     hb.seq = ++m_hbSeq;
     hb.timestamp = TimerMgr::NowMs();
@@ -359,6 +383,9 @@ void SessionServer::onResolveMapReq(ConnID /*fromConn*/, const Msg_SES_ResolveMa
                           reinterpret_cast<char*>(&rsp), sizeof(rsp));
     LOG_INFO("地图解析结果: user=%llu map=%u -> sceneServerId=%u code=%d",
              req.userID, req.mapId, rsp.sceneServerId, rsp.code);
+    char detail[64];
+    snprintf(detail, sizeof(detail), "地图解析 map=%u scene=%u", req.mapId, rsp.sceneServerId);
+    logLoginFlow(LoginFlowPhase::SUPER_ENTER, 0, req.userID, 0, rsp.code, detail);
 }
 
 void SessionServer::onCopyCreateReq(ConnID fromConn, const Msg_SES_CopyCreateReq& req)

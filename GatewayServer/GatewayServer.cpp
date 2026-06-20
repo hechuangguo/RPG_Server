@@ -22,6 +22,7 @@
 namespace {
 
 constexpr uint64_t UPSTREAM_CONNECT_TIMEOUT_MS = 5000;
+constexpr uint64_t GATEWAY_AUTH_TIMEOUT_MS = 10000;
 
 /** @brief 区内服出站 TcpClient 回调：仅派发消息，不创建客户端会话 */
 class GatewayUpstreamCallback : public INetCallback
@@ -66,13 +67,21 @@ bool GatewayServer::Init(uint16_t clientPort,
     { LOG_FATAL("客户端监听失败"); return false; }
 
     wireTlsClient(m_superClient);
-    m_superClient.Connect(cfg.superIP, (uint16_t)cfg.superPort);
+    m_superIP = cfg.superIP;
+    m_superPort = (uint16_t)cfg.superPort;
+    m_superClient.Connect(m_superIP, m_superPort);
     m_clientPort = clientPort;
     m_zoneId = cfg.zoneId;
     m_gameType = cfg.gameType;
 
     registerHandlers();
-    TimerMgr::Instance().Register(500,   0,     [this]{ registerToSuper(); });
+    scheduleSuperRegister();
+    TimerMgr::Instance().Register(5000, 5000, [this] {
+        if (m_superClient.IsConnected())
+            return;
+        LOG_WARN("超级服出站已断开，尝试重连");
+        tryReconnectSuper();
+    });
     TimerMgr::Instance().Register(10000, 10000, [this]{ sendHeartbeat(); });
     TimerMgr::Instance().Register(30000, 30000, [this]{ checkTimeout(); });
     TimerMgr::Instance().Register(10000, 10000, [this]{ sendLoginGatewayHeartbeat(); });
@@ -85,6 +94,9 @@ void GatewayServer::Run()
 {
     while (true)
     {
+        m_clientServer.Poll(5);
+        TimerMgr::Instance().Update();
+        /** 定时器回调 SendMsg 后统一 Poll 出站，避免同迭代内重复 Poll */
         m_superClient.Poll(0);
         if (m_upstreamReady)
         {
@@ -92,8 +104,6 @@ void GatewayServer::Run()
             m_sessionClient.Poll(0);
             m_scenePool.pollAll();
         }
-        m_clientServer.Poll(5);
-        TimerMgr::Instance().Update();
     }
 }
 
@@ -131,10 +141,15 @@ void GatewayServer::registerHandlers()
 
 void GatewayServer::onSuperRegisterRsp(ConnID /*fromConn*/, const char* /*data*/, uint16_t /*len*/)
 {
-    if (m_upstreamReady)
+    if (!m_upstreamReady)
+    {
+        LOG_INFO("收到 S2S_REGISTER_RSP，开始建立上游连接");
+        setupUpstreamClients();
         return;
-    LOG_INFO("收到 S2S_REGISTER_RSP，开始建立上游连接");
-    setupUpstreamClients();
+    }
+    /** Super 重连后需重新上报；已成功上报则忽略重复 REGISTER_RSP */
+    if (!m_reportedToLogin)
+        reportGatewayToSuper();
 }
 
 void GatewayServer::setupUpstreamClients()
@@ -182,8 +197,8 @@ void GatewayServer::pollUpstreamUntilReady()
         m_scenePool.pollAll();
         m_superClient.Poll(0);
         m_clientServer.Poll(0);
-        if (m_recordClient.IsConnected() && m_sessionClient.IsConnected() &&
-            m_scenePool.hasAnyConnected())
+        if (m_recordClient.canSend() && m_sessionClient.canSend() &&
+            m_scenePool.hasAnyCanSend())
         {
             return;
         }
@@ -193,7 +208,7 @@ void GatewayServer::pollUpstreamUntilReady()
 
 void GatewayServer::reportGatewayToSuper()
 {
-    if (!m_superClient.IsConnected())
+    if (!m_superClient.canSend())
     {
         LOG_WARN("超级服未连接，跳过网关注册");
         return;
@@ -219,7 +234,7 @@ void GatewayServer::reportGatewayToSuper()
 
 void GatewayServer::sendLoginGatewayHeartbeat()
 {
-    if (!m_upstreamReady || !m_superClient.IsConnected())
+    if (!m_upstreamReady || !m_superClient.canSend())
         return;
     if (!m_reportedToLogin)
     {
@@ -261,6 +276,13 @@ void GatewayServer::handleClientMsg(ConnID connID, uint8_t module, uint8_t sub,
     auto user = m_userManager.findUser(connID);
     if (!user) return;
     user->touchHeartbeat();
+
+    if (user->getClientState() == ClientState::CONNECTED && !user->isFirstUplinkLogged())
+    {
+        user->setFirstUplinkLogged(true);
+        LOG_INFO("客户端首条上行: conn=%u mod=0x%02X sub=0x%02X len=%u",
+                 connID, module, sub, len);
+    }
 
     const ValidateResult vr =
         ClientMsgValidator::check(user.get(), module, sub, data, len);
@@ -327,6 +349,8 @@ void GatewayServer::onGatewayAuth(ConnID connID, const char* data, uint16_t len)
     if (!m_upstreamReady || !m_recordClient.IsConnected())
     {
         sendClientError(connID, ValidateResult::BAD_STATE);
+        logLoginFlow(LoginFlowPhase::GATEWAY_AUTH, 0, 0, connID,
+                     static_cast<int32_t>(ValidateResult::BAD_STATE), "上游未就绪");
         return;
     }
     if (len < sizeof(Msg_C2S_GatewayAuthReq))
@@ -708,7 +732,9 @@ void GatewayServer::onListCharactersRsp(ConnID /*fromConn*/, const char* data, u
         roleIds.insert(entries[i].userID);
     user->setOwnedRoleIds(std::move(roleIds));
     user->setRoleListReady(true);
-    logLoginFlow(LoginFlowPhase::CHAR_LIST, 0, 0, clientConn, 0, nullptr);
+    char detail[32];
+    snprintf(detail, sizeof(detail), "下发 count=%u", hdr->count);
+    logLoginFlow(LoginFlowPhase::CHAR_LIST, user->getAccid(), 0, clientConn, 0, detail);
 }
 
 void GatewayServer::onCreateCharacterRsp(ConnID /*fromConn*/, const Msg_REC_CreateCharacterRsp& rsp)
@@ -857,6 +883,17 @@ void GatewayServer::forwardClientMsg(TcpClient& target, ConnID connID,
 void GatewayServer::checkTimeout()
 {
     uint64_t now = TimerMgr::NowMs();
+    m_userManager.forEach([&](ConnID connId, GatewayUser& user) {
+        if (user.getClientState() == ClientState::CONNECTED &&
+            !user.isAuthWarnSent() &&
+            now > user.getConnectedAtMs() &&
+            now - user.getConnectedAtMs() >= GATEWAY_AUTH_TIMEOUT_MS)
+        {
+            user.setAuthWarnSent(true);
+            logLoginFlow(LoginFlowPhase::GATEWAY_AUTH, 0, 0, connId, -1,
+                         "连接后未鉴权超时");
+        }
+    });
     for (ConnID cid : m_userManager.collectExpiredConnIds(now, 60000))
     {
         LOG_WARN("客户端心跳超时: connID=%u", cid);
@@ -873,6 +910,8 @@ bool GatewayServer::sendToClient(ConnID connId, uint8_t module, uint8_t sub,
 
 void GatewayServer::registerToSuper()
 {
+    if (!m_superClient.canSend())
+        return;
     Msg_S2S_Register reg{};
     reg.serverType = (uint8_t)SubServerType::GATEWAY;
     reg.serverID   = m_self.id;
@@ -884,8 +923,57 @@ void GatewayServer::registerToSuper()
                           reinterpret_cast<char*>(&reg), sizeof(reg));
 }
 
+void GatewayServer::rescheduleSuperRegisterTimer(uint64_t delayMs)
+{
+    if (m_superRegisterTimerId != INVALID_TIMER_ID)
+    {
+        TimerMgr::Instance().Cancel(m_superRegisterTimerId);
+        m_superRegisterTimerId = INVALID_TIMER_ID;
+    }
+    m_superRegisterTimerId = TimerMgr::Instance().Register(delayMs, 0, [this] {
+        onSuperRegisterTimerFired();
+    });
+}
+
+void GatewayServer::scheduleSuperRegister()
+{
+    if (m_superRegisterPending)
+        return;
+    m_superRegisterPending = true;
+    rescheduleSuperRegisterTimer(500);
+}
+
+void GatewayServer::onSuperRegisterTimerFired()
+{
+    if (!m_superClient.canSend())
+    {
+        rescheduleSuperRegisterTimer(500);
+        return;
+    }
+    m_superRegisterTimerId = INVALID_TIMER_ID;
+    m_superRegisterPending = false;
+    registerToSuper();
+}
+
+void GatewayServer::tryReconnectSuper()
+{
+    m_superClient.Disconnect();
+    wireTlsClient(m_superClient);
+    if (!m_superClient.Connect(m_superIP, m_superPort))
+    {
+        LOG_WARN("超级服重连失败: %s:%u", m_superIP.c_str(), m_superPort);
+        return;
+    }
+    LOG_INFO("超级服重连已发起: %s:%u", m_superIP.c_str(), m_superPort);
+    m_reportedToLogin = false;
+    m_superRegisterPending = false;
+    scheduleSuperRegister();
+}
+
 void GatewayServer::sendHeartbeat()
 {
+    if (!m_superClient.canSend())
+        return;
     Msg_S2S_Heartbeat hb{};
     hb.seq = ++m_hbSeq;
     hb.timestamp = TimerMgr::NowMs();
