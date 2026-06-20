@@ -240,6 +240,8 @@ void SceneServer::onUserLeave(ConnID /*fromConn*/, const char* data, uint16_t le
     callLuaOnLeave(uid);
     SceneUserManager::Instance().removeUser(uid);
     LOG_INFO("用户离开场景: userID=%llu", uid);
+    logLoginFlow(LoginFlowPhase::CHAR_LEAVE, 0, uid, user->getGatewayClientConn(), 0,
+                 "Scene清理");
 }
 
 void SceneServer::sendCharBaseToRecord(const SceneUser& user)

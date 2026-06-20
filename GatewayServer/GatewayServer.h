@@ -152,7 +152,11 @@ private:
     void onLogoutReq(ConnID connID, const char* data, uint16_t len);
 
     /** @brief 通知 Scene 离场并可选通知 Super 清在线映射 */
-    void leaveWorldSession(const std::shared_ptr<GatewayUser>& user, bool notifySuper);
+    void leaveWorldSession(const std::shared_ptr<GatewayUser>& user, bool notifySuper,
+                           const char* reason = nullptr);
+
+    /** @brief 清除进世界绑定（userID/scene/txn），不改动账号鉴权态 */
+    void clearInWorldUserState(const std::shared_ptr<GatewayUser>& user);
 
     /** @brief 重置为账号已认证态（ACCOUNT_OK），清空角色进世界绑定 */
     void resetToAccountSession(const std::shared_ptr<GatewayUser>& user);

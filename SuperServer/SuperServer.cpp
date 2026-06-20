@@ -368,6 +368,9 @@ void SuperServer::onUserLeaveReq(ConnID /*connID*/, const Msg_GW_UserLeaveReq& r
     if (userID == INVALID_USER_ID)
         return;
 
+    LOG_INFO("收到离世界请求: userID=%llu gatewayClientConn=%u",
+             userID, req.gatewayClientConnID);
+
     auto pendingIt = m_pendingLogins.find(userID);
     if (pendingIt != m_pendingLogins.end())
     {

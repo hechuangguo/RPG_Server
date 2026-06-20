@@ -118,8 +118,11 @@ void GatewayServer::OnDisconnect(ConnID id)
     auto user = m_userManager.findUser(id);
     if (user)
     {
+        LOG_INFO("客户端连接断开: connID=%u userID=%llu state=%d",
+                 id, user->GetID(),
+                 static_cast<int>(user->getClientState()));
         if (user->GetID() != INVALID_USER_ID)
-            leaveWorldSession(user, true);
+            leaveWorldSession(user, true, "客户端TCP断开");
         m_userManager.removeUser(id);
     }
 }
@@ -475,7 +478,8 @@ void GatewayServer::onCreateUser(ConnID connID, const char* data, uint16_t len)
     logLoginFlow(LoginFlowPhase::CHAR_CREATE, user->getAccid(), 0, connID, 0, req->name);
 }
 
-void GatewayServer::leaveWorldSession(const std::shared_ptr<GatewayUser>& user, bool notifySuper)
+void GatewayServer::leaveWorldSession(const std::shared_ptr<GatewayUser>& user, bool notifySuper,
+                                      const char* reason)
 {
     if (!user || user->GetID() == INVALID_USER_ID)
         return;
@@ -502,11 +506,11 @@ void GatewayServer::leaveWorldSession(const std::shared_ptr<GatewayUser>& user, 
                               reinterpret_cast<char*>(&leaveReq), sizeof(leaveReq));
     }
 
-    logLoginFlow(LoginFlowPhase::CHAR_LEAVE, user->getAccid(), uid, connId, 0, nullptr,
+    logLoginFlow(LoginFlowPhase::CHAR_LEAVE, user->getAccid(), uid, connId, 0, reason,
                  user->getLoginTxnId());
 }
 
-void GatewayServer::resetToAccountSession(const std::shared_ptr<GatewayUser>& user)
+void GatewayServer::clearInWorldUserState(const std::shared_ptr<GatewayUser>& user)
 {
     if (!user)
         return;
@@ -514,6 +518,14 @@ void GatewayServer::resetToAccountSession(const std::shared_ptr<GatewayUser>& us
     user->setUserId(INVALID_USER_ID);
     user->setSceneServerId(0);
     user->setLoginTxnId(0);
+}
+
+void GatewayServer::resetToAccountSession(const std::shared_ptr<GatewayUser>& user)
+{
+    if (!user)
+        return;
+
+    clearInWorldUserState(user);
     user->setOwnedRoleIds({});
     user->setRoleListReady(false);
     user->setClientState(ClientState::ACCOUNT_OK);
@@ -550,7 +562,13 @@ void GatewayServer::onLogoutReq(ConnID connID, const char* data, uint16_t len)
     const uint32_t zoneId = user->getZoneId();
     const UserID leavingUserId = user->GetID();
 
-    leaveWorldSession(user, true);
+    LOG_INFO("客户端退出请求: conn=%u userID=%llu action=%s",
+             connID, leavingUserId,
+             action == LogoutAction::RETURN_CHAR_SELECT ? "回选角" : "回登录");
+
+    leaveWorldSession(user, true,
+                      action == LogoutAction::RETURN_CHAR_SELECT ? "回选角前离世界"
+                                                                 : "回登录前离世界");
     resetToAccountSession(user);
 
     rsp.code = 0;
@@ -869,6 +887,12 @@ void GatewayServer::onKickClient(ConnID /*fromConn*/, const char* data, uint16_t
 {
     if (len < sizeof(uint32_t)) return;
     uint32_t clientConnID = *reinterpret_cast<const uint32_t*>(data);
+    auto user = m_userManager.findUser(clientConnID);
+    if (user && user->GetID() != INVALID_USER_ID)
+    {
+        leaveWorldSession(user, true, "Super踢线");
+        clearInWorldUserState(user);
+    }
     LOG_INFO("踢下线客户端: connID=%u", clientConnID);
     m_clientServer.Kick(clientConnID);
     m_userManager.removeUser(clientConnID);
@@ -897,6 +921,12 @@ void GatewayServer::checkTimeout()
     });
     for (ConnID cid : m_userManager.collectExpiredConnIds(now, 60000))
     {
+        auto user = m_userManager.findUser(cid);
+        if (user && user->GetID() != INVALID_USER_ID)
+        {
+            leaveWorldSession(user, true, "心跳超时");
+            clearInWorldUserState(user);
+        }
         LOG_WARN("客户端心跳超时: connID=%u", cid);
         m_clientServer.Kick(cid);
         m_userManager.removeUser(cid);

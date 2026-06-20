@@ -174,8 +174,23 @@ grep '\[登录链路\]' logs/gateway.log logs/login.log logs/super.log
 
 ### 6.2 正常成功顺序（E2E 参考）
 
+**登录进世界**：
+
 ```
 账号登录 → 网关鉴权 → 角色列表 → 选角 → 超级服进世界 → 场景入场
+```
+
+**退出（`C2S_LOGOUT_REQ` / TCP 断开）**：
+
+```
+# 回选角（action=1）
+客户端退出请求 → 角色离世界(回选角前离世界) → 退出登录(返回选角) → 角色列表
+
+# 回登录（action=2）
+客户端退出请求 → 角色离世界(回登录前离世界) → 退出登录(返回登录)
+
+# 异常断开 / 踢线 / 心跳超时
+角色离世界(客户端TCP断开|Super踢线|心跳超时) → Scene(Scene清理) → Super(收到离世界请求)
 ```
 
 ### 6.3 常见卡住场景
@@ -221,6 +236,29 @@ Gateway 额外诊断日志：
 
 - `客户端首条上行: conn=... mod=... sub=... len=...` — CONNECTED 态收到首包
 - `Gateway 票据鉴权: account=...` — 收到合法鉴权请求
+
+### 6.5 客户端退出排查
+
+**grep**：
+
+```bash
+grep '\[登录链路\].*角色离世界\|退出登录' logs/gateway.log logs/scene.log logs/super.log
+grep '客户端退出请求\|客户端连接断开' logs/gateway.log
+```
+
+| detail / 日志 | 含义 | 触发 |
+|---------------|------|------|
+| `客户端退出请求 action=回选角` | 收到 `C2S_LOGOUT_REQ` action=1 | 主动回选角 |
+| `客户端退出请求 action=回登录` | 收到 `C2S_LOGOUT_REQ` action=2 | 主动回登录 UI |
+| `phase=退出登录 ... 返回选角` | 已下发 `S2C_LOGOUT_RSP`，随后拉角色列表 | 回选角成功 |
+| `phase=退出登录 ... 返回登录` | 已下发 `S2C_LOGOUT_RSP` | 回登录成功 |
+| `phase=角色离世界 ... 回选角前离世界` | Gateway 通知 Scene/Super 离场 | logout action=1 |
+| `phase=角色离世界 ... 回登录前离世界` | 同上 | logout action=2 |
+| `phase=角色离世界 ... 客户端TCP断开` | 未发 logout 包直接断线 | 关客户端/网络断开 |
+| `phase=角色离世界 ... Super踢线` | Super 下发踢线 | 重复登录等 |
+| `phase=角色离世界 ... 心跳超时` | 60s 无心跳 | 客户端挂起 |
+| `phase=角色离世界 ... Scene清理` | Scene 完成用户移除与存档 | `SCE_USER_LEAVE` |
+| `收到离世界请求`（super.log） | Super 清 pending/在线映射 | `GW_USER_LEAVE_REQ` |
 
 ---
 
