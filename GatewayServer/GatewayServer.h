@@ -111,6 +111,22 @@ private:
     /** @brief 轮询区内出站直至就绪或超时 */
     void pollUpstreamUntilReady();
 
+    /** @brief Record 是否 TLS 就绪、可发 REC_VALIDATE_TOKEN_REQ */
+    bool isRecordReady() const;
+
+    /** @brief Record 断开时重连（已就绪则 no-op） */
+    void reconnectRecordClient();
+
+    /**
+     * @brief 等待 Record 上游就绪（鉴权前短轮询 + 必要时重连）
+     * @param timeoutMs 最长等待毫秒
+     * @return Record canSend 时 true
+     */
+    bool ensureRecordReady(uint64_t timeoutMs);
+
+    /** @brief 周期性检测 Record；断开则暂停 Login 注册并尝试重连 */
+    void upstreamHealthCheck();
+
     /** @brief 经 Super 向 LoginServer 上报本网关 */
     void reportGatewayToSuper();
 
@@ -270,7 +286,7 @@ private:
     uint16_t  m_clientPort = 9005;   /**< 客户端监听端口 */
     ServerEntry m_self;              /**< 本进程在 ServerList 中的拓扑条目（注册上报用） */
     ServerList m_serverList;         /**< 启动期拉取的集群拓扑（延迟出站用） */
-    bool m_upstreamReady = false;    /**< 是否已完成区内出站连接 */
+    bool m_upstreamReady = false;    /**< Record 上游 TLS 就绪，可接受网关鉴权 */
     bool m_reportedToLogin = false;  /**< 是否已向 Login 上报网关（经 Super） */
     bool m_superRegisterPending = false; /**< Super 注册重试链进行中（防并发定时器） */
     TimerID m_superRegisterTimerId = INVALID_TIMER_ID; /**< 当前 Super 注册定时器 ID */

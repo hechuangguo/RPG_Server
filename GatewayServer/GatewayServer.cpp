@@ -26,6 +26,7 @@
 namespace {
 
 constexpr uint64_t UPSTREAM_CONNECT_TIMEOUT_MS = 5000;
+constexpr uint64_t GATEWAY_AUTH_WAIT_MS = 3000;
 constexpr uint64_t GATEWAY_AUTH_TIMEOUT_MS = 10000;
 
 constexpr uint8_t kLoginModule  = static_cast<uint8_t>(rpg::client::LOGIN);
@@ -110,6 +111,7 @@ bool GatewayServer::Init(uint16_t clientPort,
     TimerMgr::Instance().Register(10000, 10000, [this]{ sendHeartbeat(); });
     TimerMgr::Instance().Register(30000, 30000, [this]{ checkTimeout(); });
     TimerMgr::Instance().Register(10000, 10000, [this]{ sendLoginGatewayHeartbeat(); });
+    TimerMgr::Instance().Register(5000, 5000, [this]{ upstreamHealthCheck(); });
 
     LOG_INFO("网关服启动完成（等待 S2S_REGISTER_RSP 后连接上游）");
     return true;
@@ -123,12 +125,9 @@ void GatewayServer::Run()
         TimerMgr::Instance().Update();
         /** 定时器回调 SendMsg 后统一 Poll 出站，避免同迭代内重复 Poll */
         m_superClient.Poll(0);
-        if (m_upstreamReady)
-        {
-            m_recordClient.Poll(0);
-            m_sessionClient.Poll(0);
-            m_scenePool.pollAll();
-        }
+        m_recordClient.Poll(0);
+        m_sessionClient.Poll(0);
+        m_scenePool.pollAll();
     }
 }
 
@@ -187,6 +186,7 @@ void GatewayServer::setupUpstreamClients()
 
     if (const ServerEntry* rec = m_serverList.findFirst(SubServerType::RECORD))
     {
+        m_recordClient.Disconnect();
         wireTlsClient(m_recordClient);
         m_recordClient.Connect(rec->ip, rec->port);
     }
@@ -206,13 +206,17 @@ void GatewayServer::setupUpstreamClients()
 
     pollUpstreamUntilReady();
 
-    m_upstreamReady = true;
-    LOG_INFO("网关上游就绪: record=%d session=%d scene=%d",
-             m_recordClient.IsConnected() ? 1 : 0,
-             m_sessionClient.IsConnected() ? 1 : 0,
-             m_scenePool.hasAnyConnected() ? 1 : 0);
+    m_upstreamReady = isRecordReady();
+    LOG_INFO("网关上游就绪: record=%d session=%d scene=%d upstreamReady=%d",
+             m_recordClient.canSend() ? 1 : 0,
+             m_sessionClient.canSend() ? 1 : 0,
+             m_scenePool.hasAnyCanSend() ? 1 : 0,
+             m_upstreamReady ? 1 : 0);
 
-    reportGatewayToSuper();
+    if (m_upstreamReady)
+        reportGatewayToSuper();
+    else
+        LOG_WARN("Record 未就绪，暂不向 Login 注册网关");
 }
 
 void GatewayServer::pollUpstreamUntilReady()
@@ -234,8 +238,90 @@ void GatewayServer::pollUpstreamUntilReady()
     LOG_WARN("网关上游连接超时（可能仅部分连通）");
 }
 
+bool GatewayServer::isRecordReady() const
+{
+    return m_recordClient.canSend();
+}
+
+void GatewayServer::reconnectRecordClient()
+{
+    if (isRecordReady())
+        return;
+    m_recordClient.Disconnect();
+    const ServerEntry* rec = m_serverList.findFirst(SubServerType::RECORD);
+    if (!rec)
+    {
+        LOG_WARN("重连 Record 失败: 服务器列表缺少 RECORD 条目");
+        return;
+    }
+    wireTlsClient(m_recordClient);
+    if (!m_recordClient.Connect(rec->ip, rec->port))
+        LOG_WARN("重连 Record 发起失败: %s:%u", rec->ip.c_str(), rec->port);
+}
+
+bool GatewayServer::ensureRecordReady(uint64_t timeoutMs)
+{
+    if (isRecordReady())
+        return true;
+    reconnectRecordClient();
+    const uint64_t deadline = TimerMgr::NowMs() + timeoutMs;
+    while (TimerMgr::NowMs() < deadline)
+    {
+        m_recordClient.Poll(10);
+        m_superClient.Poll(0);
+        if (isRecordReady())
+        {
+            if (!m_upstreamReady)
+            {
+                m_upstreamReady = true;
+                LOG_INFO("Record 上游已恢复（鉴权等待期间）");
+                if (m_superClient.canSend() && !m_reportedToLogin)
+                    reportGatewayToSuper();
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+void GatewayServer::upstreamHealthCheck()
+{
+    if (isRecordReady())
+    {
+        if (!m_upstreamReady)
+        {
+            m_upstreamReady = true;
+            LOG_INFO("Record 上游已恢复");
+            if (m_superClient.canSend() && !m_reportedToLogin)
+                reportGatewayToSuper();
+        }
+        return;
+    }
+    if (m_upstreamReady)
+    {
+        LOG_WARN("Record 上游不可用，暂停 Login 网关注册");
+        m_upstreamReady = false;
+        m_reportedToLogin = false;
+    }
+    reconnectRecordClient();
+    for (int i = 0; i < 5 && !isRecordReady(); ++i)
+        m_recordClient.Poll(10);
+    if (isRecordReady())
+    {
+        m_upstreamReady = true;
+        LOG_INFO("Record 上游重连成功");
+        if (m_superClient.canSend() && !m_reportedToLogin)
+            reportGatewayToSuper();
+    }
+}
+
 void GatewayServer::reportGatewayToSuper()
 {
+    if (!isRecordReady())
+    {
+        LOG_WARN("Record 未就绪，跳过网关注册");
+        return;
+    }
     if (!m_superClient.canSend())
     {
         LOG_WARN("超级服未连接，跳过网关注册");
@@ -262,7 +348,7 @@ void GatewayServer::reportGatewayToSuper()
 
 void GatewayServer::sendLoginGatewayHeartbeat()
 {
-    if (!m_upstreamReady || !m_superClient.canSend())
+    if (!m_upstreamReady || !isRecordReady() || !m_superClient.canSend())
         return;
     if (!m_reportedToLogin)
     {
@@ -376,11 +462,14 @@ void GatewayServer::sendClientError(ConnID connID, ValidateResult vr)
 
 void GatewayServer::onGatewayAuth(ConnID connID, const char* data, uint16_t len)
 {
-    if (!m_upstreamReady || !m_recordClient.IsConnected())
+    if (!ensureRecordReady(GATEWAY_AUTH_WAIT_MS))
     {
-        sendClientError(connID, ValidateResult::BAD_STATE);
-        logLoginFlow(LoginFlowPhase::GATEWAY_AUTH, 0, 0, connID,
-                     static_cast<int32_t>(ValidateResult::BAD_STATE), "上游未就绪");
+        rpg::login::S2CLoginRsp loginRsp;
+        loginRsp.set_code(-1);
+        loginRsp.set_msg("网关服务初始化中，请稍后重试");
+        sendClientProtoModule(m_clientServer, connID, kLoginModule,
+                     static_cast<uint8_t>(rpg::login::S2C_LOGIN_RSP), loginRsp);
+        logLoginFlow(LoginFlowPhase::GATEWAY_AUTH, 0, 0, connID, -1, "上游未就绪");
         return;
     }
     if (len < 1)
@@ -996,6 +1085,7 @@ void GatewayServer::tryReconnectSuper()
         return;
     }
     LOG_INFO("超级服重连已发起: %s:%u", m_superIP.c_str(), m_superPort);
+    m_upstreamReady = false;
     m_reportedToLogin = false;
     m_superRegisterPending = false;
     scheduleSuperRegister();
