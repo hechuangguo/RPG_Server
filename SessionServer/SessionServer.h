@@ -19,7 +19,6 @@
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
 #include "../protocal/InternalMsg.h"
-#include "../Common/ClientTypes.h"
 #include "../sdk/net/MsgId.h"
 #include "SessionUser.h"
 #include <mysql/mysql.h>

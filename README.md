@@ -104,7 +104,7 @@ RPG/
 │   ├── net/       # NetDefine、MsgId、TcpServer/Client/Connection
 │   ├── time/      # 墙钟：TimeUtil、AlarmClock
 │   └── timer/     # 单调时钟：TimerMgr（相对间隔调度）
-├── Common/        # Git Submodule → RPG_Common（*.proto；ClientTypes.h）
+├── Common/        # Git Submodule → RPG_Common（*.proto）
 ├── protocal/      # 服务器内部协议 InternalMsg.h
 ├── GatewayServer/ # 接入 + ClientMsgValidator/Router
 ├── LoginServer/   # 外联登录 + 网关列表（可选）

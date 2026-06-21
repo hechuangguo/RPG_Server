@@ -5,7 +5,7 @@
 
 #include "GatewayClientMsgRegister.h"
 #include "GatewayServer.h"
-#include "../Common/ClientTypes.h"
+#include "ClientCommon.pb.h"
 #include "../sdk/util/ClientMsgDispatcher.h"
 #include "../sdk/util/MsgHandlerBinder.h"
 #include "LoginCommon.pb.h"
@@ -14,8 +14,8 @@
 void GatewayClientMsgRegister(GatewayServer& server)
 {
     auto& d = ClientMsgDispatcher::Instance();
-    const uint8_t loginMod = static_cast<uint8_t>(ClientModule::LOGIN);
-    const uint8_t sysMod = static_cast<uint8_t>(ClientModule::SYSTEM);
+    const uint8_t loginMod = static_cast<uint8_t>(rpg::client::LOGIN);
+    const uint8_t sysMod = static_cast<uint8_t>(rpg::client::SYSTEM);
 
     registerClientRaw(d, &server, loginMod,
                       static_cast<uint8_t>(rpg::login::C2S_GATEWAY_AUTH_REQ),

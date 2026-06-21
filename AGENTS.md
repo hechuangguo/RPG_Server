@@ -42,7 +42,7 @@
 
 - 定义：`sdk/net/NetDefine.h`
 - 工具：`sdk/net/MsgId.h`（`makeMsgId` / `msgModule` / `msgSub`）
-- 客户端模块：`ClientModule` in `Common/ClientTypes.h`
+- 客户端模块：`ClientModule` in `Common/ClientCommon.proto`（生成 `ClientCommon.pb.h`）
 - 新客户端消息须在 `ClientMsgValidator` 白名单与 `ClientMsgRouter` 中登记路由；协议定义写入对应 `XxxCommon.proto` / `XxxMsg.proto`
 
 ## 常用路径
@@ -56,7 +56,8 @@ sdk/net/MsgId.h                  # module/sub 工具
 docs/PROTOCOL.md                 # 协议参考
 docs/SERVERS.md                  # 10 进程说明
 docs/COMMON.md                   # RPG_Common submodule 双端同步
-Common/ClientTypes.h             # ClientModule（submodule）
+Common/ClientCommon.proto        # ClientModule（submodule）
+Common/WireCommon.proto          # 帧常量与 WireMsgHeader（submodule）
 Common/*.proto                   # 客户端 Protobuf 真源
 Common/*.proto                     # 客户端 wire 真源（RPG_Common submodule）
 Protobuf/                          # protoc C++ 生成（scripts/gen_proto.sh）

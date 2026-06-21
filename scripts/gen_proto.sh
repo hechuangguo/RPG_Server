@@ -3,7 +3,7 @@
 # gen_proto.sh — 从 Common/*.proto 生成 Server C++ 代码到 Protobuf/
 #
 # 用法：./scripts/gen_proto.sh（Build.sh / autoinit.sh 自动调用）
-# 真源：Common/ 子模块（*.proto + ClientTypes.h 等）
+# 真源：Common/ 子模块（*.proto）
 # 输出：Protobuf/*.pb.h、Protobuf/*.pb.cc（禁止手改）
 # =============================================================================
 
@@ -39,6 +39,7 @@ mkdir -p "${OUT_CPP}"
 
 PROTO_FILES=(
     ClientCommon.proto
+    WireCommon.proto
     LoginCommon.proto
     LoginMsg.proto
     MapDataCommon.proto

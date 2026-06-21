@@ -39,7 +39,7 @@ void sendSpawnProto(SceneServer& server, uint32_t clientConn, const SceneEntry& 
     std::string body;
     if (!serializeSpawnEntity(msg, body))
         return;
-    server.SendToClient(clientConn, static_cast<uint8_t>(ClientModule::SCENE),
+    server.SendToClient(clientConn, static_cast<uint8_t>(rpg::client::SCENE),
                         static_cast<uint8_t>(rpg::mapdata::S2C_SPAWN_ENTITY),
                         body.data(), static_cast<uint16_t>(body.size()));
 }
@@ -54,7 +54,7 @@ void broadcastSpawnProto(SceneServer& server, uint32_t mapId, UserID exclude,
     std::string body;
     if (!serializeSpawnEntity(msg, body))
         return;
-    server.BroadcastToMap(mapId, exclude, static_cast<uint8_t>(ClientModule::SCENE),
+    server.BroadcastToMap(mapId, exclude, static_cast<uint8_t>(rpg::client::SCENE),
                           static_cast<uint8_t>(rpg::mapdata::S2C_SPAWN_ENTITY),
                           body.data(), static_cast<uint16_t>(body.size()));
 }
@@ -66,7 +66,7 @@ void broadcastDespawnProto(SceneServer& server, uint32_t mapId, UserID exclude, 
     std::string body;
     if (!serializeDespawnEntity(msg, body))
         return;
-    server.BroadcastToMap(mapId, exclude, static_cast<uint8_t>(ClientModule::SCENE),
+    server.BroadcastToMap(mapId, exclude, static_cast<uint8_t>(rpg::client::SCENE),
                           static_cast<uint8_t>(rpg::mapdata::S2C_DESPAWN_ENTITY),
                           body.data(), static_cast<uint16_t>(body.size()));
 }
@@ -84,7 +84,7 @@ void broadcastMoveProto(SceneServer& server, uint32_t mapId, UserID exclude,
     std::string body;
     if (!serializeMoveNotify(msg, body))
         return;
-    server.BroadcastToMap(mapId, exclude, static_cast<uint8_t>(ClientModule::SCENE),
+    server.BroadcastToMap(mapId, exclude, static_cast<uint8_t>(rpg::client::SCENE),
                           static_cast<uint8_t>(rpg::mapdata::S2C_MOVE_NOTIFY),
                           body.data(), static_cast<uint16_t>(body.size()));
 }
@@ -415,7 +415,7 @@ void SceneServer::onChatReq(uint32_t clientConnID, const char* data, uint16_t le
         return;
     }
     BroadcastToMap(user->Base().mapID, user->GetID(),
-                   static_cast<uint8_t>(ClientModule::CHAT),
+                   static_cast<uint8_t>(rpg::client::CHAT),
                    static_cast<uint8_t>(rpg::chat::S2C_CHAT_NOTIFY),
                    body.data(), static_cast<uint16_t>(body.size()));
 }
@@ -462,7 +462,7 @@ void SceneServer::sendNpcTalkError(uint32_t clientConnID, uint64_t npcId, int32_
     std::string body;
     if (!serializeProto(rsp, body))
         return;
-    SendToClient(clientConnID, static_cast<uint8_t>(ClientModule::NPC),
+    SendToClient(clientConnID, static_cast<uint8_t>(rpg::client::NPC),
                  static_cast<uint8_t>(rpg::npc::S2C_NPC_TALK_RSP),
                  body.data(), static_cast<uint16_t>(body.size()));
 }

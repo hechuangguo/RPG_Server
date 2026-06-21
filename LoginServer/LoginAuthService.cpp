@@ -6,7 +6,7 @@
 #include "LoginAuthService.h"
 #include "LoginServer.h"
 #include "LoginTokenUtil.h"
-#include "../Common/ClientTypes.h"
+#include "ClientCommon.pb.h"
 #include "LoginMsg.pb.h"
 #include "ZoneMsg.pb.h"
 #include "../sdk/log/Logger.h"
@@ -25,7 +25,7 @@
 namespace
 {
 
-constexpr uint8_t kLoginModule = static_cast<uint8_t>(ClientModule::LOGIN);
+constexpr uint8_t kLoginModule = static_cast<uint8_t>(rpg::client::LOGIN);
 
 } // namespace
 

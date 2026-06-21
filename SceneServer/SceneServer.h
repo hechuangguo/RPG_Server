@@ -35,7 +35,7 @@
 #include "../sdk/log/Logger.h"
 #include "../sdk/timer/TimerMgr.h"
 #include "../protocal/InternalMsg.h"
-#include "../Common/ClientTypes.h"
+#include "ClientCommon.pb.h"
 #include "../sdk/net/GwClientRelay.h"
 #include "../sdk/util/UserWireUtil.h"
 #include "../sdk/util/WireStringUtil.h"

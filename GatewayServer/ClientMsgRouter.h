@@ -4,7 +4,7 @@
  */
 
 #pragma once
-#include "../Common/ClientTypes.h"
+#include "ClientCommon.pb.h"
 #include <cstdint>
 
 /** @brief 转发目标 */
@@ -30,14 +30,14 @@ public:
     /** @brief 按 module/sub 解析客户端消息应转发至的目标服 */
     static ClientForwardTarget resolve(uint8_t module, uint8_t /*sub*/)
     {
-        switch (static_cast<ClientModule>(module))
+        switch (static_cast<rpg::client::ClientModule>(module))
         {
-        case ClientModule::LOGIN:
-        case ClientModule::SYSTEM:
+        case rpg::client::LOGIN:
+        case rpg::client::SYSTEM:
             return ClientForwardTarget::LOCAL;
-        case ClientModule::SCENE:
-        case ClientModule::NPC:
-        case ClientModule::CHAT:
+        case rpg::client::SCENE:
+        case rpg::client::NPC:
+        case rpg::client::CHAT:
             return ClientForwardTarget::SCENE;
         default:
             return ClientForwardTarget::DROP;

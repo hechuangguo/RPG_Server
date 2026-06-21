@@ -55,7 +55,7 @@ if [[ ! -d "${GEN_CPP}" ]]; then
     fail "Protobuf/ 不存在，请先运行 ./scripts/gen_proto.sh"
 fi
 
-for f in MapDataMsg.pb.h LoginMsg.pb.h ZoneMsg.pb.h ChatMsg.pb.h SystemMsg.pb.h NpcMsg.pb.h; do
+for f in ClientCommon.pb.h WireCommon.pb.h MapDataMsg.pb.h LoginMsg.pb.h ZoneMsg.pb.h ChatMsg.pb.h SystemMsg.pb.h NpcMsg.pb.h; do
     if [[ ! -f "${GEN_CPP}/${f}" ]]; then
         fail "缺少生成文件 ${GEN_CPP}/${f}，请运行 ./scripts/gen_proto.sh"
     fi

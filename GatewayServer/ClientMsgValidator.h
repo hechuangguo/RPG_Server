@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "../Common/ClientTypes.h"
+#include "ClientCommon.pb.h"
 #include "../sdk/net/ClientProtoWire.h"
 #include "../sdk/util/LoginSpawnConfig.h"
 #include "../sdk/util/RoleNameUtil.h"
@@ -88,11 +88,11 @@ public:
     }
 
 private:
-    static constexpr uint8_t kLoginModule  = static_cast<uint8_t>(ClientModule::LOGIN);
-    static constexpr uint8_t kSceneModule = static_cast<uint8_t>(ClientModule::SCENE);
-    static constexpr uint8_t kChatModule   = static_cast<uint8_t>(ClientModule::CHAT);
-    static constexpr uint8_t kNpcModule    = static_cast<uint8_t>(ClientModule::NPC);
-    static constexpr uint8_t kSystemModule = static_cast<uint8_t>(ClientModule::SYSTEM);
+    static constexpr uint8_t kLoginModule  = static_cast<uint8_t>(rpg::client::LOGIN);
+    static constexpr uint8_t kSceneModule = static_cast<uint8_t>(rpg::client::SCENE);
+    static constexpr uint8_t kChatModule   = static_cast<uint8_t>(rpg::client::CHAT);
+    static constexpr uint8_t kNpcModule    = static_cast<uint8_t>(rpg::client::NPC);
+    static constexpr uint8_t kSystemModule = static_cast<uint8_t>(rpg::client::SYSTEM);
 
     static constexpr uint8_t STATE_CONNECTED  = 1u << 0;
     static constexpr uint8_t STATE_AUTHING    = 1u << 1;

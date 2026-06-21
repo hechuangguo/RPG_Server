@@ -52,12 +52,12 @@ step "===== RPG Server AutoInit ====="
 
 # -------------------------------------------------------
 #  第0步：初始化 Git Submodule（Common/）
-#  Common/ 为 RPG_Common 子模块，含 ClientTypes.h 与各域 *.proto。
+#  Common/ 为 RPG_Common 子模块，仅含 *.proto 消息源。
 # -------------------------------------------------------
 step "Initialize Git submodules (Common/)..."
 git submodule update --init --recursive
-[ -f "$SCRIPT_DIR/Common/ClientTypes.h" ] \
-    || fail "Common/ClientTypes.h missing — run: git submodule update --init --recursive"
+[ -f "$SCRIPT_DIR/Common/ClientCommon.proto" ] \
+    || fail "Common/ClientCommon.proto missing — run: git submodule update --init --recursive"
 [ -f "$SCRIPT_DIR/Common/LoginMsg.proto" ] \
     || fail "Common/LoginMsg.proto missing — run: git submodule update --init --recursive"
 
@@ -162,10 +162,10 @@ fi
 
 # -------------------------------------------------------
 #  第5步：协议文件检查
-#  Common/ClientTypes.h 与各域 *.proto 为客户端 wire 协议权威定义；C++ 生成物在 Protobuf/。
+#  Common/*.proto 为客户端 wire 协议权威定义；C++ 生成物在 Protobuf/。
 # -------------------------------------------------------
-[ -f "$SCRIPT_DIR/Common/ClientTypes.h" ] \
-    || fail "Common/ClientTypes.h missing after submodule init"
+[ -f "$SCRIPT_DIR/Common/ClientCommon.proto" ] \
+    || fail "Common/ClientCommon.proto missing after submodule init"
 [ -f "$SCRIPT_DIR/Common/LoginMsg.proto" ] \
     || fail "Common/LoginMsg.proto missing after submodule init"
 [ -f "$SCRIPT_DIR/Protobuf/LoginMsg.pb.h" ] \
@@ -174,7 +174,7 @@ if [[ -x "$SCRIPT_DIR/scripts/check_common_proto.sh" ]]; then
     step "Checking Common Protobuf..."
     "$SCRIPT_DIR/scripts/check_common_proto.sh" || fail "Common Protobuf check failed"
 fi
-step "Protocol files OK (ClientTypes.h + LoginMsg.proto + proto)."
+step "Protocol files OK (ClientCommon.proto + LoginMsg.proto + proto)."
 
 # -------------------------------------------------------
 #  第6步：设置脚本执行权限

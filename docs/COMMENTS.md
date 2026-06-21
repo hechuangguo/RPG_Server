@@ -67,7 +67,7 @@
 
 ## Common 协议（RPG_Common）
 
-路径：`Common/` 子模块（`ClientTypes.h`、`*.proto`、`generated/`、`NetDefine.h`）。
+路径：`Common/` 子模块（`*.proto`）。
 
 ### Protobuf 注释（必遵）
 
@@ -151,7 +151,7 @@ message S2CSpawnEntity {
 
 与 [`Common/README.md`](../Common/README.md) workflow 一致：
 
-1. **`ClientTypes.h`** — 新域则补 `ClientModule`
+1. **`ClientCommon.proto`** — 新域则补 `ClientModule`
 2. **`XxxCommon.proto`** — 增加 `XxxMsgSub` 枚举值（注释含方向、sub、处理方）
 3. **`XxxMsg.proto`** — `import` 对应 Common；定义 `C2S*` / `S2C*` message 及字段注释
 4. **`scripts/gen_proto.sh`** — 生成 `Protobuf/*.pb.h` / `*.pb.cc`

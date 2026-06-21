@@ -143,7 +143,7 @@ RPG/
 │   └── util/               # ConfigLoader、MsgDispatcher、Bootstrap、外联转发
 ├── LoginServer/            # 外联登录（可选）
 ├── docs/                   # 文档（见 INDEX.md）
-├── Common/              # Git Submodule → RPG_Common（*.proto + ClientTypes.h）
+├── Common/              # Git Submodule → RPG_Common（*.proto）
 ├── protocal/InternalMsg.h  # 服务器间协议
 ├── config/config.xml       # 全局配置
 ├── config/server_info.xml  # SceneServer 地图配置

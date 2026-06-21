@@ -181,7 +181,7 @@ fi
 pull_common_latest
 ok "Common 已更新"
 
-if [[ ! -f Common/ClientTypes.h ]] \
+if [[ ! -f Common/ClientCommon.proto ]] \
     || [[ ! -f Common/LoginMsg.proto ]] \
     || [[ ! -f Protobuf/LoginMsg.pb.h ]]; then
     err "Common 协议不完整。请执行：git submodule update --init --recursive && ./scripts/gen_proto.sh"

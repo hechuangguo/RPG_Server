@@ -13,7 +13,7 @@
 #include "../sdk/net/NetTls.h"
 #include "../sdk/net/GwClientRelay.h"
 #include "../sdk/net/ClientProtoWire.h"
-#include "../Common/ClientTypes.h"
+#include "ClientCommon.pb.h"
 #include "LoginMsg.pb.h"
 #include "SystemMsg.pb.h"
 
@@ -28,8 +28,8 @@ namespace {
 constexpr uint64_t UPSTREAM_CONNECT_TIMEOUT_MS = 5000;
 constexpr uint64_t GATEWAY_AUTH_TIMEOUT_MS = 10000;
 
-constexpr uint8_t kLoginModule  = static_cast<uint8_t>(ClientModule::LOGIN);
-constexpr uint8_t kSystemModule = static_cast<uint8_t>(ClientModule::SYSTEM);
+constexpr uint8_t kLoginModule  = static_cast<uint8_t>(rpg::client::LOGIN);
+constexpr uint8_t kSystemModule = static_cast<uint8_t>(rpg::client::SYSTEM);
 
 rpg::login::S2CUserList buildUserListProto(int32_t code,
                                            const Msg_REC_CharacterEntryWire* entries,

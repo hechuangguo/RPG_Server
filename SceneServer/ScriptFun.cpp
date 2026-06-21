@@ -8,7 +8,7 @@
 #include "SceneServer.h"
 #include "SceneUserManager.h"
 #include "SceneEntry.h"
-#include "../Common/ClientTypes.h"
+#include "ClientCommon.pb.h"
 #include "NpcMsg.pb.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/net/ClientProtoWire.h"
@@ -100,7 +100,7 @@ LUA_GLOBAL_FUNC("send_npc_talk_rsp", sendNpcTalkRsp)
         return 0;
 
     server->sendToClient(user->getGatewayClientConn(),
-                         static_cast<uint8_t>(ClientModule::NPC),
+                         static_cast<uint8_t>(rpg::client::NPC),
                          static_cast<uint8_t>(rpg::npc::S2C_NPC_TALK_RSP),
                          body.data(), static_cast<uint16_t>(body.size()));
     return 0;

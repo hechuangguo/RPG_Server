@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# check_common_headers.sh — 校验 Server 对 Common 子模块的 #include 与头文件语法
+# check_common_headers.sh — 校验 Server 不引用已删除的 Common 遗留头文件
 #
 # 用法：./scripts/check_common_headers.sh
 
@@ -10,37 +10,16 @@ ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 COMMON="${ROOT}/Common"
 FAIL=0
 
-echo "=== Common include paths (Server source) ==="
-while IFS= read -r -d '' f; do
-    while IFS= read -r inc; do
-        rel="${inc#../Common/}"
-        rel="${rel#../../Common/}"
-        target="${COMMON}/${rel}"
-        if [[ ! -f "${target}" ]]; then
-            echo "MISSING: ${f} -> ${inc} (${target})"
-            FAIL=1
-        fi
-    done < <(grep -E '#include\s+"(\.\./)+Common/[^"]+"' "${f}" | sed -E 's/.*#include "([^"]+)".*/\1/' || true)
-done < <(find "${ROOT}" -type f \( -name '*.cpp' -o -name '*.h' \) \
-    ! -path '*/.build/*' ! -path '*/3Party/*' ! -path '*/.cursor/*' -print0)
-
-echo "=== Common/*.h syntax-only (g++) ==="
-if ! command -v g++ >/dev/null 2>&1; then
-    echo "SKIP: g++ not found"
-else
-    for hdr in "${COMMON}"/*.h; do
-        [[ -f "${hdr}" ]] || continue
-        base="$(basename "${hdr}")"
-        if ! g++ -std=c++17 -fsyntax-only -I "${COMMON}" "${hdr}" 2>/dev/null; then
-            echo "SYNTAX FAIL: ${base}"
-            g++ -std=c++17 -fsyntax-only -I "${COMMON}" "${hdr}" 2>&1 | tail -3 || true
-            FAIL=1
-        fi
-    done
-fi
+echo "=== Common/*.proto present ==="
+for f in ClientCommon.proto WireCommon.proto LoginMsg.proto; do
+    if [[ ! -f "${COMMON}/${f}" ]]; then
+        echo "MISSING: ${COMMON}/${f}"
+        FAIL=1
+    fi
+done
 
 echo "=== Server must not include deleted Common legacy headers ==="
-LEGACY_INC='Common/(LoginMsg|LoginCommon|MapDataMsg|MapDataCommon|ChatMsg|ChatCommon|ZoneMsg|ZoneCommon|ClientMsg|PropertyMsg|PropertyCommon|EquipMsg|EquipCommon|SpellMsg|SpellCommon|RelationMsg|RelationCommon|GoldMsg|GoldCommon|generated)\.h'
+LEGACY_INC='Common/(ClientTypes|NetDefine|MsgId|LoginMsg|LoginCommon|MapDataMsg|MapDataCommon|ChatMsg|ChatCommon|ZoneMsg|ZoneCommon|ClientMsg|PropertyMsg|PropertyCommon|EquipMsg|EquipCommon|SpellMsg|SpellCommon|RelationMsg|RelationCommon|GoldMsg|GoldCommon|generated)\.h'
 while IFS= read -r hit; do
     [[ -z "${hit}" ]] && continue
     echo "LEGACY INCLUDE: ${hit}"

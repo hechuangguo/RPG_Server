@@ -5,7 +5,7 @@
 
 #include "LoginRegisterService.h"
 #include "LoginServer.h"
-#include "../Common/ClientTypes.h"
+#include "ClientCommon.pb.h"
 #include "LoginMsg.pb.h"
 #include "../sdk/log/Logger.h"
 #include "../sdk/util/PasswordUtil.h"
@@ -27,7 +27,7 @@ constexpr int32_t REGISTER_BAD_PARAM = 2;
 constexpr int32_t REGISTER_ZONE_UNAVAILABLE = 3;
 constexpr int32_t REGISTER_SERVER_ERROR = -1;
 
-constexpr uint8_t kLoginModule = static_cast<uint8_t>(ClientModule::LOGIN);
+constexpr uint8_t kLoginModule = static_cast<uint8_t>(rpg::client::LOGIN);
 
 bool isPrintableAscii(const std::string& str)
 {
