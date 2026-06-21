@@ -39,8 +39,6 @@ class ZoneServer : public INetCallback, public LazySingleton<ZoneServer>
 public:
     friend class LazySingleton<ZoneServer>;
     friend void ZoneInternMsgRegister(ZoneServer& server);
-    friend void ZoneGameZoneForwardMsgRegister(ZoneServer& server);
-    friend void ZoneGameZoneCrossMsgRegister(ZoneServer& server);
     static ZoneServer* Instance() { return &LazySingleton<ZoneServer>::Instance(); }
 
 private:

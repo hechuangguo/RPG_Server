@@ -4,7 +4,7 @@
  *
  * ## 职责
  * - 排行榜维护（接收经 Super SS_EXTERN_FWD 转发的 GLB_RANK_UPDATE，排序保留前 100 名）
- * - 全区数据同步（GLB_DATA_SYNC 向已连接 inner 连接 fan-out；syncGlobalData 定时器尚未推送 rank）
+ * - 全区数据同步（GLB_DATA_SYNC 向已连接 inner 连接 fan-out；rank 主动推送待玩法接入）
  * - HTTP 入站 JSON API（/health、/rank；/getUserList 待 rpg_global 玩法接入）
  *
  * ## 连接
@@ -56,8 +56,6 @@ class GlobalServer : public INetCallback, public LazySingleton<GlobalServer>
 public:
     friend class LazySingleton<GlobalServer>;
     friend void GlobalInternMsgRegister(GlobalServer& server);
-    friend void GlobalGameZoneRankMsgRegister(GlobalServer& server);
-    friend void GlobalGameZoneSyncMsgRegister(GlobalServer& server);
     /** @brief 获取 GlobalServer 单例指针 */
     static GlobalServer* Instance() { return &LazySingleton<GlobalServer>::Instance(); }
 
@@ -106,8 +104,6 @@ private:
     void onRankUpdate(ConnID fromConn, const char* data, uint16_t len);
 
     void onDataSync(ConnID fromConn, const char* data, uint16_t len);
-
-    void syncGlobalData();
 
     /** @brief 定时向 Http Client 对端发送 GET /health（仅 enabled 时） */
     void probeHttpPeer();

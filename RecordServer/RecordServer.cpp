@@ -341,7 +341,7 @@ void RecordServer::loadUserFromDb(UserID rid)
 void RecordServer::saveUserToDb(UserID rid)
 {
     auto user = m_userManager.findUser(rid);
-    if (!user)
+    if (!user || !user->needSave())
     {
         return;
     }
@@ -371,8 +371,15 @@ void RecordServer::saveUserToDb(UserID rid)
 
 void RecordServer::autoSaveAll()
 {
-    m_userManager.forEach([this](UserID rid, RecordUser& /*user*/) { saveUserToDb(rid); });
-    LOG_INFO("自动存档完成: 已保存用户=%zu", m_userManager.getUserCount());
+    size_t savedCount = 0;
+    m_userManager.forEach([this, &savedCount](UserID rid, RecordUser& user) {
+        if (!user.needSave())
+            return;
+        saveUserToDb(rid);
+        ++savedCount;
+    });
+    if (savedCount > 0)
+        LOG_INFO("自动存档完成: 已保存用户=%zu（跳过无变更）", savedCount);
 }
 
 void RecordServer::onValidateTokenReq(ConnID fromConn, const Msg_REC_ValidateTokenReq& req)

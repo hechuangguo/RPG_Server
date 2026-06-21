@@ -38,14 +38,14 @@ Client → GatewayServer ─┬→ SceneServer → AOIServer
 | bodyLen | 2 | 消息体字节数（不含 6 字节头） |
 | module | 1 | 功能模块号（见 `ClientModule`） |
 | sub | 1 | 模块内子消息号 |
-| body | 变长 | `Msg_C2S_*` / `Msg_*` 等结构体 |
+| body | 变长 | Protobuf message 二进制（proto3，`parseProto` / `serializeProto`） |
 
 扁平协议号（查表、日志）：`makeMsgId(module, sub) == (module << 8) | sub`，工具见 [`sdk/net/MsgId.h`](sdk/net/MsgId.h)。
 
-**示例**（登录请求 `C2S_LOGIN_REQ`，module=0x00, sub=0x01）：
+**示例**（登录请求 `C2S_LOGIN_REQ`，module=0x00, sub=0x01，body=`rpg::login::C2SLoginReq`）：
 
 ```
-[bodyLen=64][0x00][0x01][Msg_C2S_LoginReq 64B]
+[bodyLen=N][0x00][0x01][C2SLoginReq 的 proto3 二进制 N 字节]
 ```
 
 ### Gateway 上行处理
@@ -57,11 +57,13 @@ Client → GatewayServer ─┬→ SceneServer → AOIServer
 | 3 | `ClientMsgRouter` | 决定本地处理或转发 |
 | 4 | 失败 | 回 `S2C_ERROR`（module=0x0F, sub=0x05） |
 
-| module | 路由目标 |
+| module | 当前 Gateway 路由（[`ClientMsgRouter.h`](GatewayServer/ClientMsgRouter.h)） |
 |--------|----------|
 | 0x00 Login、0x0F System | Gateway 本地（登录/心跳） |
-| 0x01 Scene、0x02 Battle、0x03 Bag、0x04 Skill、0x08 NPC、0x05 Chat（非私聊） | SceneServer |
-| 0x06 Social、0x07 Quest、0x05 Chat（sub=0x03 私聊） | SessionServer |
+| 0x01 Scene、0x05 Chat、0x08 NPC | SceneServer |
+| 0x02 Battle、0x03 Bag、0x04 Skill、0x06 Social、0x07 Quest | **DROP**（Validator 拒收，回 `S2C_ERROR`） |
+
+**规划路由**（待 SOCIAL/QUEST proto 与 Session handler 落地后）：0x06/0x07 → SessionServer；Chat sub=0x03 私聊 → SessionServer。详见 [docs/PROTOCOL.md](docs/PROTOCOL.md) §2.1。
 
 服间转发客户端包：`Msg_GW_ClientMsg`（含 `clientConnID` + module + sub + body）。下行：`Msg_GW_SendToClient`。
 
@@ -80,7 +82,7 @@ Client → GatewayServer ─┬→ SceneServer → AOIServer
 命名细则 → [naming-conventions.mdc](.cursor/rules/naming-conventions.mdc)  
 AI/协作总则 → [AGENTS.md](AGENTS.md) · [project.mdc](.cursor/rules/project.mdc)
 
-协议定长字符串（`InternalMsg.h` / `Common/*Msg.h` 中 `char[N]` 字段）统一用 [WireStringUtil.h](sdk/util/WireStringUtil.h)：
+协议定长字符串（[`protocal/InternalMsg.h`](protocal/InternalMsg.h) 服间 wire 中 `char[N]` 字段）统一用 [WireStringUtil.h](sdk/util/WireStringUtil.h)：
 
 - `copyToWire(dst, dstSize, src)`：`std::string` 或 C 字符串 → 协议 `char[N]` 字段
 - `copyWireField(dst, src)` 或 `copyWireField(dst, dstSize, src, srcSize)`：协议定长字段 → 协议定长字段（如 `req->mapName` → `rsp.mapName`）

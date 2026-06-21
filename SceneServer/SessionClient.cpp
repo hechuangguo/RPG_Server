@@ -25,6 +25,7 @@ void SessionClient::registerScene(uint32_t sceneServerId, const Scene& scene)
     req.maxPlayer = scene.getMaxPlayer();
     copyToWire(req.mapName, sizeof(req.mapName), scene.getMapName().c_str());
     copyToWire(req.mapFile, sizeof(req.mapFile), scene.getMapFile().c_str());
+    lastRegAttempts[req.sceneInstanceId] = req;
 
     if (!isConnected())
     {
@@ -80,14 +81,14 @@ void SessionClient::onRegisterRsp(const char* data, uint16_t len)
     const auto* rsp = reinterpret_cast<const Msg_SES_SceneRegisterRsp*>(data);
     if (rsp->code != 0)
     {
-        LOG_ERR("会话客户端注册场景失败: instance=%llu code=%d",
+        LOG_ERR("会话客户端注册场景失败: instance=%llu code=%d，将重试",
                 rsp->sceneInstanceId, rsp->code);
-        // TODO: 自动重试注册
+        auto it = lastRegAttempts.find(rsp->sceneInstanceId);
+        if (it != lastRegAttempts.end())
+            pendingRegs.push_back(it->second);
+        return;
     }
-    else
-    {
-        LOG_INFO("会话客户端注册场景成功: instance=%llu", rsp->sceneInstanceId);
-    }
+    LOG_INFO("会话客户端注册场景成功: instance=%llu", rsp->sceneInstanceId);
 }
 
 void SessionClient::flushPendingRegistrations()

@@ -11,6 +11,7 @@
 #include "../protocal/InternalMsg.h"
 #include "Scene.h"
 
+#include <unordered_map>
 #include <vector>
 
 /**
@@ -44,5 +45,6 @@ public:
 
 private:
     std::vector<Msg_SES_SceneRegisterReq> pendingRegs; /**< 待注册队列 */
+    std::unordered_map<uint64_t, Msg_SES_SceneRegisterReq> lastRegAttempts; /**< 最近一次注册请求（失败重试用） */
     uint32_t boundSceneServerId = 0;                   /**< 本进程 sceneServerId */
 };

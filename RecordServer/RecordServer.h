@@ -183,12 +183,7 @@ private:
     /**
      * @brief 批量自动存档
      *
-     * 每 60 秒定时触发，遍历所有 m_users 调用 saveUserToDb。
-     *
-     * @note 脏标记检查逻辑：当前实现无条件保存全部用户数据。
-     *       若需优化 I/O 开销，可增加脏标记（dirty flag）过滤：
-     *       仅当用户数据被修改（dirty == true）时才执行 saveUserToDb，
-     *       保存成功后将 dirty 重置为 false。
+     * 每 60 秒定时触发，仅 saveUserToDb 中 needSave()==true 的用户。
      */
     void autoSaveAll();
 

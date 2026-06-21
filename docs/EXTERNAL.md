@@ -216,7 +216,7 @@ Test-NetConnection -ComputerName 192.168.65.128 -Port 9005
 | TCP | Super 连接；`GLB_RANK_UPDATE` / `GLB_DATA_SYNC` |
 | HTTP | `GlobalHttpServer` — `/health`、`/rank` 等 |
 | MySQL | **rpg_global**（AllLittleThing 等全区表） |
-| 局限 | `SyncGlobalData()` 未向 Scene 推送 rank；`OnDataSync` fan-out 可用 |
+| 局限 | `OnDataSync` fan-out 可用；rank 定时推送 Scene 待玩法接入；HTTP `/getUserList` 503 |
 
 **生产路径**：Super `ExternalServerHub`，非 Scene 直连 Global。
 
@@ -228,7 +228,7 @@ Test-NetConnection -ComputerName 192.168.65.128 -Port 9005
 |----|------|
 | 启动 | `ENABLE_ZONE=1 ./RunServer.sh` |
 | 用途 | 跨区 `ZONE_CROSS_REQ` → `ZONE_FORWARD` |
-| 状态 | **骨架**：`OnForward` 当前 log-only；路由表 `m_routes` 未完整登记 |
+| 状态 | **骨架，不可用**：`m_routes` 未在连接时登记，`ZONE_CROSS_REQ` 无法转发；`OnForward` 仅日志。勿用于生产跨区。 |
 
 ---
 

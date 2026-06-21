@@ -307,7 +307,7 @@ In-zone commands:
 External commands (start separately):
   logger   LoggerServer  (LoggerServer/extern_logger.xml)
   global   GlobalServer  (GlobalServer/extern_global.xml)
-  zone     ZoneServer    (ZoneServer/extern_zone.xml)
+  zone     ZoneServer    (骨架：跨区路由未实现，见 docs/EXTERNAL.md §7)
   login    LoginServer   (LoginServer/extern_login.xml)
 
 Or run external binary directly, e.g. ./LoginServer/LoginServer

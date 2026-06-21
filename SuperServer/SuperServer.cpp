@@ -667,11 +667,6 @@ ConnID SuperServer::findSubServerByServerId(SubServerType type, uint32_t serverI
     return INVALID_CONN_ID;
 }
 
-ConnID SuperServer::findSceneServer()
-{
-    return findSubServer(SubServerType::SCENE);
-}
-
 void SuperServer::removeSubServer(ConnID connID)
 {
     auto it = m_servers.find(connID);

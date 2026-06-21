@@ -11,7 +11,7 @@
 | 网络模型 | 单线程 epoll ET + **TLS over TCP** 长连接（见 [TLS.md](TLS.md)） |
 | 持久化 | MySQL 三库（rpg_login / rpg_game / rpg_global） |
 | 配置 | XML（tinyxml2 解析） |
-| 构建 | CMake 3.16+，输出至各服务器目录（如 `SuperServer/SuperServer`） |
+| 构建 | CMake 3.16+；CMake 产物在 `.build/`，可执行文件输出至各服务器目录（如 `SuperServer/SuperServer`） |
 
 **设计目标**：按职责拆分进程，SuperServer 统一注册与路由，SceneServer 可水平扩展，GatewayServer 可负载均衡，GlobalServer / ZoneServer 按需启用。
 

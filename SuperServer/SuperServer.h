@@ -4,7 +4,7 @@
  *
  * ## 职责
  * - 作为所有子服务器的注册中心（维护路由表）
- * - 管理用户登录调度（GatewayServer → RecordServer → SceneServer）
+ * - 管理用户登录调度（Gateway → Record → Session → Scene）
  * - 定期心跳检查（90 秒超时标记离线）
  * - 处理踢人请求（通知 GatewayServer 断开客户端）
  *
@@ -292,28 +292,6 @@ private:
      * @param serverId ServerList 中的 server_id
      */
     ConnID findSubServerByServerId(SubServerType type, uint32_t serverId);
-
-    /**
-     * @brief 选择 SceneServer（负载均衡策略）
-     *
-     * 负载均衡策略详细说明：
-     * 当前采用"首个存活"策略（First-Alive），遍历 m_servers 路由表，
-     * 返回第一个类型为 SCENE 且 alive == true 的服务器连接。
-     *
-     * 策略特点：
-     * - 实现简单，无需额外统计信息，适合固定数量的 SceneServer 部署。
-     * - 所有登录请求持续分配到同一台 SceneServer，直至该服务器离线。
-     * - 当前选中服务器离线后自动切换到路由表中下一个存活的 SceneServer。
-     *
-     * 可扩展方向（TODO）：
-     * - 轮询（Round-Robin）：在多个存活 SceneServer 间轮流分配，均匀分摊负载。
-     * - 最少连接（Least-Connections）：优先选择当前在线用户数最少的 SceneServer。
-     * - 哈希取模（Hash）：根据 userID 取模固定分配到指定服务器，适合有状态场景。
-     * - 加权分配（Weighted）：根据各 SceneServer 的硬件配置（CPU/内存）赋予不同权重。
-     *
-     * @return 选中的 SceneServer 连接 ID，无可用服务器返回 INVALID_CONN_ID
-     */
-    ConnID findSceneServer();
 
     /** @brief 从路由表中删除指定连接 */
     void removeSubServer(ConnID connID);

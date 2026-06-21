@@ -2,8 +2,8 @@
  * @file    SessionServer/main.cpp
  * @brief   会话服务器启动入口
  *
- * SessionServer 管理玩家会话生命周期，负责登录验证、连接保活与会话状态维护。
- * 启动后向 SuperServer 注册自身，以便其他服务发现并连接。
+ * SessionServer 管理社会关系与全区场景/副本调度；客户端 SOCIAL/QUEST 域尚未实现。
+ * 启动后向 SuperServer 注册，SessionSceneManager 登记 Scene 实例。
  *
  * 启动流程：
  *   1. 忽略 SIGPIPE 信号

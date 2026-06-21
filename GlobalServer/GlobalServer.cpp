@@ -82,7 +82,6 @@ bool GlobalServer::Init(const ExternServerConfig& cfg)
         m_httpClient.connectIfConfigured();
 
     registerHandlers();
-    TimerMgr::Instance().Register(60000, 60000, [this] { syncGlobalData(); });
     if (cfg.httpClient.enabled && cfg.httpClient.port > 0)
     {
         TimerMgr::Instance().Register(30000, 30000, [this] { probeHttpPeer(); });
@@ -152,11 +151,6 @@ void GlobalServer::onDataSync(ConnID /*fromConn*/, const char* data, uint16_t le
         (void)alive;
         m_server.SendMsg(cid, (uint16_t)InternalMsgID::GLB_DATA_SYNC, data, len);
     }
-}
-
-void GlobalServer::syncGlobalData()
-{
-    LOG_INFO("全局服开始同步排行到所有场景服，排行数量=%zu", m_rank.size());
 }
 
 void GlobalServer::probeHttpPeer()
