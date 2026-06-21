@@ -5,6 +5,7 @@
 # 用法：./scripts/gen_proto.sh（Build.sh / autoinit.sh 自动调用）
 # 真源：Common/ 子模块（*.proto）
 # 输出：Protobuf/*.pb.h、Protobuf/*.pb.cc（禁止手改）
+# 增量：生成物存在且 proto 未更新时跳过 protoc（避免 Build.sh 每次全量编译）
 # =============================================================================
 
 set -euo pipefail
@@ -66,10 +67,35 @@ if [[ ${#missing_proto[@]} -gt 0 ]]; then
     exit 1
 fi
 
+proto_needs_regen() {
+    local proto_name="$1"
+    local base="${proto_name%.proto}"
+    local proto_path="${COMMON_DIR}/${proto_name}"
+    local pb_h="${OUT_CPP}/${base}.pb.h"
+    local pb_cc="${OUT_CPP}/${base}.pb.cc"
+
+    [[ -f "${pb_h}" && -f "${pb_cc}" ]] || return 0
+    [[ "${proto_path}" -nt "${pb_h}" || "${proto_path}" -nt "${pb_cc}" ]]
+}
+
+stale_proto=()
+for f in "${PROTO_FILES[@]}"; do
+    if proto_needs_regen "${f}"; then
+        stale_proto+=("${f}")
+    fi
+done
+
+if [[ ${#stale_proto[@]} -eq 0 ]]; then
+    step "已是最新，跳过"
+    exit 0
+fi
+
 step "protoc=$(${PROTOC_BIN} --version)"
-step "生成 C++ → ${OUT_CPP}"
+step "生成 C++ → ${OUT_CPP}（${#stale_proto[@]}/${#PROTO_FILES[@]} 个 proto 需更新）"
+# 任一 proto 过期则全量生成，保证 import 依赖一致
 "${PROTOC_BIN}" -I "${COMMON_DIR}" \
     --cpp_out="${OUT_CPP}" \
     "${PROTO_FILES[@]/#/${COMMON_DIR}/}"
 
 step "完成"
+echo "GEN_PROTO_GENERATED=1"

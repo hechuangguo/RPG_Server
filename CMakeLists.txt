@@ -154,6 +154,20 @@ message(STATUS "protobuf: ${PROTOBUF_LIB}")
 file(GLOB PROTO_GEN_SRC CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/Protobuf/*.cc")
 set(PROTOBUF_LIBS ${PROTOBUF_LIB})
 
+# SDK 与 Protobuf 生成物抽成静态库，避免 10 个 Server 各编一份
+file(GLOB_RECURSE SDK_SRC CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/sdk/*.cpp")
+
+add_library(rpg_protobuf STATIC ${PROTO_GEN_SRC})
+target_link_libraries(rpg_protobuf PUBLIC ${PROTOBUF_LIBS})
+
+add_library(rpg_sdk STATIC ${SDK_SRC})
+target_link_libraries(rpg_sdk PUBLIC
+    rpg_protobuf
+    pthread
+    ${GAME_TLS_LIBS}
+    ${TINYXML2_LIB}
+)
+
 # -------------------------------------------------------
 # 公共头文件搜索路径
 # 所有服务器均可直接引用以下目录中的头文件
@@ -174,7 +188,7 @@ include_directories(
 #   $EXTRA_LIBS  : 该服务器额外需要的链接库（除 pthread/Lua/tinyxml2 之外的库）
 # 工作流程：
 #   1. 扫描 SERVER_NAME 目录下的所有 .cpp/.cc 源文件
-#   2. 创建可执行目标
+#   2. 创建可执行目标并链接 rpg_sdk / rpg_protobuf
 #   3. 链接公共依赖（pthread + Lua + tinyxml2）+ 额外依赖
 #   4. 设置输出目录为各服务器源码目录（便于单服直接启动）
 # -------------------------------------------------------
@@ -183,16 +197,15 @@ macro(add_server SERVER_NAME EXTRA_LIBS)
         "${CMAKE_SOURCE_DIR}/${SERVER_NAME}/*.cpp"
         "${CMAKE_SOURCE_DIR}/${SERVER_NAME}/*.cc"
     )
-    # SDK 公共实现源（如 sdk/math/*.cpp）：随各服务器一并编译链接
-    file(GLOB_RECURSE SDK_SRC "${CMAKE_SOURCE_DIR}/sdk/*.cpp")
-    add_executable(${SERVER_NAME} ${SERVER_SRC} ${SDK_SRC} ${PROTO_GEN_SRC})
+    add_executable(${SERVER_NAME} ${SERVER_SRC})
     target_link_libraries(${SERVER_NAME}
         PRIVATE
+        rpg_sdk
+        rpg_protobuf
         pthread          # POSIX 线程库（所有服务器均需多线程支持）
         ${LUA_LIBRARIES} # Lua 脚本引擎（SceneServer 必需，其他可选）
         ${TINYXML2_LIB}  # XML 配置解析库（所有服务器均需读取配置文件）
         ${GAME_TLS_LIBS} # OpenSSL TLS（TcpServer/TcpClient）
-        ${PROTOBUF_LIBS} # Protobuf 客户端 wire
         ${EXTRA_LIBS}    # 服务器特有的额外链接库
     )
     set_target_properties(${SERVER_NAME} PROPERTIES
