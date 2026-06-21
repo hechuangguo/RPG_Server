@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-#  pull.sh —— 一键拉取主仓库与 Common 子模块（全部最新代码）
+#  pull.sh —— 一键拉取主仓库与 Common 子模块（双仓库最新代码）
 #
 #  用法：
 #    ./pull.sh                # 默认：主仓库 rebase 拉取 + Common 拉取 main 最新
@@ -9,15 +9,14 @@
 #    ./pull.sh --keep-proxy   # 保留 HTTP_PROXY/HTTPS_PROXY 环境变量
 #
 #  流程：
-#    1. fetch --all --prune（主仓库）
-#    2. git pull（RPG_Server 当前分支）
-#    3. submodule sync + update --init --recursive
-#    4. fetch + pull Common（RPG_Common，跟踪 .gitmodules 中 branch，默认 main）
-#    5. 校验 Common 协议与 proto 生成物
+#    1. fetch + pull 主仓库（RPG_Server）
+#    2. submodule sync + update --init（HTTPS 失败则 Common 改 SSH 重试）
+#    3. fetch + pull Common（RPG_Common，跟踪 .gitmodules branch，默认 main）
+#    4. 校验 Common/*.proto；缺失 Protobuf/ 时自动 gen_proto.sh
 #
 #  说明：
 #    - 默认 unset 本地代理（避免失效代理导致 GitHub HTTPS 失败）
-#    - HTTPS 失败时自动尝试切换为 SSH 并重试（主仓库与 Common）
+#    - HTTPS 失败时自动切换 origin 为 SSH 并重试（主仓库与 Common）
 # ============================================================
 
 set -euo pipefail
@@ -91,7 +90,7 @@ git_pull_repo() {
     git -C "${repo}" fetch --all --prune
     case "${PULL_MODE}" in
         rebase)
-            git -C "${repo}" pull --rebase origin "${branch}"
+            git -C "${repo}" pull --rebase --autostash origin "${branch}"
             ;;
         merge)
             git -C "${repo}" pull origin "${branch}"
@@ -131,15 +130,34 @@ common_repo_ready() {
     git -C Common rev-parse --is-inside-work-tree &>/dev/null
 }
 
-ensure_common_checked_out() {
-    common_repo_ready || err "Common 子模块未初始化，请先：git submodule update --init --recursive"
+switch_common_submodule_to_ssh() {
+    git config submodule.Common.url "${COMMON_SSH}"
+    git submodule sync Common
+    if common_repo_ready; then
+        git -C Common remote set-url origin "${COMMON_SSH}" 2>/dev/null || true
+    fi
+}
+
+init_common_submodule() {
+    info "同步并初始化 Common 子模块..."
+    git submodule sync --recursive
+    if git submodule update --init --recursive; then
+        return 0
+    fi
+    warn "Common 子模块 HTTPS 初始化失败，尝试 SSH..."
+    switch_common_submodule_to_ssh
+    git submodule update --init --recursive
+}
+
+ensure_common_on_branch() {
+    common_repo_ready || err "Common 子模块未初始化，请执行：git submodule update --init --recursive"
 
     local branch
     branch="$(common_branch)"
 
     if ! git -C Common symbolic-ref -q HEAD &>/dev/null; then
         info "Common 处于 detached HEAD，切换到 ${branch}..."
-        git -C Common fetch --all --prune
+        git -C Common fetch --all --prune 2>/dev/null || true
         if git -C Common show-ref --verify --quiet "refs/remotes/origin/${branch}"; then
             git -C Common checkout -B "${branch}" "origin/${branch}"
         else
@@ -148,13 +166,8 @@ ensure_common_checked_out() {
     fi
 }
 
-update_submodules() {
-    git submodule sync --recursive
-    git submodule update --init --recursive
-}
-
 pull_common_latest() {
-    ensure_common_checked_out
+    ensure_common_on_branch
 
     local branch
     branch="$(git -C Common branch --show-current)"
@@ -163,6 +176,25 @@ pull_common_latest() {
     pull_with_ssh_fallback "Common" "${branch}" "Common (RPG_Common)" \
         "${COMMON_HTTPS}" "${COMMON_SSH}" \
         || err "Common 拉取失败。请检查网络、SSH（git@github.com）与分支 ${branch}"
+}
+
+ensure_protobuf_generated() {
+    if [[ -f Protobuf/LoginMsg.pb.h ]]; then
+        return 0
+    fi
+    if [[ ! -x "${SCRIPT_DIR}/scripts/gen_proto.sh" ]]; then
+        err "Protobuf/ 缺失且 scripts/gen_proto.sh 不可用"
+    fi
+    warn "Protobuf/ 生成物缺失，正在运行 ./scripts/gen_proto.sh ..."
+    chmod +x "${SCRIPT_DIR}/scripts/gen_proto.sh" 2>/dev/null || true
+    "${SCRIPT_DIR}/scripts/gen_proto.sh" || err "gen_proto.sh 失败"
+}
+
+verify_common_protocol() {
+    if [[ ! -f Common/ClientCommon.proto ]] || [[ ! -f Common/LoginMsg.proto ]]; then
+        err "Common 协议不完整。请执行：git submodule update --init --recursive"
+    fi
+    ensure_protobuf_generated
 }
 
 branch="$(git branch --show-current)"
@@ -175,20 +207,16 @@ pull_with_ssh_fallback "." "${branch}" "主仓库 (RPG_Server)" \
 ok "主仓库已更新"
 
 info "===== 同步并拉取 Common (RPG_Common) ====="
-if ! update_submodules; then
-    if try_switch_ssh "Common" "${COMMON_HTTPS}" "${COMMON_SSH}" "Common"; then
-        update_submodules || err "Common 子模块初始化失败"
-    else
-        err "Common 子模块初始化失败。可尝试：git submodule update --init --recursive"
-    fi
-fi
+init_common_submodule
 pull_common_latest
 ok "Common 已更新"
 
-if [[ ! -f Common/ClientCommon.proto ]] \
-    || [[ ! -f Common/LoginMsg.proto ]] \
-    || [[ ! -f Protobuf/LoginMsg.pb.h ]]; then
-    err "Common 协议不完整。请执行：git submodule update --init --recursive && ./scripts/gen_proto.sh"
+verify_common_protocol
+
+recorded_common="$(git ls-tree HEAD Common 2>/dev/null | awk '{print $3}' || true)"
+actual_common="$(git -C Common rev-parse HEAD 2>/dev/null || true)"
+if [[ -n "${recorded_common}" && -n "${actual_common}" && "${recorded_common}" != "${actual_common}" ]]; then
+    warn "Common 当前 ${actual_common:0:7} 领先主仓库记录的子模块指针 ${recorded_common:0:7}（正常；开发中可忽略，提交前请 ./push.sh）"
 fi
 
 main_sha="$(git rev-parse --short HEAD)"
