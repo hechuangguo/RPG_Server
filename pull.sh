@@ -127,8 +127,12 @@ common_branch() {
     echo "${branch}"
 }
 
+common_repo_ready() {
+    git -C Common rev-parse --is-inside-work-tree &>/dev/null
+}
+
 ensure_common_checked_out() {
-    [[ -d Common/.git ]] || err "Common 子模块未初始化，请先：git submodule update --init --recursive"
+    common_repo_ready || err "Common 子模块未初始化，请先：git submodule update --init --recursive"
 
     local branch
     branch="$(common_branch)"

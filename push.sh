@@ -114,11 +114,15 @@ git_push_repo() {
     return 1
 }
 
+common_repo_ready() {
+    git -C Common rev-parse --is-inside-work-tree &>/dev/null
+}
+
 commit_and_push_common() {
-    [[ -d Common/.git ]] || {
+    if ! common_repo_ready; then
         warn "Common 子模块未初始化，跳过"
         return 0
-    }
+    fi
 
     local branch
     branch="$(common_default_branch)"
