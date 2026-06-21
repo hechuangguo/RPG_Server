@@ -31,7 +31,8 @@
 
 - 白名单：允许的状态（未登录/已登录）
 - 包长：`minLen=1`、`maxLen=CLIENT_PROTO_MAX_BODY`（Protobuf body）
-- payload：`parseProto` + 业务约束（userId、坐标、聊天长度等）
+- payload：**仅** `parseProto` + 业务约束；**禁止** body 内 module/sub 前缀或定长 struct
+- legacy：命中 wire v2 定长包时返回 `BAD_PAYLOAD`（见 [PROTOCOL.md](PROTOCOL.md) §2.4）
 
 [`GatewayServer/ClientMsgRouter.h`](../GatewayServer/ClientMsgRouter.h)：
 

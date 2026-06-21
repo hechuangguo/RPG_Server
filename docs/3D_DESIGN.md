@@ -369,20 +369,22 @@ req.SerializeToString(&out);
 
 **禁止：** 手写与 `.proto` 并行的 C# struct；所有 wire 类型必须来自代码生成。
 
-### 4.8 Gateway 校验适配
+### 4.8 Gateway 校验（Protobuf only）
 
-[`GatewayServer/ClientMsgValidator.h`](../GatewayServer/ClientMsgValidator.h) 迁移策略：
+[`GatewayServer/ClientMsgValidator.h`](../GatewayServer/ClientMsgValidator.h) 对登录域上行（鉴权/创角/选角/退出）及场景/聊天/NPC 消息使用 **`parseProto`** 解析 body；**不提供** legacy wire v2 定长 struct 兼容。
 
-| 阶段 | 校验方式 |
-|------|----------|
-| Phase 0 | 白名单 module/sub + `bodyLen` 上限（如 64KB） |
-| Phase 1+ | 对关键上行消息 `ParseFromArray` 轻量校验（必填字段、数值范围） |
+| 校验项 | 说明 |
+|--------|------|
+| 白名单 | module/sub + 连接状态机 |
+| 包长 | `minLen=1`、`maxLen=CLIENT_PROTO_MAX_BODY` |
+| payload | `ParseFromArray` + 业务约束（account/token、角色名、坐标等） |
+| legacy 检测 | body 内嵌 module/sub 且为定长 107/38/18 → `BAD_PAYLOAD` + 明确 S2C_ERROR 文案 |
 
 路由逻辑（LOCAL / SCENE / SESSION）**不变**。
 
 ### 4.9 迁移状态（已完成）
 
-客户端 wire 已全量迁至 Protobuf；legacy `*Msg.h` / `ClientMsgBody.h` 已从 Common 删除。线上帧仍为 **6 字节头 + Protobuf body**，路由仅靠 header 的 module/sub。
+LoginServer 与 GatewayServer 客户端 wire 均为 **Protobuf body**；legacy `*Msg.h` / `ClientMsgBody.h` 已从 Common 删除。线上帧为 **4 字节 MsgHeader + Protobuf body**，路由仅靠 header 的 module/sub；Gateway **无** legacy 兼容层。
 
 ```mermaid
 flowchart TD

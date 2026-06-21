@@ -2,7 +2,7 @@
  * @file    ClientProtoWire.h
  * @brief  客户端 Protobuf 编解码与地图 spawn 辅助
  *
- * body 为 proto3 二进制；6 字节 MsgHeader 路由不变（见 Common/WireCommon.proto、sdk/net/NetDefine.h）。
+ * body 为 proto3 二进制；4 字节 MsgHeader 路由不变（见 sdk/net/NetDefine.h）。
  */
 
 #pragma once

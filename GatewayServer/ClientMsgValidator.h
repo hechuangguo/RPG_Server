@@ -53,6 +53,9 @@ public:
             sub == static_cast<uint8_t>(rpg::login::C2S_CREATE_USER_REQ))
             return validateCreateUser(data, len);
         if (module == kLoginModule &&
+            sub == static_cast<uint8_t>(rpg::login::C2S_SELECT_USER_REQ))
+            return validateSelectUser(data, len);
+        if (module == kLoginModule &&
             sub == static_cast<uint8_t>(rpg::login::C2S_LOGOUT_REQ))
             return validateLogout(data, len);
         if (module == kSceneModule &&
@@ -85,6 +88,27 @@ public:
             return static_cast<int32_t>(rpg::system::GATEWAY_VALIDATE_RATE_LIMITED);
         }
         return static_cast<int32_t>(rpg::system::GATEWAY_VALIDATE_BAD_PAYLOAD);
+    }
+
+    /**
+     * @brief 检测 body 是否为已废弃的 wire v2 定长包（body 内嵌 module/sub 前缀）
+     * @return 命中 legacy 登录域包时 true
+     */
+    static bool looksLikeLegacyWireV2(uint8_t module, uint8_t sub,
+                                      const char* data, uint16_t len)
+    {
+        if (module != kLoginModule || len < 2 || !data)
+            return false;
+        if (static_cast<uint8_t>(data[0]) != module ||
+            static_cast<uint8_t>(data[1]) != sub)
+            return false;
+        if (sub == static_cast<uint8_t>(rpg::login::C2S_GATEWAY_AUTH_REQ) && len == 107)
+            return true;
+        if (sub == static_cast<uint8_t>(rpg::login::C2S_CREATE_USER_REQ) && len == 38)
+            return true;
+        if (sub == static_cast<uint8_t>(rpg::login::C2S_SELECT_USER_REQ) && len == 18)
+            return true;
+        return false;
     }
 
 private:
@@ -154,9 +178,13 @@ private:
         return nullptr;
     }
 
-    /** @brief C2S_GATEWAY_AUTH_REQ：解析 Protobuf 并校验 account/token 非空 */
+    /** @brief C2S_GATEWAY_AUTH_REQ：Protobuf body only */
     static ValidateResult validateGatewayAuth(const char* data, uint16_t len)
     {
+        if (looksLikeLegacyWireV2(kLoginModule,
+                                  static_cast<uint8_t>(rpg::login::C2S_GATEWAY_AUTH_REQ),
+                                  data, len))
+            return ValidateResult::BAD_PAYLOAD;
         rpg::login::C2SGatewayAuthReq req;
         if (!parseProto(data, len, req))
             return ValidateResult::BAD_LENGTH;
@@ -165,9 +193,13 @@ private:
         return ValidateResult::OK;
     }
 
-    /** @brief C2S_CREATE_USER_REQ：角色名 UTF-8 与职业/性别上限 */
+    /** @brief C2S_CREATE_USER_REQ：Protobuf body only */
     static ValidateResult validateCreateUser(const char* data, uint16_t len)
     {
+        if (looksLikeLegacyWireV2(kLoginModule,
+                                  static_cast<uint8_t>(rpg::login::C2S_CREATE_USER_REQ),
+                                  data, len))
+            return ValidateResult::BAD_PAYLOAD;
         rpg::login::C2SCreateUserReq req;
         if (!parseProto(data, len, req))
             return ValidateResult::BAD_LENGTH;
@@ -176,6 +208,21 @@ private:
         if (!isValidRoleNameUtf8(req.name().c_str()))
             return ValidateResult::BAD_PAYLOAD;
         if (req.vocation() > MAX_VOCATION_ID || req.sex() > MAX_SEX_ID)
+            return ValidateResult::BAD_PAYLOAD;
+        return ValidateResult::OK;
+    }
+
+    /** @brief C2S_SELECT_USER_REQ：Protobuf body only */
+    static ValidateResult validateSelectUser(const char* data, uint16_t len)
+    {
+        if (looksLikeLegacyWireV2(kLoginModule,
+                                  static_cast<uint8_t>(rpg::login::C2S_SELECT_USER_REQ),
+                                  data, len))
+            return ValidateResult::BAD_PAYLOAD;
+        rpg::login::C2SSelectUserReq req;
+        if (!parseProto(data, len, req))
+            return ValidateResult::BAD_LENGTH;
+        if (req.user_id() == 0)
             return ValidateResult::BAD_PAYLOAD;
         return ValidateResult::OK;
     }

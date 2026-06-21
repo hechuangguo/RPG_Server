@@ -403,9 +403,25 @@ void GatewayServer::handleClientMsg(ConnID connID, uint8_t module, uint8_t sub,
         ClientMsgValidator::check(user.get(), module, sub, data, len);
     if (vr != ValidateResult::OK)
     {
-        sendClientError(connID, vr);
-        LOG_WARN("客户端消息被拒绝: conn=%u mod=0x%02X sub=0x%02X vr=%u",
-                 connID, module, sub, static_cast<unsigned>(vr));
+        if (ClientMsgValidator::looksLikeLegacyWireV2(module, sub, data, len))
+        {
+            sendClientLegacyWireError(connID);
+            LOG_WARN("客户端消息被拒绝: conn=%u mod=0x%02X sub=0x%02X legacy wire v2",
+                     connID, module, sub);
+            if (module == kLoginModule &&
+                sub == static_cast<uint8_t>(rpg::login::C2S_GATEWAY_AUTH_REQ))
+            {
+                logLoginFlow(LoginFlowPhase::GATEWAY_AUTH, 0, 0, connID,
+                             static_cast<int32_t>(ValidateResult::BAD_PAYLOAD),
+                             "legacy wire v2 rejected");
+            }
+        }
+        else
+        {
+            sendClientError(connID, vr);
+            LOG_WARN("客户端消息被拒绝: conn=%u mod=0x%02X sub=0x%02X vr=%u",
+                     connID, module, sub, static_cast<unsigned>(vr));
+        }
         return;
     }
 
@@ -456,6 +472,15 @@ void GatewayServer::sendClientError(ConnID connID, ValidateResult vr)
     default: break;
     }
     err.set_msg(text);
+    sendClientProtoModule(m_clientServer, connID, kSystemModule,
+                  static_cast<uint8_t>(rpg::system::S2C_ERROR), err);
+}
+
+void GatewayServer::sendClientLegacyWireError(ConnID connID)
+{
+    rpg::system::S2CError err;
+    err.set_code(static_cast<int32_t>(rpg::system::GATEWAY_VALIDATE_BAD_PAYLOAD));
+    err.set_msg("客户端协议版本过旧，请使用 Protobuf 重发 Gateway 消息");
     sendClientProtoModule(m_clientServer, connID, kSystemModule,
                   static_cast<uint8_t>(rpg::system::S2C_ERROR), err);
 }

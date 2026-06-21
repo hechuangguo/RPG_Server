@@ -148,8 +148,8 @@ Gateway **不直连** Login RegisterListen，而是：
 
 | 阶段 | 端口 | 进程 | 客户端行为 |
 |------|------|------|------------|
-| 账号登录 | **9010** | LoginServer ClientListen | **TLS** → `C2S_LOGIN_REQ`（32B 密码 SHA-256 摘要）→ 收 `S2C_GATEWAY_INFO` |
-| 网关鉴权 / 角色列表 | **9005** | GatewayServer | 断开 9010 后 **TLS** 连网关 → `C2S_GATEWAY_AUTH_REQ` → `S2C_USER_LIST` |
+| 账号登录 | **9010** | LoginServer ClientListen | **TLS** → **`C2SLoginReq` Protobuf**（32B 密码 SHA-256 摘要）→ 收 `S2C_GATEWAY_INFO` |
+| 网关鉴权 / 角色列表 | **9005** | GatewayServer | 断开 9010 后 **TLS** 连网关 → **`C2SGatewayAuthReq` Protobuf body** → `S2C_USER_LIST` |
 
 **症状对照**：
 

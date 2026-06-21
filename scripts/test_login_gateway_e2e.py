@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Login → Gateway 鉴权 → 角色列表 → 创角(可选) → 选角进世界 E2E 冒烟（TLS）。"""
+"""
+Login → Gateway 鉴权 → 角色列表 → 创角(可选) → 选角进世界 E2E 冒烟（TLS + Protobuf）。
+
+依赖：
+  pip install protobuf
+  ./scripts/gen_proto_py.sh
+"""
 
 import hashlib
 import os
@@ -9,14 +15,46 @@ import struct
 import sys
 import time
 
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_ROOT = os.path.dirname(_SCRIPT_DIR)
+_PB_DIR = os.path.join(_SCRIPT_DIR, "pb")
+if _PB_DIR not in sys.path:
+    sys.path.insert(0, _PB_DIR)
+
+try:
+    import LoginMsg_pb2
+    import MapDataMsg_pb2
+except ImportError as exc:
+    print(
+        "FAIL: 缺少 Python protobuf 生成物或 google.protobuf 包。\n"
+        "  ./scripts/gen_proto_py.sh\n"
+        "  pip install protobuf",
+        file=sys.stderr,
+    )
+    raise SystemExit(2) from exc
+
 HOST = "127.0.0.1"
 LOGIN_PORT = 9010
 GATEWAY_PORT = 9005
 
-_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-_ROOT = os.path.dirname(_SCRIPT_DIR)
 DEFAULT_CA = os.path.join(_ROOT, "config", "tls", "ca.crt")
 TLS_INSECURE = os.environ.get("TLS_INSECURE", "").strip() in ("1", "true", "yes")
+
+LOGIN_MODULE = 0
+SCENE_MODULE = 1
+C2S_LOGIN_REQ = 1
+S2C_LOGIN_RSP = 2
+C2S_SELECT_USER_REQ = 5
+S2C_USER_LIST = 6
+C2S_CREATE_USER_REQ = 7
+S2C_CREATE_USER_RSP = 8
+S2C_ENTER_GAME = 9
+S2C_GATEWAY_INFO = 10
+C2S_GATEWAY_AUTH_REQ = 0x0D
+C2S_LOGOUT_REQ = 0x0E
+S2C_LOGOUT_RSP = 0x0F
+S2C_SPAWN_ENTITY = 5
+MSG_HEADER_SIZE = 4
 
 
 def make_ssl_context():
@@ -30,8 +68,7 @@ def make_ssl_context():
     if not os.path.isfile(cafile):
         print(f"FAIL: CA not found: {cafile} (run ./scripts/gen_tls_certs.sh)", file=sys.stderr)
         sys.exit(2)
-    ctx = ssl.create_default_context(cafile=cafile)
-    return ctx
+    return ssl.create_default_context(cafile=cafile)
 
 
 _SSL_CTX = None
@@ -45,40 +82,6 @@ def tls_connect(host, port, timeout=5):
     raw = socket.create_connection((host, port), timeout)
     raw.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
     return _SSL_CTX.wrap_socket(raw, server_hostname=host)
-
-LOGIN_MODULE = 0
-SCENE_MODULE = 1
-C2S_LOGIN_REQ = 1
-S2C_LOGIN_RSP = 2
-C2S_SELECT_USER_REQ = 5
-S2C_USER_LIST = 6
-C2S_CREATE_USER_REQ = 7
-S2C_CREATE_USER_RSP = 8
-S2C_ENTER_GAME = 9
-C2S_LOGOUT_REQ = 0x0E
-S2C_LOGOUT_RSP = 0x0F
-C2S_GATEWAY_AUTH_REQ = 0x0D
-S2C_SPAWN_ENTITY = 5
-
-LOGIN_RSP_TOKEN_OFF = 86  # Msg_S2C_LoginRsp: module(1)+sub(1)+code(4)+msg(64)+userID(8)+accid(8)
-LOGIN_RSP_MIN = LOGIN_RSP_TOKEN_OFF + 65  # 151；须覆盖 loginToken[65]
-USER_LIST_HEADER_SIZE = 8  # Msg_S2C_UserListHeader: module(1)+sub(1)+code(4)+count(2)
-USER_LIST_ENTRY_SIZE = 48
-CREATE_USER_RSP_SIZE = 78  # Msg_S2C_CreateUserRsp: module(1)+sub(1)+code(4)+msg(64)+userID(8)
-CREATE_USER_RSP_USERID_OFF = 70  # body[0:1]module/sub + [2:5]code + [6:69]msg；wire v2 前缀即 struct 前两字节，非额外 +2
-CREATE_USER_FMT = "<BB32sBB2x"
-SELECT_USER_FMT = "<BBQQ"
-GATEWAY_AUTH_FMT = "<BB32s65sIB3x"
-LOGOUT_REQ_FMT = "<BBB3x"
-LOGOUT_RSP_MIN = 74  # module(1)+sub(1)+code(4)+action(1)+reserved(3)+msg(64)
-MSG_HEADER_SIZE = 4  # MsgHeader: bodyLen(2)+module(1)+sub(1)，见 sdk/net/NetDefine.h
-
-
-def wirePrefixOff(body, hdrMod, hdrSub):
-    """body 前两字节与帧头 module/sub 一致时跳过 wire v2 前缀。"""
-    if len(body) >= 2 and body[0] == hdrMod and body[1] == hdrSub:
-        return 2
-    return 0
 
 
 class MsgReader:
@@ -118,106 +121,100 @@ class MsgReader:
         return pending
 
 
-def send_msg(sock, module, sub, body):
-    """发送一帧：MsgHeader(4B) + body。wire v2 要求 body 前两字节也为 module/sub（与头一致）。"""
+def send_msg(sock, module, sub, body: bytes):
+    """发送一帧：MsgHeader(4B) + Protobuf body（body 内不含 module/sub）。"""
     sock.sendall(struct.pack("<HBB", len(body), module, sub) + body)
 
 
-def pad_str(s, n):
-    b = s.encode("utf-8")[: n - 1]
-    return b.ljust(n, b"\x00")
-
-
-def parse_login_rsp(data, hdrMod=LOGIN_MODULE, hdrSub=S2C_LOGIN_RSP):
-    w = wirePrefixOff(data, hdrMod, hdrSub)
-    if w == 2 or (len(data) >= 2 and data[0] == hdrMod and data[1] == hdrSub):
-        if len(data) < LOGIN_RSP_MIN:
-            return None
-        return {
-            "code": struct.unpack_from("<i", data, 2)[0],
-            "msg": data[6:70].split(b"\x00")[0].decode("utf-8", "replace"),
-            "userID": struct.unpack_from("<Q", data, 70)[0],
-            "accid": struct.unpack_from("<Q", data, 78)[0],
-            "token": data[LOGIN_RSP_TOKEN_OFF : LOGIN_RSP_MIN]
-            .split(b"\x00")[0]
-            .decode("ascii"),
-        }
-    if len(data) >= 84 + 65:
-        # 兼容无 body 前缀的旧格式：code(4)+msg(64)+userID(8)+accid(8)+loginToken(65)
-        return {
-            "code": struct.unpack_from("<i", data, 0)[0],
-            "msg": data[4:68].split(b"\x00")[0].decode("utf-8", "replace"),
-            "userID": struct.unpack_from("<Q", data, 68)[0],
-            "accid": struct.unpack_from("<Q", data, 76)[0],
-            "token": data[84:149].split(b"\x00")[0].decode("ascii"),
-        }
-    return None
-
-
-def parse_user_list(data, hdrMod=LOGIN_MODULE, hdrSub=S2C_USER_LIST):
-    w = wirePrefixOff(data, hdrMod, hdrSub)
-    if w == 2 or (len(data) >= USER_LIST_HEADER_SIZE and data[0] == hdrMod and data[1] == hdrSub):
-        if len(data) < USER_LIST_HEADER_SIZE:
-            return None
-        code = struct.unpack_from("<i", data, 2)[0]
-        count = struct.unpack_from("<H", data, 6)[0]
-        off = USER_LIST_HEADER_SIZE
-    elif len(data) >= 6:
-        # 兼容无 body 前缀的旧格式：code(4)+count(2)
-        code = struct.unpack_from("<i", data, 0)[0]
-        count = struct.unpack_from("<H", data, 4)[0]
-        off = 6
-    else:
-        return None
-    entries = []
-    for _ in range(count):
-        if off + USER_LIST_ENTRY_SIZE > len(data):
-            break
-        user_id = struct.unpack_from("<Q", data, off)[0]
-        name = data[off + 8 : off + 40].split(b"\x00")[0].decode("utf-8", "replace")
-        level = struct.unpack_from("<I", data, off + 40)[0]
-        vocation = data[off + 44]
-        sex = data[off + 45]
-        entries.append(
-            {"userID": user_id, "name": name, "level": level, "vocation": vocation, "sex": sex}
-        )
-        off += USER_LIST_ENTRY_SIZE
-    return {"code": code, "count": count, "entries": entries}
-
-
-def parse_create_user_rsp(data, hdrMod=LOGIN_MODULE, hdrSub=S2C_CREATE_USER_RSP):
-    w = wirePrefixOff(data, hdrMod, hdrSub)
-    if w == 2 or (len(data) >= 2 and data[0] == hdrMod and data[1] == hdrSub):
-        if len(data) < CREATE_USER_RSP_SIZE:
-            return None
-        return {
-            "code": struct.unpack_from("<i", data, 2)[0],
-            "userID": struct.unpack_from("<Q", data, CREATE_USER_RSP_USERID_OFF)[0],
-        }
-    if len(data) >= 72:
-        # 兼容无 body 前缀的旧格式：code(4)+msg(64)+userID(8)
-        return {
-            "code": struct.unpack_from("<i", data, 0)[0],
-            "userID": struct.unpack_from("<Q", data, 68)[0],
-        }
-    return None
-
-
 def password_digest(plain: str) -> bytes:
-    """32 字节 SHA-256(UTF-8 密码)，与 Msg_C2S_LoginReq.passwordDigest 一致。"""
+    """32 字节 SHA-256(UTF-8 密码)。"""
     return hashlib.sha256(plain.encode("utf-8")).digest()
 
 
+def fill_protocol_version(msg):
+    """填充 protocol_version major=1 minor=0。"""
+    pv = msg.protocol_version
+    pv.major = 1
+    pv.minor = 0
+
+
+def parse_login_rsp(data: bytes):
+    rsp = LoginMsg_pb2.S2CLoginRsp()
+    if not rsp.ParseFromString(data):
+        return None
+    return {
+        "code": rsp.code,
+        "msg": rsp.msg,
+        "userID": rsp.user_id,
+        "accid": rsp.accid,
+        "token": rsp.login_token,
+    }
+
+
+def parse_gateway_info(data: bytes):
+    info = LoginMsg_pb2.S2CGatewayInfo()
+    if not info.ParseFromString(data):
+        return None, None
+    return info.gateway_ip, info.gateway_port
+
+
+def parse_user_list(data: bytes):
+    lst = LoginMsg_pb2.S2CUserList()
+    if not lst.ParseFromString(data):
+        return None
+    entries = []
+    for e in lst.entries:
+        entries.append(
+            {
+                "userID": e.user_id,
+                "name": e.name,
+                "level": e.level,
+                "vocation": e.vocation,
+                "sex": e.sex,
+            }
+        )
+    return {"code": lst.code, "count": len(entries), "entries": entries}
+
+
+def parse_create_user_rsp(data: bytes):
+    rsp = LoginMsg_pb2.S2CCreateUserRsp()
+    if not rsp.ParseFromString(data):
+        return None
+    return {"code": rsp.code, "userID": rsp.user_id}
+
+
+def parse_enter_game(data: bytes):
+    eg = LoginMsg_pb2.S2CEnterGame()
+    if not eg.ParseFromString(data):
+        return None
+    return {
+        "userID": eg.user_id,
+        "map_id": eg.map_id,
+        "x": eg.pos.x,
+        "y": eg.pos.y,
+        "z": eg.pos.z,
+    }
+
+
+def parse_logout_rsp(data: bytes):
+    rsp = LoginMsg_pb2.S2CLogoutRsp()
+    if not rsp.ParseFromString(data):
+        return None
+    return {"code": rsp.code, "action": rsp.action}
+
+
 def login(account, password, zone_id=1, game_type=0):
-    body = struct.pack("<BB", LOGIN_MODULE, C2S_LOGIN_REQ)
-    body += pad_str(account, 32)
-    body += password_digest(password)
-    body += struct.pack("<IB3x", zone_id, game_type)
+    req = LoginMsg_pb2.C2SLoginReq()
+    req.account = account
+    req.password_digest = password_digest(password)
+    req.zone_id = zone_id
+    req.game_type = game_type
+    fill_protocol_version(req)
 
     sock = tls_connect(HOST, LOGIN_PORT, 5)
-    send_msg(sock, LOGIN_MODULE, C2S_LOGIN_REQ, body)
+    send_msg(sock, LOGIN_MODULE, C2S_LOGIN_REQ, req.SerializeToString())
     reader = MsgReader(sock)
-    msgs = reader.collect({S2C_LOGIN_RSP, 0x0A}, timeout=5.0)
+    msgs = reader.collect({S2C_LOGIN_RSP, S2C_GATEWAY_INFO}, timeout=5.0)
     sock.close()
 
     login_rsp = None
@@ -225,11 +222,9 @@ def login(account, password, zone_id=1, game_type=0):
     gateway_port = None
     for mod, sub, data in msgs:
         if mod == LOGIN_MODULE and sub == S2C_LOGIN_RSP:
-            login_rsp = parse_login_rsp(data, mod, sub)
-        elif mod == LOGIN_MODULE and sub == 0x0A and len(data) >= 38:
-            w = wirePrefixOff(data, mod, sub)
-            gateway_ip = data[w + 4 : w + 36].split(b"\x00")[0].decode("utf-8", "replace")
-            gateway_port = struct.unpack_from("<H", data, w + 36)[0]
+            login_rsp = parse_login_rsp(data)
+        elif mod == LOGIN_MODULE and sub == S2C_GATEWAY_INFO:
+            gateway_ip, gateway_port = parse_gateway_info(data)
     return login_rsp, gateway_ip, gateway_port
 
 
@@ -257,38 +252,35 @@ def main():
     print(f"[2] gateway connect {gw_host}:{gw_port} ...")
     gw = tls_connect(gw_host, gw_port, 5)
     reader = MsgReader(gw)
-    auth_body = struct.pack(
-        GATEWAY_AUTH_FMT,
-        LOGIN_MODULE,
-        C2S_GATEWAY_AUTH_REQ,
-        pad_str(account, 32),
-        pad_str(login_rsp["token"], 65),
-        1,
-        0,
-    )
-    send_msg(gw, LOGIN_MODULE, C2S_GATEWAY_AUTH_REQ, auth_body)
+
+    auth_req = LoginMsg_pb2.C2SGatewayAuthReq()
+    auth_req.account = account
+    auth_req.login_token = login_rsp["token"]
+    auth_req.zone_id = 1
+    auth_req.game_type = 0
+    fill_protocol_version(auth_req)
+    send_msg(gw, LOGIN_MODULE, C2S_GATEWAY_AUTH_REQ, auth_req.SerializeToString())
 
     pending = reader.collect({S2C_LOGIN_RSP, S2C_USER_LIST}, timeout=12.0)
     user_list = None
     auth_ok = False
     for mod, sub, data in pending:
         if mod == LOGIN_MODULE and sub == S2C_LOGIN_RSP:
-            w = wirePrefixOff(data, mod, sub)
-            code = struct.unpack_from("<i", data, w)[0]
-            print(f"    S2C_LOGIN_RSP auth code={code}")
-            auth_ok = code == 0
+            rsp = parse_login_rsp(data)
+            if rsp:
+                print(f"    S2C_LOGIN_RSP auth code={rsp['code']}")
+                auth_ok = rsp["code"] == 0
         if mod == LOGIN_MODULE and sub == S2C_USER_LIST:
-            user_list = parse_user_list(data, mod, sub)
+            user_list = parse_user_list(data)
             if user_list:
                 print(f"    S2C_USER_LIST code={user_list['code']} count={user_list['count']}")
 
-    # 角色列表与鉴权回包可能分包到达，继续短等列表
     if auth_ok and not user_list:
         extra = reader.collect({S2C_USER_LIST}, timeout=5.0)
         pending.extend(extra)
         for mod, sub, data in extra:
             if mod == LOGIN_MODULE and sub == S2C_USER_LIST:
-                user_list = parse_user_list(data, mod, sub)
+                user_list = parse_user_list(data)
                 if user_list:
                     print(f"    S2C_USER_LIST code={user_list['code']} count={user_list['count']}")
 
@@ -303,30 +295,25 @@ def main():
 
     if user_id is None:
         print(f"[3] create character name={role_name} vocation=0 ...")
-        create_body = struct.pack(
-            CREATE_USER_FMT,
-            LOGIN_MODULE,
-            C2S_CREATE_USER_REQ,
-            pad_str(role_name, 32),
-            0,
-            0,
-        )
-        send_msg(gw, LOGIN_MODULE, C2S_CREATE_USER_REQ, create_body)
-        pending = reader.collect({S2C_CREATE_USER_RSP}, timeout=12.0)
+        create_req = LoginMsg_pb2.C2SCreateUserReq()
+        create_req.name = role_name
+        create_req.vocation = 0
+        create_req.sex = 0
+        send_msg(gw, LOGIN_MODULE, C2S_CREATE_USER_REQ, create_req.SerializeToString())
+
+        pending = reader.collect({S2C_CREATE_USER_RSP, S2C_USER_LIST}, timeout=12.0)
         create_ok = False
         for mod, sub, data in pending:
             if mod == LOGIN_MODULE and sub == S2C_CREATE_USER_RSP:
-                create_rsp = parse_create_user_rsp(data, mod, sub)
+                create_rsp = parse_create_user_rsp(data)
                 if not create_rsp:
                     continue
-                code = create_rsp["code"]
-                uid = create_rsp["userID"]
-                print(f"    S2C_CREATE_USER_RSP code={code} userID={uid}")
-                if code == 0 and uid:
-                    user_id = uid
+                print(f"    S2C_CREATE_USER_RSP code={create_rsp['code']} userID={create_rsp['userID']}")
+                if create_rsp["code"] == 0 and create_rsp["userID"]:
+                    user_id = create_rsp["userID"]
                     create_ok = True
             if mod == LOGIN_MODULE and sub == S2C_USER_LIST:
-                ul = parse_user_list(data, mod, sub)
+                ul = parse_user_list(data)
                 if not ul:
                     continue
                 print(f"    S2C_USER_LIST refresh count={ul['count']}")
@@ -339,34 +326,32 @@ def main():
             return 1
 
     print(f"[4] select userID={user_id} enter world ...")
-    select_body = struct.pack(
-        SELECT_USER_FMT,
-        LOGIN_MODULE,
-        C2S_SELECT_USER_REQ,
-        user_id,
-        0,
-    )
-    send_msg(gw, LOGIN_MODULE, C2S_SELECT_USER_REQ, select_body)
+    select_req = LoginMsg_pb2.C2SSelectUserReq()
+    select_req.user_id = user_id
+    select_req.login_txn_id = 0
+    send_msg(gw, LOGIN_MODULE, C2S_SELECT_USER_REQ, select_req.SerializeToString())
 
-    pending = reader.collect({S2C_ENTER_GAME}, timeout=20.0)
+    pending = reader.collect({S2C_ENTER_GAME, S2C_LOGIN_RSP}, timeout=20.0)
     enter_ok = False
     spawn_ok = False
     for mod, sub, data in pending:
-        if mod == LOGIN_MODULE and sub == S2C_LOGIN_RSP and len(data) >= 4:
-            w = wirePrefixOff(data, mod, sub)
-            code = struct.unpack_from("<i", data, w)[0]
-            uid = struct.unpack_from("<Q", data, w + 68)[0] if len(data) >= w + 76 else 0
-            print(f"    S2C_LOGIN_RSP enter code={code} userID={uid}")
-        if mod == LOGIN_MODULE and sub == S2C_ENTER_GAME and len(data) >= 48:
-            w = wirePrefixOff(data, mod, sub)
-            uid = struct.unpack_from("<Q", data, w)[0]
-            map_id = struct.unpack_from("<I", data, w + 8 + 32)[0]
-            x, y, z = struct.unpack_from("<fff", data, w + 8 + 32 + 4)
-            print(f"    S2C_ENTER_GAME userID={uid} map={map_id} pos=({x:.1f},{y:.1f},{z:.1f})")
-            enter_ok = True
+        if mod == LOGIN_MODULE and sub == S2C_LOGIN_RSP:
+            rsp = parse_login_rsp(data)
+            if rsp:
+                print(f"    S2C_LOGIN_RSP enter code={rsp['code']} userID={rsp['userID']}")
+        if mod == LOGIN_MODULE and sub == S2C_ENTER_GAME:
+            eg = parse_enter_game(data)
+            if eg:
+                print(
+                    f"    S2C_ENTER_GAME userID={eg['userID']} map={eg['map_id']} "
+                    f"pos=({eg['x']:.1f},{eg['y']:.1f},{eg['z']:.1f})"
+                )
+                enter_ok = True
         if mod == SCENE_MODULE and sub == S2C_SPAWN_ENTITY:
-            print(f"    S2C_SPAWN_ENTITY len={len(data)}")
-            spawn_ok = True
+            spawn = MapDataMsg_pb2.S2CSpawnEntity()
+            if spawn.ParseFromString(data):
+                print(f"    S2C_SPAWN_ENTITY entity_id={spawn.entity_id} name={spawn.name}")
+                spawn_ok = True
 
     if not enter_ok:
         gw.close()
@@ -374,26 +359,21 @@ def main():
         return 1
 
     print(f"[5] logout return char select userID={user_id} ...")
-    logout_body = struct.pack(
-        LOGOUT_REQ_FMT,
-        LOGIN_MODULE,
-        C2S_LOGOUT_REQ,
-        1,  # RETURN_CHAR_SELECT
-    )
-    send_msg(gw, LOGIN_MODULE, C2S_LOGOUT_REQ, logout_body)
+    logout_req = LoginMsg_pb2.C2SLogoutReq()
+    logout_req.action = LoginMsg_pb2.RETURN_CHAR_SELECT
+    send_msg(gw, LOGIN_MODULE, C2S_LOGOUT_REQ, logout_req.SerializeToString())
 
     pending = reader.collect({S2C_LOGOUT_RSP, S2C_USER_LIST}, timeout=15.0)
     logout_ok = False
     relist_ok = False
     for mod, sub, data in pending:
-        if mod == LOGIN_MODULE and sub == S2C_LOGOUT_RSP and len(data) >= LOGOUT_RSP_MIN:
-            w = wirePrefixOff(data, mod, sub)
-            code = struct.unpack_from("<i", data, w)[0]
-            action = data[w + 4] if len(data) > w + 4 else 0
-            print(f"    S2C_LOGOUT_RSP code={code} action={action}")
-            logout_ok = code == 0 and action == 1
+        if mod == LOGIN_MODULE and sub == S2C_LOGOUT_RSP:
+            lr = parse_logout_rsp(data)
+            if lr:
+                print(f"    S2C_LOGOUT_RSP code={lr['code']} action={lr['action']}")
+                logout_ok = lr["code"] == 0 and lr["action"] == LoginMsg_pb2.RETURN_CHAR_SELECT
         if mod == LOGIN_MODULE and sub == S2C_USER_LIST:
-            ul = parse_user_list(data, mod, sub)
+            ul = parse_user_list(data)
             if ul:
                 print(f"    S2C_USER_LIST after logout count={ul['count']}")
                 relist_ok = ul["count"] > 0
@@ -404,23 +384,19 @@ def main():
         return 1
 
     print(f"[6] re-select userID={user_id} enter world again ...")
-    select_body = struct.pack(
-        SELECT_USER_FMT,
-        LOGIN_MODULE,
-        C2S_SELECT_USER_REQ,
-        user_id,
-        0,
-    )
-    send_msg(gw, LOGIN_MODULE, C2S_SELECT_USER_REQ, select_body)
+    select_req = LoginMsg_pb2.C2SSelectUserReq()
+    select_req.user_id = user_id
+    select_req.login_txn_id = 0
+    send_msg(gw, LOGIN_MODULE, C2S_SELECT_USER_REQ, select_req.SerializeToString())
 
     pending = reader.collect({S2C_ENTER_GAME}, timeout=20.0)
     reenter_ok = False
     for mod, sub, data in pending:
-        if mod == LOGIN_MODULE and sub == S2C_ENTER_GAME and len(data) >= 48:
-            w = wirePrefixOff(data, mod, sub)
-            uid = struct.unpack_from("<Q", data, w)[0]
-            print(f"    S2C_ENTER_GAME re-enter userID={uid}")
-            reenter_ok = uid == user_id
+        if mod == LOGIN_MODULE and sub == S2C_ENTER_GAME:
+            eg = parse_enter_game(data)
+            if eg and eg["userID"] == user_id:
+                print(f"    S2C_ENTER_GAME re-enter userID={eg['userID']}")
+                reenter_ok = True
 
     gw.close()
     if reenter_ok:

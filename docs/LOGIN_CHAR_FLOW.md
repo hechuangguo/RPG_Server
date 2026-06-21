@@ -200,7 +200,7 @@ grep '\[登录链路\]' logs/gateway.log logs/login.log logs/super.log
 | UI 停在「获取角色列表」 | `gateway.log` 仅有 `客户端连接建立`，无 `Gateway 票据鉴权` / `phase=网关鉴权` | 客户端连上 Gateway 但未发 `C2S_GATEWAY_AUTH_REQ` |
 | 同上，约 10s 后出现 WARN | `phase=网关鉴权 code=-1 连接后未鉴权超时` | 同上（服务端诊断日志） |
 | 有 `客户端首条上行` 但无鉴权 | mod/sub 不是 `0x00/0x0D` | 客户端发了错误消息号 |
-| 有 `客户端消息被拒绝` | vr=BAD_LENGTH/BAD_PAYLOAD 等 | wire 格式与协议不一致 |
+| 有 `客户端消息被拒绝` | vr=BAD_LENGTH/BAD_PAYLOAD 或 `legacy wire v2` | body 非 Protobuf；鉴权定长 107B 须改为 `C2SGatewayAuthReq` Protobuf |
 | 鉴权后无列表 | 有 `Record转发Login校验` 无 `phase=角色列表` | Record/Login 票据校验失败 |
 
 ### 6.4 无可用网关（账号登录成功但客户端提示无可用网关）

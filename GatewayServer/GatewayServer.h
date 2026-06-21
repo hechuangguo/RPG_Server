@@ -154,6 +154,9 @@ private:
     /** @brief 向客户端回参数/状态校验错误 */
     void sendClientError(ConnID connID, ValidateResult vr);
 
+    /** @brief 拒绝 legacy wire v2 定长包，提示客户端升级 Protobuf */
+    void sendClientLegacyWireError(ConnID connID);
+
     /** @brief Gateway 票据鉴权 */
     void onGatewayAuth(ConnID connID, const char* data, uint16_t len);
 

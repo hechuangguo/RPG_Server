@@ -9,6 +9,7 @@ logs/
 __pycache__/
 *.pyc
 *.pyo
+scripts/pb/*_pb2.py
 
 # Runtime PID files
 run/
