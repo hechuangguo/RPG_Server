@@ -40,6 +40,22 @@ Server 运行时 C++ 帧 struct 与 `makeMsgId` 等 helper 在 [`sdk/net/NetDefi
 
 Server 运行时网络栈见 [`sdk/net/NetDefine.h`](../sdk/net/NetDefine.h)；帧布局与 `WireCommon.proto` 注释一致。
 
+### Handler 覆盖矩阵（Server）
+
+Common 中已定义的 proto **不等于** Gateway 已放行或 Server 已实现 handler。完整消息表与「实现状态」列见 [PROTOCOL.md](PROTOCOL.md) §2.2。
+
+| 域 | proto | 处理进程 | ClientMsgRegister |
+|----|-------|----------|-------------------|
+| 登录 | LoginCommon + LoginMsg | LoginServer（LOGIN/REGISTER）；Gateway（AUTH/SELECT/CREATE/LOGOUT） | `LoginClientMsgRegister` / `GatewayClientMsgRegister` |
+| 区服 | ZoneCommon + ZoneMsg | LoginServer（区列表，module=LOGIN） | LoginClientMsgRegister |
+| 地图 | MapDataCommon + MapDataMsg | SceneServer（移动；下行 SPAWN/DESPAWN/MOVE） | `SceneClientMsgRegister` |
+| 聊天 | ChatCommon + ChatMsg | SceneServer（频道聊天；私聊 sub 未实现） | SceneClientMsgRegister |
+| NPC | NpcCommon + NpcMsg | SceneServer | SceneClientMsgRegister |
+| 系统 | SystemCommon + SystemMsg | Gateway（心跳、S2C_ERROR） | GatewayClientMsgRegister |
+| BATTLE/BAG/SKILL/SOCIAL/QUEST | **无 proto** | Gateway **DROP** | — |
+
+扩展流程：改 `Common/*.proto` → `./scripts/gen_proto.sh` → `ClientMsgValidator` + `ClientMsgRouter` → 目标服 `*ClientMsgRegister`。
+
 ---
 
 ## 2. 目录布局

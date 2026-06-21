@@ -341,7 +341,7 @@ flowchart TB
 | 转发 | `Msg_GW_ClientMsg` + body |
 | 下行 | `Msg_GW_SendToClient` + body |
 
-### 客户端协议（Common/*Msg.h）
+### 客户端协议（Common/*.proto）
 
 权威定义按域分布在 `Common/*Common.proto` + `Common/*Msg.proto`；Server 链接 `Protobuf/*.pb.cc`。
 
@@ -449,7 +449,7 @@ sequenceDiagram
 
 简要 checklist：
 
-1. 客户端消息：各域 `*Common.h` / `*Msg.h` → **已实现 handler 后**再登记 `ClientMsgValidator` + `ClientMsgRouter`
+1. 客户端消息：各域 `*Common.proto` / `*Msg.proto` → `./scripts/gen_proto.sh` → **已实现 handler 后**再登记 `ClientMsgValidator` + `ClientMsgRouter`
 2. S2S 消息：`InternalMsg.h` → 双方 `RegisterHandlers()`
 3. 水平扩展：多 Gateway（L4 LB）；多 Scene（不同 `sceneID` + `server_info.xml`）
 

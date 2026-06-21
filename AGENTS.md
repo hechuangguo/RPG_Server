@@ -80,7 +80,7 @@ docs/LUA.md                      # Lua 绑定与模块
 - [ ] 新命名与注释符合 `.cursor/rules/*`（`.h` 文件头+API；XML 段/属性；SQL 表/字段 `COMMENT`）
 - [ ] 新增/修改日志均为中文文案，且术语与项目约定一致（如“登录服/网关服/场景服/会话服/存档服/超级服/视野服/全局服/跨区服/日志服”）
 - [ ] 新建或改动的 `.h` 中，**本次新增**符号均有 Doxygen 注释
-- [ ] 新客户端消息：`*Msg.h` handler 已实现后，再登记 Validator + Router + 字段注释
+- [ ] 新客户端消息：`XxxCommon.proto` / `XxxMsg.proto` 定义 + handler 实现后，再登记 Validator + Router
 - [ ] 协议字段用 `WireStringUtil`；线上帧为 6 字节头（非旧 4 字节）
 - [ ] 改 TLS 证书后重启相关进程；dev 先 `./scripts/gen_tls_certs.sh`
 - [ ] 新网络代码走 `TlsContext`/`NetTls`，禁止裸 recv/send 旁路 TLS

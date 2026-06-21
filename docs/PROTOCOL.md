@@ -24,11 +24,12 @@
 
 | 范围 | 约定 |
 |------|------|
-| `MsgHeader.bodyLen` 及所有 wire struct 数值字段 | **小端（LE）host order**，与 x86/Linux 一致 |
-| 序列化 | `#pragma pack(1)` + 直接 `memcpy` / `reinterpret_cast`，**禁止**对协议字段使用 `htons`/`ntohl` |
+| `MsgHeader.bodyLen` 及服间 wire struct 数值字段 | **小端（LE）host order**，与 x86/Linux 一致 |
+| 服间 body | `#pragma pack(1)` + 直接 `memcpy` / `reinterpret_cast`，**禁止**对协议字段使用 `htons`/`ntohl` |
+| 客户端 Protobuf body | proto3 二进制序列化（`parseProto` / `serializeProto`），不适用 `#pragma pack` |
 | socket API | `sockaddr_in.sin_port` 等 OS 结构仍用 `htons`（与协议层无关） |
 
-服间定长结构（如 `UserBaseWire`）遵循 LE 策略；**客户端 body 为 Protobuf**，不适用 `#pragma pack` / `htons`。
+服间定长结构（如 `UserBaseWire`）遵循上表 LE + pack 策略。
 
 ### 1.2 登录密码（应用层）
 
