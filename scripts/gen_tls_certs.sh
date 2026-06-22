@@ -2,28 +2,54 @@
 # ============================================================
 #  gen_tls_certs.sh —— 生成本地 dev 用 TLS 自签证书（CA + 服务端/mTLS）
 #
-#  用法：./scripts/gen_tls_certs.sh [输出目录，默认 config/tls]
+#  用法：
+#    ./scripts/gen_tls_certs.sh [输出目录，默认 config/tls]
+#    ./scripts/gen_tls_certs.sh --force [输出目录]
 #
-#  产物：
-#    ca.crt / ca.key       — CA（ca.key 勿提交 git）
+#  产物（均在 .gitignore，不入库）：
+#    ca.crt / ca.key       — CA（ca.key 勿外泄）
 #    server.crt / server.key — 全区进程共用（dev）；SAN 含 127.0.0.1 localhost
 #
-#  客户端（RPG_Client）需信任 ca.crt 或 dev 跳过校验。
+#  已存在完整四套文件时默认跳过；pull.sh 在缺失时自动调用本脚本。
+#  客户端（RPG_Client）需信任本机 ca.crt 或 dev 跳过校验。
 # ============================================================
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-OUT_DIR="${1:-${ROOT}/config/tls}"
+FORCE=false
+OUT_DIR="${ROOT}/config/tls"
 DAYS=3650
 CN="RPG-Server-Dev"
+
+usage() {
+    sed -n '3,14p' "$0" | sed 's/^# \{0,1\}//'
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --force) FORCE=true; shift ;;
+        -h|--help) usage; exit 0 ;;
+        *) OUT_DIR="$1"; shift ;;
+    esac
+done
 
 mkdir -p "${OUT_DIR}"
 
 if ! command -v openssl >/dev/null 2>&1; then
     echo "ERR: openssl 未安装（CentOS: openssl；Ubuntu: openssl）" >&2
     exit 1
+fi
+
+tls_cert_ready() {
+    [[ -f "${OUT_DIR}/ca.crt" && -f "${OUT_DIR}/ca.key" \
+       && -f "${OUT_DIR}/server.crt" && -f "${OUT_DIR}/server.key" ]]
+}
+
+if [[ "${FORCE}" != true ]] && tls_cert_ready; then
+    echo "[gen_tls] 证书已就绪，跳过（--force 可重新生成）"
+    exit 0
 fi
 
 # 从 serverlist / 配置收集客户端可达 IP，写入证书 SAN（避免连 LAN IP 时校验失败）

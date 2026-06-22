@@ -13,6 +13,7 @@
 #    2. submodule sync + update --init（HTTPS 失败则 Common 改 SSH 重试）
 #    3. fetch + pull Common（RPG_Common，跟踪 .gitmodules branch，默认 main）
 #    4. 校验 Common/*.proto；缺失 Protobuf/ 时确保 protoc 并 gen_proto.sh
+#    5. 缺失 TLS 证书时自动 gen_tls_certs.sh（证书不入库，避免 pull 后工作区脏）
 #
 #  说明：
 #    - 默认 unset 本地代理（避免失效代理导致 GitHub HTTPS 失败）
@@ -202,6 +203,20 @@ ensure_protobuf_generated() {
     "${SCRIPT_DIR}/scripts/gen_proto.sh" || err "gen_proto.sh 失败"
 }
 
+ensure_tls_certs() {
+    if [[ -f config/tls/server.key && -f config/tls/server.crt && -f config/tls/ca.crt ]]; then
+        return 0
+    fi
+    if [[ ! -x "${SCRIPT_DIR}/scripts/gen_tls_certs.sh" ]]; then
+        warn "TLS 证书缺失且 scripts/gen_tls_certs.sh 不可用，启动前请手动生成"
+        return 0
+    fi
+    info "TLS 证书缺失，正在运行 ./scripts/gen_tls_certs.sh ..."
+    chmod +x "${SCRIPT_DIR}/scripts/gen_tls_certs.sh" 2>/dev/null || true
+    "${SCRIPT_DIR}/scripts/gen_tls_certs.sh" \
+        || warn "gen_tls_certs.sh 失败，RunServer 可能因 TLS 无法启动"
+}
+
 verify_common_protocol() {
     if [[ ! -f Common/ClientCommon.proto ]] || [[ ! -f Common/LoginMsg.proto ]]; then
         err "Common 协议不完整。请执行：git submodule update --init --recursive"
@@ -224,6 +239,8 @@ pull_common_latest
 ok "Common 已更新"
 
 verify_common_protocol
+
+ensure_tls_certs
 
 recorded_common="$(git ls-tree HEAD Common 2>/dev/null | awk '{print $3}' || true)"
 actual_common="$(git -C Common rev-parse HEAD 2>/dev/null || true)"

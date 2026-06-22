@@ -23,6 +23,8 @@
 
 ## 2. 首次部署（开发环境）
 
+TLS 证书**不入 Git**；`./pull.sh` 在缺失时会自动执行 `gen_tls_certs.sh`，也可手动：
+
 ```bash
 ./scripts/gen_tls_certs.sh          # 生成 config/tls/{ca,server}.{crt,key}
 ./Build.sh                          # 全量编译

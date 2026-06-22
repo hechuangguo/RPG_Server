@@ -1,11 +1,12 @@
 # TLS 证书目录（示例说明）
 
-本目录存放 TLS/mTLS 证书。**私钥勿提交 git**（见根目录 `.gitignore`）。
+本目录存放 TLS/mTLS 证书。**全部证书文件不入 Git**（见根目录 `.gitignore`），clone / pull 后由 `./pull.sh` 或本脚本在本地生成。
 
 ## 生成（开发）
 
 ```bash
-./scripts/gen_tls_certs.sh
+./scripts/gen_tls_certs.sh          # 缺失时生成；已存在则跳过
+./scripts/gen_tls_certs.sh --force  # 强制重新签发
 ```
 
 产物：

@@ -18,14 +18,15 @@ run/
 .mysql/
 
 LoginServer/serverlist.xml
+LoggerServer/extern_login.xml
 
 # Protobuf C++ 生成物（scripts/gen_proto.sh 自动生成；README.md 保留）
 Protobuf/*.pb.h
 Protobuf/*.pb.cc
 
-# TLS 私钥与 CA（执行 gen_tls_certs.sh 生成；ca.crt/server.crt 可分发）
-config/tls/*.key
-config/tls/ca.key
+# TLS 证书（本地 gen_tls_certs.sh 生成，勿提交；仅保留 README.example）
+config/tls/*
+!config/tls/README.example
 
 # 各服务器编译产物（可执行文件，与目录同名）
 SuperServer/SuperServer
@@ -38,5 +39,3 @@ LoggerServer/LoggerServer
 GlobalServer/GlobalServer
 ZoneServer/ZoneServer
 LoginServer/LoginServer
-
-LoginServer/serverlist.xml
