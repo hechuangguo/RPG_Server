@@ -17,7 +17,7 @@
 #
 #  说明：
 #    - 默认 unset 本地代理（避免失效代理导致 GitHub HTTPS 失败）
-#    - HTTPS 失败时自动切换 origin 为 SSH 并重试（主仓库与 Common）
+#    - HTTPS / SSH 互为回退：当前协议失败时自动切换 origin 重试（主仓库与 Common）
 # ============================================================
 
 set -euo pipefail
@@ -82,6 +82,34 @@ try_switch_ssh() {
     return 0
 }
 
+try_switch_https() {
+    local repo="$1"
+    local https_url="$2"
+    local ssh_url="$3"
+    local label="$4"
+
+    local url
+    url="$(git -C "${repo}" remote get-url origin 2>/dev/null || true)"
+    [[ "${url}" == "${ssh_url}" ]] || return 1
+    warn "${label} SSH 拉取失败，尝试切换为 HTTPS..."
+    git -C "${repo}" remote set-url origin "${https_url}"
+    return 0
+}
+
+print_github_auth_hint() {
+    warn "GitHub 认证失败。可选方案："
+    warn "  1) SSH：将公钥添加到 https://github.com/settings/keys"
+    if [[ -f "${HOME}/.ssh/id_ed25519.pub" ]]; then
+        warn "     公钥：$(cat "${HOME}/.ssh/id_ed25519.pub")"
+    elif [[ -f "${HOME}/.ssh/id_rsa.pub" ]]; then
+        warn "     公钥：$(cat "${HOME}/.ssh/id_rsa.pub")"
+    else
+        warn "     生成：ssh-keygen -t ed25519 -C \"你的邮箱\" -f ~/.ssh/id_ed25519"
+    fi
+    warn "     验证：ssh -T git@github.com"
+    warn "  2) HTTPS：配置 Personal Access Token 后 git credential 存储凭据"
+}
+
 git_pull_repo() {
     local repo="$1"
     local branch="$2"
@@ -112,10 +140,13 @@ pull_with_ssh_fallback() {
     if git_pull_repo "${repo}" "${branch}" "${label}"; then
         return 0
     fi
-    if try_switch_ssh "${repo}" "${https_url}" "${ssh_url}" "${label}"; then
-        git_pull_repo "${repo}" "${branch}" "${label}"
-        return 0
+    if try_switch_https "${repo}" "${https_url}" "${ssh_url}" "${label}"; then
+        git_pull_repo "${repo}" "${branch}" "${label}" && return 0
     fi
+    if try_switch_ssh "${repo}" "${https_url}" "${ssh_url}" "${label}"; then
+        git_pull_repo "${repo}" "${branch}" "${label}" && return 0
+    fi
+    print_github_auth_hint
     return 1
 }
 
@@ -129,6 +160,14 @@ common_branch() {
 
 common_repo_ready() {
     git -C Common rev-parse --is-inside-work-tree &>/dev/null
+}
+
+switch_common_submodule_to_https() {
+    git config submodule.Common.url "${COMMON_HTTPS}"
+    git submodule sync Common
+    if common_repo_ready; then
+        git -C Common remote set-url origin "${COMMON_HTTPS}" 2>/dev/null || true
+    fi
 }
 
 switch_common_submodule_to_ssh() {
@@ -147,6 +186,11 @@ init_common_submodule() {
     fi
     warn "Common 子模块 HTTPS 初始化失败，尝试 SSH..."
     switch_common_submodule_to_ssh
+    if git submodule update --init --recursive; then
+        return 0
+    fi
+    warn "Common 子模块 SSH 初始化失败，尝试切回 HTTPS..."
+    switch_common_submodule_to_https
     git submodule update --init --recursive
 }
 
