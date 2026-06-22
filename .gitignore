@@ -39,3 +39,5 @@ LoggerServer/LoggerServer
 GlobalServer/GlobalServer
 ZoneServer/ZoneServer
 LoginServer/LoginServer
+
+config/server_info.xml
