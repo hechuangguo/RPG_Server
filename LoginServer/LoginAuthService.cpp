@@ -214,7 +214,10 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
                         snprintf(sql, sizeof(sql),
                                  "DELETE FROM LoginSession WHERE accid=%llu AND zone_id=%u",
                                  static_cast<unsigned long long>(loginRsp.accid()), req.zone_id());
-                        mysql_query(db, sql);
+                        if (mysql_query(db, sql) != 0)
+                            LOG_WARN("清理旧 LoginSession 失败: accid=%llu zone=%u err=%s",
+                                     static_cast<unsigned long long>(loginRsp.accid()),
+                                     req.zone_id(), mysql_error(db));
                         snprintf(sql, sizeof(sql),
                                  "INSERT INTO LoginSession (token, accid, zone_id, game_type, expire_time) "
                                  "VALUES ('%s', %llu, %u, %u, DATE_ADD(NOW(), INTERVAL %u SECOND))",

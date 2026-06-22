@@ -48,6 +48,7 @@
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <cerrno>
 #include <unordered_map>
 #include <memory>
 #include <string>
@@ -99,6 +100,7 @@ public:
      */
     bool Connect(const std::string& ip, uint16_t port)
     {
+        Disconnect();
         int fd = ::socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
         if (fd < 0) return false;
         int opt = 1;
@@ -110,10 +112,22 @@ public:
         int ret = ::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
         if (ret < 0 && errno != EINPROGRESS) { ::close(fd); return false; }
         m_epollFd = ::epoll_create1(EPOLL_CLOEXEC);
+        if (m_epollFd < 0) { ::close(fd); return false; }
         m_connID  = 1;
         m_tcpConnectDone = (ret == 0);
         m_connectNotified = false;
-        SSL* ssl = m_useTls ? TlsContext::instance().newClientSsl(fd) : nullptr;
+        SSL* ssl = nullptr;
+        if (m_useTls)
+        {
+            ssl = TlsContext::instance().newClientSsl(fd);
+            if (!ssl)
+            {
+                ::close(fd);
+                ::close(m_epollFd);
+                m_epollFd = -1;
+                return false;
+            }
+        }
         m_conn    = std::make_shared<TcpConnection>(fd, m_connID, m_cb, ssl, false);
         epoll_event ev{};
         ev.events   = EPOLLIN | EPOLLOUT | EPOLLET | EPOLLRDHUP;

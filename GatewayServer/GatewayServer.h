@@ -108,8 +108,8 @@ private:
     /** @brief Super 注册成功后连接 Record/Session/全部 Scene */
     void setupUpstreamClients();
 
-    /** @brief 轮询区内出站直至就绪或超时 */
-    void pollUpstreamUntilReady();
+    /** @brief 轮询区内出站直至就绪（非阻塞，主循环每帧调用） */
+    void tickUpstreamConnect();
 
     /** @brief Record 是否 TLS 就绪、可发 REC_VALIDATE_TOKEN_REQ */
     bool isRecordReady() const;
@@ -290,6 +290,7 @@ private:
     ServerEntry m_self;              /**< 本进程在 ServerList 中的拓扑条目（注册上报用） */
     ServerList m_serverList;         /**< 启动期拉取的集群拓扑（延迟出站用） */
     bool m_upstreamReady = false;    /**< Record 上游 TLS 就绪，可接受网关鉴权 */
+    bool m_upstreamConnectPending = false; /**< 已发起区内出站，等待 tick 就绪 */
     bool m_reportedToLogin = false;  /**< 是否已向 Login 上报网关（经 Super） */
     bool m_superRegisterPending = false; /**< Super 注册重试链进行中（防并发定时器） */
     TimerID m_superRegisterTimerId = INVALID_TIMER_ID; /**< 当前 Super 注册定时器 ID */

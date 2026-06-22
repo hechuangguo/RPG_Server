@@ -113,6 +113,10 @@ bool TcpConnection::SendMsg(uint8_t module, uint8_t sub, const char* data, uint1
     if (len > MAX_PACKET_SIZE)
         return false;
 
+    const uint32_t needBytes = MSG_HEADER_SIZE + ((len > 0 && data) ? len : 0);
+    if (needBytes > m_sendBuf.WritableBytes())
+        return false;
+
     MsgHeader hdr{};
     hdr.bodyLen = len;
     hdr.module  = module;
@@ -120,7 +124,10 @@ bool TcpConnection::SendMsg(uint8_t module, uint8_t sub, const char* data, uint1
     if (!m_sendBuf.Write(reinterpret_cast<const char*>(&hdr), MSG_HEADER_SIZE))
         return false;
     if (len > 0 && data && !m_sendBuf.Write(data, len))
+    {
+        m_sendBuf.Consume(MSG_HEADER_SIZE);
         return false;
+    }
     if (!m_closed && !m_inReadHandler)
         OnWritable();
     return true;
@@ -210,7 +217,16 @@ void TcpConnection::OnReadable()
     if (!m_closed)
     {
         m_inReadHandler = true;
-        processMessages();
+        try
+        {
+            processMessages();
+        }
+        catch (...)
+        {
+            m_inReadHandler = false;
+            Close();
+            return;
+        }
         m_inReadHandler = false;
     }
 
@@ -321,7 +337,7 @@ void TcpConnection::processMessages()
     {
         MsgHeader hdr{};
         m_recvBuf.Peek(reinterpret_cast<char*>(&hdr), MSG_HEADER_SIZE);
-        if (hdr.bodyLen > MAX_PACKET_SIZE)
+    if (hdr.bodyLen > static_cast<uint16_t>(MAX_PACKET_SIZE))
         {
             Close();
             return;

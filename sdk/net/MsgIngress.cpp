@@ -36,6 +36,8 @@ bool MsgIngress::onMessage(const IngressContext& ctx)
         return dispatchInternal(ctx.connId, ctx.module, ctx.sub, ctx.data, ctx.len);
     case ConnKind::GwWrappedClient:
         return dispatchClient(ctx.clientConnId, ctx.module, ctx.sub, ctx.data, ctx.len);
+    default:
+        LOG_WARN("未知消息管道类型: kind=%d conn=%u", static_cast<int>(ctx.kind), ctx.connId);
+        return false;
     }
-    return false;
 }

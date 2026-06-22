@@ -62,6 +62,7 @@
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
 #include <unistd.h>
+#include <cerrno>
 #include <unordered_map>
 #include <memory>
 #include <atomic>
@@ -230,11 +231,12 @@ public:
     void Kick(ConnID id)
     {
         auto it = m_connMap.find(id);
-        if (it != m_connMap.end())
-        {
-            it->second->Close();
-            RemoveConn(it->second->GetFd());
-        }
+        if (it == m_connMap.end())
+            return;
+        const int fd = it->second->GetFd();
+        it->second->Close();
+        if (fd >= 0)
+            RemoveConn(fd);
     }
 
     /**
@@ -316,13 +318,36 @@ private:
             socklen_t   addrLen = sizeof(clientAddr);
             int cfd = ::accept4(m_listenFd, reinterpret_cast<sockaddr*>(&clientAddr),
                                 &addrLen, SOCK_NONBLOCK | SOCK_CLOEXEC);
-            if (cfd < 0) break;
+            if (cfd < 0)
+            {
+                if (errno == EMFILE && !m_acceptPaused)
+                {
+                    m_acceptPaused = true;
+                    epoll_event ev{};
+                    ev.events = EPOLLOUT | EPOLLET;
+                    ev.data.fd = m_listenFd;
+                    ::epoll_ctl(m_epollFd, EPOLL_CTL_MOD, m_listenFd, &ev);
+                }
+                break;
+            }
+            if (m_acceptPaused)
+            {
+                m_acceptPaused = false;
+                AddEpoll(m_listenFd, EPOLLIN | EPOLLET);
+            }
             int opt = 1;
             ::setsockopt(cfd, IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(opt));
             ConnID id = m_nextConnID++;
-            SSL* ssl = m_useTls
-                ? TlsContext::instance().newServerSsl(cfd, m_tlsRequireClientCert)
-                : nullptr;
+            SSL* ssl = nullptr;
+            if (m_useTls)
+            {
+                ssl = TlsContext::instance().newServerSsl(cfd, m_tlsRequireClientCert);
+                if (!ssl)
+                {
+                    ::close(cfd);
+                    continue;
+                }
+            }
             auto conn = std::make_shared<TcpConnection>(cfd, id, m_cb, ssl, true);
             m_fdToConn[cfd]  = conn;
             m_connMap[id]    = conn;
@@ -375,6 +400,7 @@ private:
     bool           m_running;     /**< 运行状态标记 */
     bool           m_useTls;      /**< 是否对新连接启用 TLS */
     bool           m_tlsRequireClientCert = true; /**< accept 是否要求对端证书 */
+    bool           m_acceptPaused = false;      /**< EMFILE 时暂停 listen EPOLLIN */
     /** @brief fd → TcpConnection 索引（用于 epoll 事件分发，O(1) 查找） */
     std::unordered_map<int,     std::shared_ptr<TcpConnection>> m_fdToConn;
     /** @brief ConnID → TcpConnection 索引（用于 SendMsg / Kick，O(1) 查找） */

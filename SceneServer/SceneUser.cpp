@@ -112,7 +112,11 @@ bool SceneUser::init()
     setState(SceneEntryState::OFFLINE);
 
     syncFromUserBase();
-    initManagers();
+    if (!initManagers())
+    {
+        LOG_ERR("场景用户管理器初始化失败 userID=%llu", GetID());
+        return false;
+    }
     LOG_DEBUG("场景用户初始化完成 userID=%llu", GetID());
     return true;
 }

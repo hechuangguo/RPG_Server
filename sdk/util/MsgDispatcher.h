@@ -5,6 +5,7 @@
 
 #pragma once
 #include "../net/MsgId.h"
+#include "../log/Logger.h"
 #include "Singleton.h"
 #include <cstdint>
 #include <unordered_map>
@@ -63,7 +64,22 @@ public:
         auto it = m_handlers.find(makeMsgKey(module, sub));
         if (it == m_handlers.end())
             return false;
-        it->second(connID, data, len);
+        try
+        {
+            it->second(connID, data, len);
+        }
+        catch (const std::exception& e)
+        {
+            LOG_ERR("消息处理异常: conn=%u mod=0x%02X sub=0x%02X err=%s",
+                    connID, module, sub, e.what());
+            return false;
+        }
+        catch (...)
+        {
+            LOG_ERR("消息处理未知异常: conn=%u mod=0x%02X sub=0x%02X",
+                    connID, module, sub);
+            return false;
+        }
         return true;
     }
 

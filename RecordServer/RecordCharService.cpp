@@ -106,39 +106,19 @@ void RecordCharService::createCharacter(MYSQL* db, const Msg_REC_CreateCharacter
         return;
     }
 
-    char sql[512];
-    snprintf(sql, sizeof(sql),
-             "SELECT COUNT(*) FROM CharBase WHERE accid=%llu AND gamezone=%u",
-             static_cast<unsigned long long>(req.accid), req.zoneId);
-    if (mysql_query(db, sql) != 0)
-    {
-        rsp.code = static_cast<int32_t>(CreateCharacterError::SYSTEM_ERROR);
-        logLoginFlow(LoginFlowPhase::CHAR_CREATE, req.accid, 0, req.gatewayConnID, rsp.code,
-                     "查询角色数量失败");
-        return;
-    }
-    MYSQL_RES* cntRes = mysql_store_result(db);
-    MYSQL_ROW cntRow = cntRes ? mysql_fetch_row(cntRes) : nullptr;
-    const uint32_t charCount = cntRow && cntRow[0] ? static_cast<uint32_t>(strtoul(cntRow[0], nullptr, 10)) : 0;
-    if (cntRes)
-        mysql_free_result(cntRes);
-    if (charCount >= MAX_CHARACTERS_PER_ACCOUNT)
-    {
-        rsp.code = static_cast<int32_t>(CreateCharacterError::LIMIT_REACHED);
-        logLoginFlow(LoginFlowPhase::CHAR_CREATE, req.accid, 0, req.gatewayConnID, rsp.code,
-                     "达到角色上限");
-        return;
-    }
-
     char escName[sizeof(roleName) * 2 + 1];
     mysql_real_escape_string(db, escName, roleName, strlen(roleName));
+    char sql[1024];
     snprintf(sql, sizeof(sql),
              "INSERT INTO CharBase (accid, gamezone, name, vocation, sex, map_id, pos_x, pos_y, pos_z) "
-             "VALUES (%llu, %u, '%s', %u, %u, %u, %.2f, %.2f, %.2f)",
+             "SELECT %llu, %u, '%s', %u, %u, %u, %.2f, %.2f, %.2f "
+             "FROM DUAL WHERE (SELECT COUNT(*) FROM CharBase WHERE accid=%llu AND gamezone=%u) < %u",
              static_cast<unsigned long long>(req.accid), req.zoneId, escName,
              req.vocation, req.sex,
              DEFAULT_NEWBIE_MAP_ID,
-             DEFAULT_NEWBIE_SPAWN_X, DEFAULT_NEWBIE_SPAWN_Y, DEFAULT_NEWBIE_SPAWN_Z);
+             DEFAULT_NEWBIE_SPAWN_X, DEFAULT_NEWBIE_SPAWN_Y, DEFAULT_NEWBIE_SPAWN_Z,
+             static_cast<unsigned long long>(req.accid), req.zoneId,
+             MAX_CHARACTERS_PER_ACCOUNT);
     if (mysql_query(db, sql) != 0)
     {
         if (mysql_errno(db) == 1062)
@@ -154,6 +134,13 @@ void RecordCharService::createCharacter(MYSQL* db, const Msg_REC_CreateCharacter
             logLoginFlow(LoginFlowPhase::CHAR_CREATE, req.accid, 0, req.gatewayConnID, rsp.code,
                          "写入角色失败");
         }
+        return;
+    }
+    if (mysql_affected_rows(db) == 0)
+    {
+        rsp.code = static_cast<int32_t>(CreateCharacterError::LIMIT_REACHED);
+        logLoginFlow(LoginFlowPhase::CHAR_CREATE, req.accid, 0, req.gatewayConnID, rsp.code,
+                     "达到角色上限");
         return;
     }
 

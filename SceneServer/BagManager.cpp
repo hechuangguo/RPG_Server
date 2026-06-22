@@ -114,7 +114,12 @@ bool BagManager::addItem(BagType bagType, uint16_t slot, uint32_t itemId, uint32
     if (exist && exist->itemId != itemId) return false;
 
     if (exist)
-        exist->count += count;
+    {
+        const uint64_t sum = static_cast<uint64_t>(exist->count) + static_cast<uint64_t>(count);
+        if (sum > UINT32_MAX)
+            return false;
+        exist->count = static_cast<uint32_t>(sum);
+    }
     else
         bag->setItemBySlot(slot, itemId, count);
 

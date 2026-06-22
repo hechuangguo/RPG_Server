@@ -115,8 +115,17 @@ private:
     /** @brief 定时向 SuperServer 发送心跳 */
     void sendHeartbeat();
 
-    /** @brief 启动期经 Record 预载 Relation */
-    bool preloadRelations();
+    /** @brief 启动期经 Record 预载 Relation（发送请求，不阻塞） */
+    bool beginRelationPreload();
+
+    /** @brief 主循环内推进 Record 连接与关系预载 */
+    void tickStartup();
+
+    /** @brief 关系预载是否已完成且成功 */
+    bool isRelationPreloadReady() const
+    {
+        return m_startupComplete && m_relationPreloadOk;
+    }
 
     /** @brief Record 预载响应 */
     void onRelationPreloadRsp(ConnID fromConn, const char* data, uint16_t len);
@@ -160,6 +169,10 @@ private:
     ConnID                m_gatewayInboundConn = INVALID_CONN_ID;
     bool                  m_relationPreloadDone = false; /**< 启动预载是否完成 */
     bool                  m_relationPreloadOk   = false; /**< 启动预载是否成功 */
+    bool                  m_relationPreloadSent = false; /**< 是否已发送预载请求 */
+    uint64_t              m_relationPreloadDeadlineMs = 0; /**< 预载超时时刻 */
+    bool                  m_startupComplete = false;   /**< 启动预载成功完成 */
+    bool                  m_startupFailed = false;     /**< 启动预载失败 */
     bool                  m_relationLoadDone = false;    /**< 同步单用户加载完成 */
     bool                  m_relationLoadOk   = false;    /**< 同步单用户加载成功 */
     RelationRowData       m_relationLoadRow;             /**< 同步加载结果缓存 */

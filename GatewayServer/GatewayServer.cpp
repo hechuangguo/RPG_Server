@@ -121,6 +121,7 @@ void GatewayServer::Run()
 {
     while (true)
     {
+        tickUpstreamConnect();
         m_clientServer.Poll(5);
         TimerMgr::Instance().Update();
         /** 定时器回调 SendMsg 后统一 Poll 出站，避免同迭代内重复 Poll */
@@ -204,8 +205,26 @@ void GatewayServer::setupUpstreamClients()
     if (!m_scenePool.connectAll(m_serverList))
         LOG_WARN("未建立任何 SCENE 连接");
 
-    pollUpstreamUntilReady();
+    m_upstreamConnectPending = true;
+    m_upstreamReady = false;
+    LOG_INFO("网关上游连接已发起（主循环内异步就绪）");
+}
 
+void GatewayServer::tickUpstreamConnect()
+{
+    if (m_upstreamReady || !m_upstreamConnectPending)
+        return;
+
+    m_recordClient.Poll(0);
+    m_sessionClient.Poll(0);
+    m_scenePool.pollAll();
+    m_superClient.Poll(0);
+
+    if (!m_recordClient.canSend() || !m_sessionClient.canSend() ||
+        !m_scenePool.hasAnyCanSend())
+        return;
+
+    m_upstreamConnectPending = false;
     m_upstreamReady = isRecordReady();
     LOG_INFO("网关上游就绪: record=%d session=%d scene=%d upstreamReady=%d",
              m_recordClient.canSend() ? 1 : 0,
@@ -213,29 +232,8 @@ void GatewayServer::setupUpstreamClients()
              m_scenePool.hasAnyCanSend() ? 1 : 0,
              m_upstreamReady ? 1 : 0);
 
-    if (m_upstreamReady)
+    if (m_upstreamReady && m_superClient.canSend() && !m_reportedToLogin)
         reportGatewayToSuper();
-    else
-        LOG_WARN("Record 未就绪，暂不向 Login 注册网关");
-}
-
-void GatewayServer::pollUpstreamUntilReady()
-{
-    const uint64_t deadline = TimerMgr::NowMs() + UPSTREAM_CONNECT_TIMEOUT_MS;
-    while (TimerMgr::NowMs() < deadline)
-    {
-        m_recordClient.Poll(10);
-        m_sessionClient.Poll(10);
-        m_scenePool.pollAll();
-        m_superClient.Poll(0);
-        m_clientServer.Poll(0);
-        if (m_recordClient.canSend() && m_sessionClient.canSend() &&
-            m_scenePool.hasAnyCanSend())
-        {
-            return;
-        }
-    }
-    LOG_WARN("网关上游连接超时（可能仅部分连通）");
 }
 
 bool GatewayServer::isRecordReady() const

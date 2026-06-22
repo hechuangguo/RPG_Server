@@ -44,11 +44,14 @@ bool BuffManager::load()
     return true;
 }
 
-bool BuffManager::add(uint32_t buffId, uint32_t durationMs)
+bool BuffManager::add(uint32_t buffId, uint32_t durationMs, uint64_t nowMs)
 {
     if (buffId == 0) return false;
     BuffState state{};
-    state.expireAtMs = durationMs > 0 ? durationMs : 0;
+    if (durationMs > 0)
+        state.expireAtMs = nowMs + static_cast<uint64_t>(durationMs);
+    else
+        state.expireAtMs = 0;
     buffMap[buffId] = state;
     dirty = true;
     return true;

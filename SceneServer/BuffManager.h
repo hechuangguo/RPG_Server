@@ -2,7 +2,7 @@
  * @file    BuffManager.h
  * @brief  状态/Buff 管理器（运行时，默认不持久化）
  *
- * loop 中剔除过期 Buff；expireAtMs 由 add 时写入（当前为相对毫秒占位，可改为 now+duration）。
+ * loop 中剔除过期 Buff；expireAtMs 为绝对毫秒时间戳（add 时 nowMs + duration）。
  */
 
 #pragma once
@@ -39,9 +39,10 @@ public:
     /**
      * @brief 添加 Buff
      * @param buffId      Buff 模板 ID
-     * @param durationMs  占位：写入 expireAtMs（后续可改为绝对时间）
+     * @param durationMs  持续毫秒；0 表示永久直到 remove
+     * @param nowMs       当前时间戳（毫秒）
      */
-    bool add(uint32_t buffId, uint32_t durationMs = 0);
+    bool add(uint32_t buffId, uint32_t durationMs, uint64_t nowMs = 0);
 
     /** @brief 移除指定 Buff（unused 预留协议兼容） */
     bool remove(uint32_t buffId, uint32_t unused = 0);

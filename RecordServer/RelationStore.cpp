@@ -28,6 +28,18 @@ std::string blobToSqlHex(const std::vector<uint8_t>& data)
     return out;
 }
 
+std::string escapeSqlString(MYSQL* db, const std::string& value)
+{
+    if (!db)
+        return value;
+    std::string out;
+    out.resize(value.size() * 2 + 1);
+    const unsigned long len = mysql_real_escape_string(
+        db, out.data(), value.c_str(), static_cast<unsigned long>(value.size()));
+    out.resize(len);
+    return out;
+}
+
 } // namespace
 
 RelationStore::RelationStore(MYSQL* db)
@@ -131,9 +143,11 @@ bool RelationStore::saveOne(const RelationRow& row) const
     if (!m_db) return false;
 
     const std::string binaryLit = blobToSqlHex(row.binary);
+    const std::string friendsEsc = escapeSqlString(m_db, row.friendsJson);
+    const std::string blacklistEsc = escapeSqlString(m_db, row.blacklistJson);
     std::ostringstream sql;
     sql << "INSERT INTO Relation (user_id,friends_json,blacklist_json,guild_id,team_id,`binary`)"
-        << " VALUES (" << row.userID << ",'" << row.friendsJson << "','" << row.blacklistJson << "',"
+        << " VALUES (" << row.userID << ",'" << friendsEsc << "','" << blacklistEsc << "',"
         << row.guildId << "," << row.teamId << "," << binaryLit << ")"
         << " ON DUPLICATE KEY UPDATE friends_json=VALUES(friends_json),"
         << " blacklist_json=VALUES(blacklist_json),"

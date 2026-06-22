@@ -39,6 +39,9 @@ public:
     /** @brief 释放底层缓冲区内存 */
     ~RingBuffer() { delete[] m_buf; }
 
+    RingBuffer(const RingBuffer&) = delete;
+    RingBuffer& operator=(const RingBuffer&) = delete;
+
     /** @brief 剩余可写字节数 */
     uint32_t WritableBytes() const { return m_capacity - m_size; }
 
@@ -102,7 +105,8 @@ public:
      */
     void Consume(uint32_t len)
     {
-        assert(len <= m_size);
+        if (len > m_size)
+            return;
         m_readPos = (m_readPos + len) % m_capacity;
         m_size -= len;
     }

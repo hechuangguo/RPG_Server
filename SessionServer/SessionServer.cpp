@@ -102,39 +102,84 @@ bool SessionServer::Init(const std::string& ip, uint16_t port,
 
     registerHandlers();
 
-    const uint64_t connectDeadline = TimerMgr::NowMs() + 5000;
-    while (!m_recordClient.canSend() && TimerMgr::NowMs() < connectDeadline)
-        pollForRelationSync();
-
-    if (!m_recordClient.canSend())
-    {
-        LOG_FATAL("存档服连接未就绪（请先启动存档服）");
-        return false;
-    }
-
-    if (!preloadRelations())
-    {
-        LOG_FATAL("从存档服预加载关系数据失败");
-        return false;
-    }
-
     TimerMgr::Instance().Register(500, 0, [this] { registerToSuper(); });
     TimerMgr::Instance().Register(10000, 10000, [this] { sendHeartbeat(); });
     TimerMgr::Instance().Register(60000, 60000, [this] { autoSaveAll(); });
     s_active = this;
-    LOG_INFO("会话服启动完成（Record + SceneManager）");
+    LOG_INFO("会话服启动完成（Record 关系预载将在主循环异步进行）");
     return true;
 }
 
 void SessionServer::Run()
 {
-    while (true)
+    while (!m_startupFailed)
     {
+        tickStartup();
         m_server.Poll(10);
         TimerMgr::Instance().Update();
         m_superClient.Poll(0);
         m_recordClient.Poll(0);
     }
+}
+
+bool SessionServer::beginRelationPreload()
+{
+    if (m_relationPreloadSent)
+        return true;
+
+    if (!m_recordClient.canSend())
+        return false;
+
+    m_relationPreloadDone = false;
+    m_relationPreloadOk   = false;
+
+    Msg_REC_RelationPreloadReq req{};
+    if (!m_recordClient.SendMsg(
+            (uint16_t)InternalMsgID::REC_RELATION_PRELOAD_REQ,
+            reinterpret_cast<char*>(&req), sizeof(req)))
+    {
+        LOG_ERR("REC_RELATION_PRELOAD_REQ 未发送：SendMsg 失败");
+        return false;
+    }
+
+    m_relationPreloadSent = true;
+    m_relationPreloadDeadlineMs = TimerMgr::NowMs() + RELATION_SYNC_TIMEOUT_MS;
+    return true;
+}
+
+void SessionServer::tickStartup()
+{
+    if (m_startupComplete || m_startupFailed)
+        return;
+
+    if (!m_recordClient.canSend())
+        return;
+
+    if (!m_relationPreloadSent)
+    {
+        if (!beginRelationPreload())
+            return;
+    }
+
+    if (!m_relationPreloadDone)
+    {
+        if (TimerMgr::NowMs() > m_relationPreloadDeadlineMs)
+        {
+            LOG_FATAL("REC_RELATION_PRELOAD_REQ 响应超时（%ums）", RELATION_SYNC_TIMEOUT_MS);
+            m_startupFailed = true;
+        }
+        return;
+    }
+
+    if (!m_relationPreloadOk)
+    {
+        LOG_FATAL("从存档服预加载关系数据失败");
+        m_startupFailed = true;
+        return;
+    }
+
+    m_startupComplete = true;
+    LOG_INFO("会话服关系数据预载完成");
 }
 
 void SessionServer::OnConnect(ConnID id)
@@ -165,44 +210,6 @@ void SessionServer::pollForRelationSync()
     m_recordClient.Poll(10);
     m_superClient.Poll(0);
     m_server.Poll(0);
-}
-
-bool SessionServer::preloadRelations()
-{
-    m_relationPreloadDone = false;
-    m_relationPreloadOk   = false;
-
-    if (!m_recordClient.canSend())
-    {
-        LOG_ERR("REC_RELATION_PRELOAD_REQ 未发送：存档服 TLS 未就绪");
-        return false;
-    }
-
-    Msg_REC_RelationPreloadReq req{};
-    if (!m_recordClient.SendMsg(
-            (uint16_t)InternalMsgID::REC_RELATION_PRELOAD_REQ,
-            reinterpret_cast<char*>(&req), sizeof(req)))
-    {
-        LOG_ERR("REC_RELATION_PRELOAD_REQ 未发送：SendMsg 失败");
-        return false;
-    }
-
-    const uint64_t deadline = TimerMgr::NowMs() + RELATION_SYNC_TIMEOUT_MS;
-    while (!m_relationPreloadDone && TimerMgr::NowMs() < deadline)
-    {
-        pollForRelationSync();
-        if (!m_recordClient.IsConnected())
-        {
-            LOG_ERR("REC_RELATION_PRELOAD_REQ 响应等待中存档服连接已断开");
-            return false;
-        }
-    }
-
-    if (m_relationPreloadDone && m_relationPreloadOk)
-        return true;
-
-    LOG_ERR("REC_RELATION_PRELOAD_REQ 响应超时（%ums）", RELATION_SYNC_TIMEOUT_MS);
-    return false;
 }
 
 bool SessionServer::loadRelationSync(UserID userID, RelationRowData& out)
