@@ -12,7 +12,7 @@
 #    1. fetch + pull 主仓库（RPG_Server）
 #    2. submodule sync + update --init（HTTPS 失败则 Common 改 SSH 重试）
 #    3. fetch + pull Common（RPG_Common，跟踪 .gitmodules branch，默认 main）
-#    4. 校验 Common/*.proto；缺失 Protobuf/ 时自动 gen_proto.sh
+#    4. 校验 Common/*.proto；缺失 Protobuf/ 时确保 protoc 并 gen_proto.sh
 #
 #  说明：
 #    - 默认 unset 本地代理（避免失效代理导致 GitHub HTTPS 失败）
@@ -178,6 +178,17 @@ pull_common_latest() {
         || err "Common 拉取失败。请检查网络、SSH（git@github.com）与分支 ${branch}"
 }
 
+ensure_protoc() {
+    local protoc="${SCRIPT_DIR}/3Party/protobuf/bin/protoc"
+    if [[ -x "${protoc}" ]] || command -v protoc >/dev/null 2>&1; then
+        return 0
+    fi
+    warn "protoc 未找到，正在构建 3Party protobuf..."
+    chmod +x "${SCRIPT_DIR}/3Party/build_protobuf.sh" 2>/dev/null || true
+    "${SCRIPT_DIR}/3Party/build_protobuf.sh" \
+        || err "protoc 构建失败。请安装 protobuf 开发包，或执行: ./3Party/fetch_vendor.sh && ./3Party/build_protobuf.sh"
+}
+
 ensure_protobuf_generated() {
     if [[ -f Protobuf/LoginMsg.pb.h ]]; then
         return 0
@@ -185,6 +196,7 @@ ensure_protobuf_generated() {
     if [[ ! -x "${SCRIPT_DIR}/scripts/gen_proto.sh" ]]; then
         err "Protobuf/ 缺失且 scripts/gen_proto.sh 不可用"
     fi
+    ensure_protoc
     warn "Protobuf/ 生成物缺失，正在运行 ./scripts/gen_proto.sh ..."
     chmod +x "${SCRIPT_DIR}/scripts/gen_proto.sh" 2>/dev/null || true
     "${SCRIPT_DIR}/scripts/gen_proto.sh" || err "gen_proto.sh 失败"

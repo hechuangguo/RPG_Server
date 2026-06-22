@@ -67,6 +67,7 @@ need_cmd() {
 vendor_lua_tgz() { echo "${VENDOR_DIR}/lua-${LUA_VERSION}.tar.gz"; }
 vendor_tinyxml2_tgz() { echo "${VENDOR_DIR}/tinyxml2-${TINYXML2_VERSION}.tar.gz"; }
 vendor_mariadb_tgz() { echo "${VENDOR_DIR}/mariadb-connector-c-${MARIADB_CONNECTOR_VERSION}-src.tar.gz"; }
+vendor_protobuf_tgz() { echo "${VENDOR_DIR}/${PROTOBUF_VENDOR_TGZ:-protobuf-cpp-3.${PROTOBUF_VERSION}.tar.gz}"; }
 
 ensure_vendor_dir() {
     mkdir -p "$VENDOR_DIR"
@@ -125,12 +126,19 @@ fetch_mariadb_vendor() {
     download_one "$tgz" "${RPG_MARIADB_CONNECTOR_URL:-${MARIADB_CONNECTOR_URL}}" "${mirrors[@]}"
 }
 
+fetch_protobuf_vendor() {
+    local tgz
+    tgz="$(vendor_protobuf_tgz)"
+    download_one "$tgz" "${RPG_PROTOBUF_URL:-${PROTOBUF_URL:-}}"
+}
+
 fetch_all_vendors() {
     ensure_vendor_dir
     step "===== 更新 vendor 源码包 ====="
     fetch_lua_vendor
     fetch_tinyxml2_vendor
     fetch_mariadb_vendor
+    fetch_protobuf_vendor
     step "===== vendor 更新完成 ====="
 }
 

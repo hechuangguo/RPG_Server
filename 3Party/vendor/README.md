@@ -9,6 +9,7 @@
 | `lua-5.4.7.tar.gz` | Lua 5.4.7 |
 | `tinyxml2-10.0.0.tar.gz` | tinyxml2 10.0.0 |
 | `mariadb-connector-c-3.3.10-src.tar.gz` | MariaDB Connector/C 3.3.10 |
+| `protobuf-cpp-3.21.12.tar.gz` | Protocol Buffers 21.12（protoc + libprotobuf.a） |
 
 **禁止手改** tar.gz 内容；升级版本请维护者运行 [`../fetch_vendor.sh`](../fetch_vendor.sh) 后 commit 新包。
 

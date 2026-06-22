@@ -29,7 +29,15 @@ resolve_protoc() {
         command -v protoc
         return
     fi
-    echo "错误: 未找到 protoc" >&2
+    local build="${PROJECT_DIR}/3Party/build_protobuf.sh"
+    if [[ -x "${build}" ]]; then
+        echo "[gen_proto] protoc 未找到，尝试 ${build} ..." >&2
+        if "${build}" && [[ -x "${bundled}" ]]; then
+            echo "${bundled}"
+            return
+        fi
+    fi
+    echo "错误: 未找到 protoc（可执行 ./3Party/build_protobuf.sh 或安装系统 protobuf 开发包）" >&2
     exit 1
 }
 

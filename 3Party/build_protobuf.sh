@@ -58,16 +58,21 @@ if command -v protoc >/dev/null 2>&1; then
     echo "[protobuf] 系统 libprotobuf.a 未找到，尝试 vendor 编译..."
 fi
 
-VENDOR_TGZ="${SCRIPT_DIR}/vendor/protobuf-cpp-${PROTOBUF_VERSION}.tar.gz"
+VENDOR_TGZ="${SCRIPT_DIR}/vendor/${PROTOBUF_VENDOR_TGZ:-protobuf-cpp-3.${PROTOBUF_VERSION}.tar.gz}"
 if [[ ! -f "${VENDOR_TGZ}" ]]; then
-    echo "[protobuf] 未找到 vendor 包且无系统 libprotobuf.a"
+    # 兼容旧命名 protobuf-cpp-21.12.tar.gz
+    VENDOR_TGZ="${SCRIPT_DIR}/vendor/protobuf-cpp-${PROTOBUF_VERSION}.tar.gz"
+fi
+if [[ ! -f "${VENDOR_TGZ}" ]]; then
+    echo "[protobuf] 未找到 vendor 包（${PROTOBUF_VENDOR_TGZ:-protobuf-cpp-3.${PROTOBUF_VERSION}.tar.gz}）且无系统 libprotobuf.a" >&2
+    echo "[protobuf] 请执行: ./3Party/fetch_vendor.sh  或  sudo dnf install protobuf protobuf-devel" >&2
     exit 1
 fi
 
 BUILD_DIR="${SCRIPT_DIR}/src/protobuf-build"
 rm -rf "${BUILD_DIR}"
 mkdir -p "${BUILD_DIR}"
-tar -xzf "${VENDOR_TGZ}" -C "${BUILD_DIR}" --strip-components=1
+tar --no-same-owner -xzf "${VENDOR_TGZ}" -C "${BUILD_DIR}" --strip-components=1
 
 cmake -S "${BUILD_DIR}" -B "${BUILD_DIR}/out" \
     -DCMAKE_BUILD_TYPE=Release \
@@ -77,4 +82,9 @@ cmake -S "${BUILD_DIR}" -B "${BUILD_DIR}/out" \
 
 cmake --build "${BUILD_DIR}/out" --parallel "$(nproc 2>/dev/null || echo 4)"
 cmake --install "${BUILD_DIR}/out"
+# cmake install 在部分平台写入 lib64/，与 CMakeLists 期望的 lib/ 对齐
+if [[ -f "${PREFIX}/lib64/libprotobuf.a" && ! -f "${LIB}" ]]; then
+    mkdir -p "${PREFIX}/lib"
+    ln -sf ../lib64/libprotobuf.a "${LIB}"
+fi
 echo "[protobuf] 安装完成: ${BIN}"
