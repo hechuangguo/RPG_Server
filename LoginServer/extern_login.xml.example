@@ -5,7 +5,7 @@
   职责：
     - ClientListen：玩家登录（C2S_LOGIN_REQ，默认 9010）
     - GameZoneListen（RegisterListen）：SuperServer 游戏区转发入口（默认 19010）
-    - Database：账号库 rpg_login（GameUser/ZoneInfo），与游戏区 rpg_game 分离
+    - Database：账号库 rpg_login（GameUser 账号、LoginSession 登录票据、ZoneInfo 参考）
 
   独立进程，不向 Super 注册；仅 SuperServer 经 loginserverlist.xml 连接 GameZoneListen。
   游戏区列表见 ServerList 节点指向的 serverlist.xml（客户端 C2S_ZONE_LIST_REQ）。

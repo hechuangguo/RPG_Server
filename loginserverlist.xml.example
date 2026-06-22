@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ============================================================================
+  loginserverlist.xml — 外联服地址（仅 SuperServer 消费）
+  ============================================================================
+
+  职责：
+    - 登记 LoggerServer / GlobalServer / ZoneServer / LoginServer 的远端地址
+    - 仅 SuperServer 启动时读取并建立 ExternalServerHub 出站连接
+    - 游戏区内 Gateway/Session/Scene 等进程不再直连外联服，一律经 Super 转发
+
+  属性说明：
+    - ip/port：外联服监听地址（须与对应 {Server}/extern_*.xml 中 Listen 一致）
+    - reconnect：1/true 断线后指数退避重连；0/false 仅启动时连接一次
+    - LoginServer port 为 GameZoneListen（RegisterListen），非玩家 ClientListen 9010
+
+  修改后需重启 SuperServer 生效；外联服进程读各自目录 extern_*.xml。
+  ============================================================================
+-->
+<LoginServerList>
+    <!--
+      仅登记已单独启动的外联服；未启动且 reconnect=1 的条目会导致 Super 刷 TLS 警告。
+      启用某外联服：先 ./RunServer.sh logger|global|zone|login，再取消注释对应节点并重启 Super。
+    -->
+    <!-- <LoggerServer ip="127.0.0.1" port="9006" reconnect="1"/> -->
+    <!-- <GlobalServer ip="127.0.0.1" port="9007" reconnect="1"/> -->
+    <!-- <ZoneServer ip="127.0.0.1" port="9008" reconnect="0"/> -->
+    <!-- 外联登录：port 为网关注册口（与 extern_login.xml RegisterListen 一致，非玩家 ClientListen 9010） -->
+    <LoginServer ip="192.168.45.128" port="19010" reconnect="1"/>
+</LoginServerList>

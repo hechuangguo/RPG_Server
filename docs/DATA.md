@@ -238,6 +238,7 @@ flowchart LR
 ```bash
 ./tables/setup_database.sh                    # 推荐：三库建表
 # 存量升级（rpg_game 含 GameUser/ZoneInfo）：mysql -u root -p < tables/migrate_login_db.sql
+# 仅补 LoginSession：mysql -h HOST -u USER -p rpg_login < tables/migrate_login_session.sql
 mysql -u root -p < tables/seed_test_data.sql  # 可选：test001/123456（rpg_game）
 ./gen_data.sh                                 # 策划 Lua
 ```

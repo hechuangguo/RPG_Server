@@ -38,8 +38,12 @@ public:
     /** @brief 轮询所有外联连接 */
     void poll();
 
-    /** @brief 所有外联连接的重连节拍 */
-    void tickReconnect();
+    /**
+     * @brief 所有外联连接的重连节拍
+     * @param nowMs 当前毫秒时间戳
+     * @param skipType 跳过重连的连接器类型（如票据校验在途时暂缓 Login）
+     */
+    void tickReconnect(uint64_t nowMs, SubServerType skipType = SubServerType::UNKNOWN);
 
     /**
      * @brief 获取指定类型的连接器

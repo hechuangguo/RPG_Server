@@ -18,6 +18,7 @@
 #include "../sdk/net/ClientWireSend.h"
 #include "../sdk/net/ClientProtoWire.h"
 
+#include <mysqld_error.h>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -243,9 +244,13 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
                                  req.zone_id(), req.game_type(), LOGIN_TOKEN_TTL_SEC);
                         if (mysql_query(db, sql) != 0)
                         {
+                            const unsigned int err = mysql_errno(db);
                             LOG_ERR("写入 LoginSession 失败: %s", mysql_error(db));
                             loginRsp.set_code(-1);
-                            loginRsp.set_msg("会话写入失败");
+                            if (err == ER_NO_SUCH_TABLE)
+                                loginRsp.set_msg("会话表缺失，请执行 tables/migrate_login_session.sql");
+                            else
+                                loginRsp.set_msg("会话写入失败");
                         }
                         else
                         {

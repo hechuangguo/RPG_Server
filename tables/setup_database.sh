@@ -56,7 +56,7 @@ mysql_root < "$SCRIPT_DIR/init.sql"
 echo "[3/5] 验证 ${DB_USER} 可连接 ${DB_NAME}（游戏区 6 表）..."
 mysql_app -e "USE ${DB_NAME}; SHOW TABLES;"
 
-echo "[4/5] 验证 ${DB_USER} 可连接 ${LOGIN_DB_NAME}（登录服 2 表）..."
+echo "[4/5] 验证 ${DB_USER} 可连接 ${LOGIN_DB_NAME}（登录服 3 表：GameUser/ZoneInfo/LoginSession）..."
 mysql_app -e "USE ${LOGIN_DB_NAME}; SHOW TABLES;"
 
 echo "[5/5] 验证 ${DB_USER} 可连接 ${GLOBAL_DB_NAME}（全局服 1 表）..."

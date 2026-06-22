@@ -15,6 +15,7 @@
 #include "ServerList.h"
 #include "../log/RemoteLogClient.h"
 #include "../net/NetTls.h"
+#include "../timer/TimerMgr.h"
 #include "XmlConfigUtil.h"
 
 #include <cstdio>
@@ -216,10 +217,10 @@ inline void bindRemoteLog(GameZoneExternSender& sender, SubServerType selfType)
 }
 
 /** @brief 游戏区主循环内外联 poll + 重连 */
-inline void tickGameZoneExtern(ExternalServerHub& hub)
+inline void tickGameZoneExtern(ExternalServerHub& hub, SubServerType skipReconnect = SubServerType::UNKNOWN)
 {
     hub.poll();
-    hub.tickReconnect();
+    hub.tickReconnect(TimerMgr::NowMs(), skipReconnect);
 }
 
 } // namespace ServerBootstrap

@@ -15,6 +15,19 @@ namespace
 {
 std::unordered_map<uint32_t, ConnID> g_gatewayConnByServerId;
 std::unordered_map<uint32_t, ConnID> g_recordConnByVerifySeq;
+
+void sendVerifyTokenFailToRecord(SuperServer& super, ConnID recordConn,
+                                 const Msg_Login_VerifyTokenReq& req, const char* reason)
+{
+    LOG_WARN("登录外联: 票据校验转发失败 seq=%u reason=%s", req.requestSeq, reason);
+    Msg_Login_VerifyTokenRsp failRsp{};
+    failRsp.requestSeq = req.requestSeq;
+    failRsp.code = 1;
+    failRsp.accid = 0;
+    super.tcpServer().SendMsg(recordConn,
+                              static_cast<uint16_t>(InternalMsgID::REC_VERIFY_TOKEN_RSP),
+                              reinterpret_cast<const char*>(&failRsp), sizeof(failRsp));
+}
 } // namespace
 
 void SuperLoginMsgRegister(SuperServer& super)
@@ -119,15 +132,30 @@ void superLoginOnGatewayHeartbeat(SuperServer& super, ConnID /*fromConn*/,
 void superLoginOnVerifyTokenReq(SuperServer& super, ConnID fromConn,
                                 const char* data, uint16_t len)
 {
-    // @deprecated 区内服应经 SS_EXTERN_FWD 访问 Login；此直连路径仅保留兼容调试
     if (len < sizeof(Msg_Login_VerifyTokenReq))
         return;
     const auto* req = reinterpret_cast<const Msg_Login_VerifyTokenReq*>(data);
     TcpClient* login = super.externHub().client(SubServerType::LOGIN);
-    if (!login || !login->IsConnected())
+    ExternalServerConnector* loginConn = super.externHub().connector(SubServerType::LOGIN);
+    if (!login || !login->canSend())
+    {
+        sendVerifyTokenFailToRecord(super, fromConn, *req, "登录服未就绪");
         return;
+    }
+    if (!login->SendMsg(static_cast<uint16_t>(InternalMsgID::LOGIN_VERIFY_TOKEN_REQ), data, len))
+    {
+        sendVerifyTokenFailToRecord(super, fromConn, *req, "SendMsg失败");
+        return;
+    }
+    if (loginConn)
+        loginConn->poll();
+    if (!login->IsConnected())
+    {
+        sendVerifyTokenFailToRecord(super, fromConn, *req, "发送后连接断开");
+        return;
+    }
     g_recordConnByVerifySeq[req->requestSeq] = fromConn;
-    login->SendMsg(static_cast<uint16_t>(InternalMsgID::LOGIN_VERIFY_TOKEN_REQ), data, len);
+    LOG_INFO("登录外联: 已转发票据校验 seq=%u recordConn=%u", req->requestSeq, fromConn);
 }
 
 void superLoginOnVerifyTokenRsp(SuperServer& super, ConnID /*fromLoginConn*/,
@@ -151,4 +179,9 @@ void superLoginOnUpdateLastUserReq(SuperServer& super, ConnID /*fromConn*/,
     if (!login || !login->IsConnected())
         return;
     login->SendMsg(static_cast<uint16_t>(InternalMsgID::LOGIN_UPDATE_LAST_USER_REQ), data, len);
+}
+
+bool superLoginHasPendingVerify()
+{
+    return !g_recordConnByVerifySeq.empty();
 }

@@ -17,30 +17,39 @@
 namespace
 {
 
-void sendVerifyTokenForwardRsp(LoginServer& server, ConnID fromConn,
-                               const Msg_Login_VerifyTokenRsp& rsp)
+/**
+ * @brief 回送票据校验结果：优先 EXT_GAMEZONE 对称信封，否则裸 LOGIN_VERIFY_TOKEN_RSP（Super 直连）
+ */
+void sendVerifyTokenRsp(LoginServer& server, ConnID fromConn,
+                        const Msg_Login_VerifyTokenRsp& rsp)
 {
-    const GameZoneForwardContext* ctx = gameZoneCurrentForwardContext(fromConn);
-    if (!ctx)
+    const GameZoneForwardContext* ctx = gameZonePeekForwardContext(fromConn, rsp.requestSeq);
+    if (ctx)
     {
-        LOG_WARN("登录服票据校验回包丢弃: 无 EXT_GAMEZONE 上下文 conn=%u innerSeq=%u",
-                 fromConn, rsp.requestSeq);
+        const int32_t envelopeCode = rsp.code == 0 ? 0 : -1;
+        const void* innerBody = rsp.code == 0 ? static_cast<const void*>(&rsp) : nullptr;
+        const uint16_t innerLen =
+            rsp.code == 0 ? static_cast<uint16_t>(sizeof(rsp)) : 0;
+        if (!gameZoneSendForwardRsp(server.registerServer(), fromConn, ctx->reqHdr, envelopeCode,
+                                    innerBody, innerLen))
+        {
+            LOG_WARN("登录服票据校验回包发送失败: conn=%u fwdSeq=%u innerSeq=%u",
+                     fromConn, ctx->reqHdr.seq, rsp.requestSeq);
+        }
         return;
     }
-    const int32_t envelopeCode = rsp.code;
-    const void* innerBody = envelopeCode == 0 ? static_cast<const void*>(&rsp) : nullptr;
-    const uint16_t innerLen =
-        envelopeCode == 0 ? static_cast<uint16_t>(sizeof(rsp)) : 0;
-    if (!gameZoneSendForwardRsp(server.registerServer(), fromConn, ctx->reqHdr, envelopeCode,
-                                innerBody, innerLen))
+    if (!server.registerServer().SendMsg(
+            fromConn, static_cast<uint16_t>(InternalMsgID::LOGIN_VERIFY_TOKEN_RSP),
+            reinterpret_cast<const char*>(&rsp), sizeof(rsp)))
     {
-        LOG_WARN("登录服票据校验回包发送失败: conn=%u fwdSeq=%u innerSeq=%u",
-                 fromConn, ctx->reqHdr.seq, rsp.requestSeq);
+        LOG_WARN("登录服票据校验裸回包发送失败: conn=%u seq=%u", fromConn, rsp.requestSeq);
     }
 }
 
 void onVerifyTokenReq(LoginServer& server, ConnID fromConn, const Msg_Login_VerifyTokenReq& req)
 {
+    LOG_DEBUG("登录服收到票据校验: conn=%u seq=%u zone=%u", fromConn, req.requestSeq, req.zoneId);
+
     Msg_Login_VerifyTokenRsp rsp{};
     rsp.requestSeq = req.requestSeq;
     rsp.code = 1;
@@ -49,7 +58,7 @@ void onVerifyTokenReq(LoginServer& server, ConnID fromConn, const Msg_Login_Veri
     MYSQL* db = server.db();
     if (!db)
     {
-        sendVerifyTokenForwardRsp(server, fromConn, rsp);
+        sendVerifyTokenRsp(server, fromConn, rsp);
         return;
     }
 
@@ -57,7 +66,7 @@ void onVerifyTokenReq(LoginServer& server, ConnID fromConn, const Msg_Login_Veri
     copyToWire(token, sizeof(token), req.loginToken);
     if (token[0] == '\0')
     {
-        sendVerifyTokenForwardRsp(server, fromConn, rsp);
+        sendVerifyTokenRsp(server, fromConn, rsp);
         return;
     }
 
@@ -102,7 +111,7 @@ void onVerifyTokenReq(LoginServer& server, ConnID fromConn, const Msg_Login_Veri
         logLoginFlow(LoginFlowPhase::GATEWAY_AUTH, 0, 0, 0, rsp.code, "Login校验token失败");
     }
 
-    sendVerifyTokenForwardRsp(server, fromConn, rsp);
+    sendVerifyTokenRsp(server, fromConn, rsp);
 }
 
 void onUpdateLastUserReq(LoginServer& server, ConnID /*fromConn*/,

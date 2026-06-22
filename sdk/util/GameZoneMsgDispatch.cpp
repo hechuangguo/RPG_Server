@@ -28,6 +28,9 @@ void GameZoneOnForwardReq(ConnID fromConn, const char* data, uint16_t len)
     if (len < sizeof(Msg_SS_ExternForward) + hdr->dataLen)
         return;
 
+    LOG_DEBUG("GameZoneFwd: 收到转发 inner=0x%04X seq=%u len=%u conn=%u",
+              hdr->innerMsgId, hdr->seq, hdr->dataLen, fromConn);
+
     gameZonePushForwardContext(fromConn, *hdr);
     const GameZoneForwardContext* ctx = gameZonePeekForwardContext(fromConn, hdr->seq);
     gameZoneSetCurrentForwardContext(fromConn, ctx);

@@ -4,7 +4,7 @@
  *
  * ## 职责
  * - ClientListen：接收 C2S_ZONE_LIST_REQ / C2S_REGISTER_REQ / C2S_LOGIN_REQ
- * - 注册与登录均由 LoginServer 访问 GameUser 账号表
+ * - 注册与登录均由 LoginServer 访问 GameUser 账号表；登录成功写 LoginSession 票据表
  * - RegisterListen：接收 Gateway LOGIN_GATEWAY_REGISTER / HEARTBEAT，维护网关表
  *
  * ## 部署
@@ -104,6 +104,9 @@ public:
 private:
     void registerHandlers();
     bool initDatabase(const DatabaseConfig& dbCfg);
+
+    /** @brief 校验 rpg_login 必备表（GameUser、LoginSession）；缺表时启动失败 */
+    bool verifyLoginSchema();
     bool loadServerList(const std::string& path);
     void pruneGatewayTable();
 

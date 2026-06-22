@@ -111,6 +111,37 @@ bool LoginServer::initDatabase(const DatabaseConfig& dbCfg)
     return true;
 }
 
+bool LoginServer::verifyLoginSchema()
+{
+    if (!m_dbRequired || !m_db)
+        return true;
+
+    static const char* kRequiredTables[] = {"GameUser", "LoginSession"};
+    for (const char* tableName : kRequiredTables)
+    {
+        char sql[192];
+        std::snprintf(sql, sizeof(sql),
+                      "SHOW TABLES LIKE '%s'", tableName);
+        if (mysql_query(m_db, sql) != 0)
+        {
+            LOG_FATAL("登录服校验表结构失败: %s", mysql_error(m_db));
+            return false;
+        }
+        MYSQL_RES* res = mysql_store_result(m_db);
+        const bool exists = res && mysql_fetch_row(res) != nullptr;
+        if (res)
+            mysql_free_result(res);
+        if (!exists)
+        {
+            LOG_FATAL("登录服缺少数据表 %s（请执行: mysql ... rpg_login < tables/migrate_login_session.sql）",
+                      tableName);
+            return false;
+        }
+    }
+    LOG_INFO("登录服数据表校验通过: GameUser, LoginSession");
+    return true;
+}
+
 bool LoginServer::loadServerList(const std::string& path)
 {
     if (path.empty())
@@ -137,6 +168,8 @@ bool LoginServer::Init(const LoginExternConfig& cfg)
     if (!loadServerList(cfg.serverListPath))
         return false;
     if (!initDatabase(cfg.database))
+        return false;
+    if (!verifyLoginSchema())
         return false;
 
     wireTlsServer(m_clientServer, false);

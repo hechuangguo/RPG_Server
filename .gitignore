@@ -19,6 +19,7 @@ run/
 
 LoginServer/serverlist.xml
 LoggerServer/extern_login.xml
+loginserverlist.xml
 
 # Protobuf C++ 生成物（scripts/gen_proto.sh 自动生成；README.md 保留）
 Protobuf/*.pb.h

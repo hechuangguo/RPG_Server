@@ -117,8 +117,12 @@ void SuperServer::Run()
 {
     while (true)
     {
+        /** 先 poll 外联，保证 Login TLS 就绪后再处理区内 Record 票据校验 */
+        m_externHub.poll();
         m_server.Poll(10);
-        ServerBootstrap::tickGameZoneExtern(m_externHub);
+        const SubServerType skipLoginReconnect =
+            superLoginHasPendingVerify() ? SubServerType::LOGIN : SubServerType::UNKNOWN;
+        ServerBootstrap::tickGameZoneExtern(m_externHub, skipLoginReconnect);
         TimerMgr::Instance().Update();
     }
 }

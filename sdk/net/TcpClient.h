@@ -238,6 +238,12 @@ public:
         return m_conn && !m_conn->IsClosed() && m_conn->isTlsReady();
     }
 
+    /** @brief 发送缓冲区是否仍有待发数据（Poll 后仍为 true 表示尚未写完） */
+    bool hasPendingSend() const
+    {
+        return m_conn && !m_conn->IsClosed() && m_conn->hasPendingSend();
+    }
+
 private:
     INetCallback*  m_cb;       /**< 事件回调接口（不负责释放） */
     int            m_epollFd;  /**< 独立的 epoll 实例 fd */

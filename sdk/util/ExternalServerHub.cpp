@@ -57,17 +57,16 @@ void ExternalServerHub::poll()
         m_login.poll();
 }
 
-void ExternalServerHub::tickReconnect()
+void ExternalServerHub::tickReconnect(uint64_t nowMs, SubServerType skipType)
 {
-    const uint64_t now = TimerMgr::NowMs();
     if (m_wantLogger)
-        m_logger.tickReconnect(now);
+        m_logger.tickReconnect(nowMs);
     if (m_wantGlobal)
-        m_global.tickReconnect(now);
+        m_global.tickReconnect(nowMs);
     if (m_wantZone)
-        m_zone.tickReconnect(now);
-    if (m_wantLogin)
-        m_login.tickReconnect(now);
+        m_zone.tickReconnect(nowMs);
+    if (m_wantLogin && skipType != SubServerType::LOGIN)
+        m_login.tickReconnect(nowMs);
 }
 
 ExternalServerConnector* ExternalServerHub::connector(SubServerType type)

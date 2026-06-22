@@ -19,6 +19,8 @@
 | `setup_database.sh` | 一键：建三库与用户 + `init.sql` 建表 + 三库验证 |
 | `init.sql` | 三库建表：rpg_login（3 表）+ rpg_game（6 表）+ rpg_global（1 表） |
 | `migrate_login_db.sql` | 存量迁移：GameUser/ZoneInfo 从 rpg_game → rpg_login |
+| `migrate_login_session.sql` | 存量迁移：补齐 rpg_login.LoginSession（网关鉴权票据表） |
+| `alter_login_flow.sql` | 存量迁移：LoginSession + CharBase.accid/gamezone 列 |
 | `alter_relation_add_binary.sql` | 迁移：已为旧库 `Relation` 表增加 `` `binary` `` 列（执行一次） |
 | `seed_test_data.sql` | 开发/测试用种子数据：test001~test003（rpg_game） |
 | `examples_query_characters.sql` | 示例：只查角色（CharBase 多类 SELECT） |
@@ -48,6 +50,12 @@ chmod +x tables/setup_database.sh
 
 ```bash
 mysql -u root -p < tables/migrate_login_db.sql
+```
+
+**仅补 LoginSession 表**（登录报「会话写入失败」时）：
+
+```bash
+mysql -h HOST -u rpg_table -prpg_table rpg_login < tables/migrate_login_session.sql
 ```
 
 **手动分步**
@@ -102,6 +110,7 @@ mysql -h 127.0.0.1 -u rpg_table -prpg_table rpg_game < tables/examples_batch_upd
 |----|------|
 | `GameUser` | 账号/密码哈希/区号/绑定角色（password_hash = bcrypt(hex(SHA-256))） |
 | `ZoneInfo` | 区服入口参考/种子 |
+| `LoginSession` | 登录票据 loginToken（短期一次性；Login 写、Gateway 鉴权消费） |
 
 **rpg_game（区内）**
 

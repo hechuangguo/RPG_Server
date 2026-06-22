@@ -396,9 +396,10 @@ void RecordServer::onValidateTokenReq(ConnID fromConn, const Msg_REC_ValidateTok
     pending.createdAtMs = TimerMgr::NowMs();
     m_pendingVerifyToken[verifyReq.requestSeq] = pending;
 
-    if (!m_externSender.sendToLoginServer(static_cast<uint16_t>(InternalMsgID::LOGIN_VERIFY_TOKEN_REQ),
-                                          reinterpret_cast<const char*>(&verifyReq), sizeof(verifyReq),
-                                          verifyReq.requestSeq))
+    // 经 Super 裸转发 LOGIN_VERIFY_TOKEN_REQ（与网关注册同级），避免 EXT_GAMEZONE 在连接抖动时丢包
+    if (!m_superClient.canSend() ||
+        !m_superClient.SendMsg(static_cast<uint16_t>(InternalMsgID::LOGIN_VERIFY_TOKEN_REQ),
+                               reinterpret_cast<const char*>(&verifyReq), sizeof(verifyReq)))
     {
         m_pendingVerifyToken.erase(verifyReq.requestSeq);
         Msg_REC_ValidateTokenRsp failRsp{};

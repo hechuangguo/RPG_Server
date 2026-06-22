@@ -64,3 +64,6 @@ void superLoginOnVerifyTokenRsp(SuperServer& super, ConnID fromLoginConn,
 /** @brief 转发 Record→Login 最近角色回填请求 */
 void superLoginOnUpdateLastUserReq(SuperServer& super, ConnID fromConn,
                                    const char* data, uint16_t len);
+
+/** @brief 是否存在尚未回包的票据校验（用于暂缓 Login 外联重连） */
+bool superLoginHasPendingVerify();

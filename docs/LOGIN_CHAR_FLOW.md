@@ -202,8 +202,28 @@ grep '\[登录链路\]' logs/gateway.log logs/login.log logs/super.log
 | 有 `客户端首条上行` 但无鉴权 | mod/sub 不是 `0x00/0x0D` | 客户端发了错误消息号 |
 | 有 `客户端消息被拒绝` | vr=BAD_LENGTH/BAD_PAYLOAD 或 `legacy wire v2` | body 非 Protobuf；鉴权定长 107B 须改为 `C2SGatewayAuthReq` Protobuf |
 | 鉴权后无列表 | 有 `Record转发Login校验` 无 `phase=角色列表` | Record/Login 票据校验失败 |
+| 客户端「会话写入失败」 | `login.log`：`写入 LoginSession 失败: Table 'rpg_login.LoginSession' doesn't exist` | `rpg_login` 缺 `LoginSession` 表，执行 `tables/migrate_login_session.sql` |
 
-### 6.4 无可用网关（账号登录成功但客户端提示无可用网关）
+### 6.4 LoginSession 表缺失（会话写入失败）
+
+**症状**：账号密码已通过，但客户端报「会话写入失败」；`login.log` 出现 `写入 LoginSession 失败` 或启动时 `登录服缺少数据表 LoginSession`。
+
+**与 GameUser 区别**：`GameUser` 存账号与密码哈希（长期）；`LoginSession` 存本次登录的 `loginToken`（短期、一次性），供 Gateway `C2S_GATEWAY_AUTH_REQ` 校验。
+
+**修复**（按 `extern_login.xml` 中 Database 主机执行）：
+
+```bash
+mysql -h 192.168.45.128 -u rpg_table -prpg_table rpg_login < tables/migrate_login_session.sql
+```
+
+验证：
+
+```bash
+mysql -h 192.168.45.128 -u rpg_table -prpg_table -e "USE rpg_login; SHOW TABLES LIKE 'LoginSession';"
+./RunServer.sh login   # 重启后应见「登录服数据表校验通过」
+```
+
+### 6.5 无可用网关（账号登录成功但客户端提示无可用网关）
 
 **症状**：Login 日志 `账号登录成功` 后紧跟 `已下发网关信息: code=-1` 或 `[登录链路] ... code=-1 无可用网关`；区列表日志 `gateway=0`。
 
@@ -237,7 +257,7 @@ Gateway 额外诊断日志：
 - `客户端首条上行: conn=... mod=... sub=... len=...` — CONNECTED 态收到首包
 - `Gateway 票据鉴权: account=...` — 收到合法鉴权请求
 
-### 6.5 客户端退出排查
+### 6.6 客户端退出排查
 
 **grep**：
 
