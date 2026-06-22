@@ -98,6 +98,20 @@ try_switch_ssh() {
     return 0
 }
 
+try_switch_https() {
+    local repo="$1"
+    local https_url="$2"
+    local ssh_url="$3"
+    local label="$4"
+
+    local url
+    url="$(git -C "${repo}" remote get-url origin 2>/dev/null || true)"
+    [[ "${url}" == "${ssh_url}" ]] || return 1
+    warn "${label} SSH push 失败，切换 HTTPS 重试..."
+    git -C "${repo}" remote set-url origin "${https_url}"
+    return 0
+}
+
 git_push_repo() {
     local repo="$1"
     local branch="$2"
@@ -107,6 +121,9 @@ git_push_repo() {
 
     if git -C "${repo}" push origin "${branch}"; then
         return 0
+    fi
+    if try_switch_https "${repo}" "${https_url}" "${ssh_url}" "${label}"; then
+        git -C "${repo}" push origin "${branch}" && return 0
     fi
     if try_switch_ssh "${repo}" "${https_url}" "${ssh_url}" "${label}"; then
         git -C "${repo}" push origin "${branch}" && return 0
