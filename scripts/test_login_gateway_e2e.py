@@ -44,6 +44,7 @@ LOGIN_MODULE = 0
 SCENE_MODULE = 1
 C2S_LOGIN_REQ = 1
 S2C_LOGIN_RSP = 2
+S2C_LOGIN_CHALLENGE = 0x10
 C2S_SELECT_USER_REQ = 5
 S2C_USER_LIST = 6
 C2S_CREATE_USER_REQ = 7
@@ -127,8 +128,21 @@ def send_msg(sock, module, sub, body: bytes):
 
 
 def password_digest(plain: str) -> bytes:
-    """32 字节 SHA-256(UTF-8 密码)。"""
+    """32 字节 SHA-256(UTF-8 密码)；不含 login_nonce。"""
     return hashlib.sha256(plain.encode("utf-8")).digest()
+
+
+def recv_login_challenge(sock, timeout=5.0) -> bytes:
+    """等待 S2CLoginChallenge 并返回 nonce 字节。"""
+    reader = MsgReader(sock)
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        for mod, sub, data in reader.poll(0.5):
+            if mod == LOGIN_MODULE and sub == S2C_LOGIN_CHALLENGE:
+                msg = LoginMsg_pb2.S2CLoginChallenge()
+                if msg.ParseFromString(data) and len(msg.nonce) == 16:
+                    return msg.nonce
+    return b""
 
 
 def fill_protocol_version(msg):
@@ -212,6 +226,11 @@ def login(account, password, zone_id=1, game_type=0):
     fill_protocol_version(req)
 
     sock = tls_connect(HOST, LOGIN_PORT, 5)
+    nonce = recv_login_challenge(sock, timeout=5.0)
+    if len(nonce) != 16:
+        sock.close()
+        return None, None, None
+    req.login_nonce = nonce
     send_msg(sock, LOGIN_MODULE, C2S_LOGIN_REQ, req.SerializeToString())
     reader = MsgReader(sock)
     msgs = reader.collect({S2C_LOGIN_RSP, S2C_GATEWAY_INFO}, timeout=5.0)

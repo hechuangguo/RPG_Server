@@ -111,6 +111,20 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
     loginRsp.set_user_id(0);
     loginRsp.set_accid(0);
 
+    if (!m_owner.peekLoginChallengeNonce(connID, req.login_nonce()))
+    {
+        loginRsp.set_code(1);
+        loginRsp.set_msg("登录挑战无效");
+        sendClientProtoModule(m_owner.clientServer(), connID, kLoginModule,
+                       static_cast<uint8_t>(rpg::login::S2C_LOGIN_RSP), loginRsp);
+        logLoginFlow(LoginFlowPhase::ACCOUNT_LOGIN, 0, 0, connID, loginRsp.code(),
+                     loginRsp.msg().c_str());
+        sendGatewayInfo(connID, -1, "登录失败");
+        LOG_WARN("登录挑战校验失败: conn=%u loginNonceLen=%zu",
+                 connID, req.login_nonce().size());
+        return;
+    }
+
     if (m_owner.dbRequired() && !m_owner.db())
     {
         loginRsp.set_code(-1);
@@ -188,6 +202,9 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
                 {
                     loginRsp.set_code(1);
                     loginRsp.set_msg("账号或密码错误");
+                    LOG_WARN("密码校验失败: conn=%u account=%s（password_digest 须为 SHA-256(密码) 32 字节，"
+                             "nonce 仅放在 login_nonce；勿使用 SHA-256(nonce||密码)）",
+                             connID, account.c_str());
                 }
                 else if (gameZone != 0 && gameZone != req.zone_id())
                 {
@@ -248,6 +265,7 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
                    static_cast<uint8_t>(rpg::login::S2C_LOGIN_RSP), loginRsp);
     if (loginRsp.code() == 0)
     {
+        m_owner.verifyAndConsumeLoginNonce(connID, req.login_nonce());
         LOG_INFO("账号登录成功: connID=%u zone=%u gameType=%u userID=%llu",
                  connID, req.zone_id(), req.game_type(),
                  static_cast<unsigned long long>(loginRsp.user_id()));

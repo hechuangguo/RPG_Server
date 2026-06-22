@@ -33,6 +33,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <unordered_map>
 
 /**
  * @brief LoginServer 核心类（双 TcpServer：客户端 + 网关注册）
@@ -78,6 +79,22 @@ public:
     /** @brief 客户端口：断开 */
     void onClientDisconnect(ConnID id);
 
+    /**
+     * @brief 校验连接挑战 nonce（不消费，注册/区列表后仍可登录）
+     * @param connId 客户端连接
+     * @param loginNonce C2S 请求中的 login_nonce 字段
+     * @return 与连接首包挑战一致时 true
+     */
+    bool peekLoginChallengeNonce(ConnID connId, const std::string& loginNonce) const;
+
+    /**
+     * @brief 校验并消费连接挑战 nonce（登录/注册回显）
+     * @param connId 客户端连接
+     * @param loginNonce C2S 请求中的 login_nonce 字段
+     * @return 与连接首包挑战一致且未消费过时 true
+     */
+    bool verifyAndConsumeLoginNonce(ConnID connId, const std::string& loginNonce);
+
     /** @brief 注册口：新连接 */
     void onRegisterConnect(ConnID id);
 
@@ -89,6 +106,9 @@ private:
     bool initDatabase(const DatabaseConfig& dbCfg);
     bool loadServerList(const std::string& path);
     void pruneGatewayTable();
+
+    /** @brief 连接建立后下发 S2CLoginChallenge（协议首包） */
+    void sendLoginChallenge(ConnID connId);
 
     /** @brief 客户端口 INetCallback 桥接 */
     struct ClientPortBridge;
@@ -108,4 +128,5 @@ private:
     LoginGmService       m_gmService;       /**< GM 骨架 */
     MYSQL* m_db = nullptr;       /**< 可选 MySQL（与 Record 同库） */
     bool m_dbRequired = false;   /**< 配置了 Database 则须连库成功 */
+    std::unordered_map<ConnID, std::string> m_loginChallengeNonces; /**< 每连接 16 字节挑战 nonce */
 };

@@ -2,7 +2,9 @@
  * @file    PasswordDigestUtil.h
  * @brief   登录 wire SHA-256 摘要与 bcrypt 存库校验（方案 1）
  *
- * 客户端发送 32 字节 SHA-256(UTF-8 密码)；服务端存 bcrypt(hex(digest))。
+ * 客户端发送 32 字节 SHA-256(UTF-8 密码)（**不含** login_nonce）；
+ * login_nonce 单独回显 S2CLoginChallenge.nonce，防重放。
+ * 服务端存 bcrypt(hex(digest))。
  */
 
 #pragma once
@@ -14,7 +16,10 @@
 #include <cstring>
 #include <string>
 
-/** @brief SHA-256 摘要字节数（与 LoginMsg passwordDigest 字段一致） */
+/** @brief 登录挑战 nonce 字节数（与 S2CLoginChallenge.nonce 一致） */
+constexpr size_t LOGIN_CHALLENGE_NONCE_LEN = 16;
+
+/** @brief SHA-256 摘要字节数（与 LoginMsg password_digest 字段一致） */
 constexpr size_t PASSWORD_DIGEST_LEN = 32;
 
 /**

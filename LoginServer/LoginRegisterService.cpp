@@ -98,6 +98,13 @@ void LoginRegisterService::onClientRegister(ConnID connID, const char* data, uin
         sendRegisterRsp(connID, REGISTER_BAD_PARAM, "账号格式非法");
         return;
     }
+    if (!m_owner.peekLoginChallengeNonce(connID, req.login_nonce()))
+    {
+        sendRegisterRsp(connID, REGISTER_BAD_PARAM, "登录挑战无效");
+        LOG_WARN("注册挑战校验失败: conn=%u loginNonceLen=%zu",
+                 connID, req.login_nonce().size());
+        return;
+    }
     if (!m_owner.zoneInfoStore().isZoneEnabled(static_cast<uint8_t>(req.game_type()), req.zone_id()))
     {
         sendRegisterRsp(connID, REGISTER_ZONE_UNAVAILABLE, "区服不可用");

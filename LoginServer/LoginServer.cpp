@@ -6,12 +6,25 @@
 #include "LoginServer.h"
 #include "LoginGameZoneMsg.h"
 #include "LoginClientMsgRegister.h"
+#include "ClientCommon.pb.h"
+#include "LoginCommon.pb.h"
+#include "LoginMsg.pb.h"
 #include "../sdk/net/MsgIngress.h"
 #include "../sdk/net/NetTls.h"
+#include "../sdk/net/ClientWireSend.h"
 #include "../sdk/timer/TimerMgr.h"
+#include "../sdk/math/Random.h"
+#include "../sdk/util/PasswordDigestUtil.h"
 
 #include <cstdio>
 #include <cstring>
+
+namespace
+{
+
+constexpr uint8_t kLoginModule = static_cast<uint8_t>(rpg::client::LOGIN);
+
+} // namespace
 
 struct LoginServer::ClientPortBridge : INetCallback
 {
@@ -164,10 +177,59 @@ void LoginServer::Run()
 void LoginServer::onClientConnect(ConnID id)
 {
     LOG_INFO("登录客户端连接: conn=%u", id);
+    sendLoginChallenge(id);
+}
+
+void LoginServer::sendLoginChallenge(ConnID connId)
+{
+    std::string nonce;
+    nonce.resize(LOGIN_CHALLENGE_NONCE_LEN);
+    for (size_t i = 0; i < LOGIN_CHALLENGE_NONCE_LEN; ++i)
+        nonce[i] = static_cast<char>(Random::rangeU(0, 255));
+
+    m_loginChallengeNonces[connId] = nonce;
+
+    rpg::login::S2CLoginChallenge challenge;
+    challenge.set_nonce(nonce);
+    if (!sendClientProtoModule(m_clientServer, connId, kLoginModule,
+                               static_cast<uint8_t>(rpg::login::S2C_LOGIN_CHALLENGE),
+                               challenge))
+    {
+        LOG_WARN("登录挑战下发失败: conn=%u", connId);
+        m_loginChallengeNonces.erase(connId);
+        return;
+    }
+    LOG_DEBUG("已下发登录挑战: conn=%u nonceLen=%zu", connId, nonce.size());
+}
+
+bool LoginServer::peekLoginChallengeNonce(ConnID connId, const std::string& loginNonce) const
+{
+    auto it = m_loginChallengeNonces.find(connId);
+    if (it == m_loginChallengeNonces.end())
+        return false;
+    return it->second.size() == LOGIN_CHALLENGE_NONCE_LEN &&
+           loginNonce.size() == LOGIN_CHALLENGE_NONCE_LEN &&
+           it->second == loginNonce;
+}
+
+bool LoginServer::verifyAndConsumeLoginNonce(ConnID connId, const std::string& loginNonce)
+{
+    auto it = m_loginChallengeNonces.find(connId);
+    if (it == m_loginChallengeNonces.end())
+        return false;
+    if (it->second.size() != LOGIN_CHALLENGE_NONCE_LEN ||
+        loginNonce.size() != LOGIN_CHALLENGE_NONCE_LEN ||
+        it->second != loginNonce)
+    {
+        return false;
+    }
+    m_loginChallengeNonces.erase(it);
+    return true;
 }
 
 void LoginServer::onClientDisconnect(ConnID id)
 {
+    m_loginChallengeNonces.erase(id);
     if (!m_clientServer.connectNotified(id))
     {
         LOG_WARN("登录客户端 TLS 握手未完成即断开: conn=%u（客户端可能仍用明文 TCP）",
