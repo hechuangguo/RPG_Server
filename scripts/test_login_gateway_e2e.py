@@ -51,6 +51,8 @@ C2S_CREATE_USER_REQ = 7
 S2C_CREATE_USER_RSP = 8
 S2C_ENTER_GAME = 9
 S2C_GATEWAY_INFO = 10
+S2C_GATEWAY_AUTH_RSP = 0x11
+S2C_ENTER_WORLD_RSP = 0x12
 C2S_GATEWAY_AUTH_REQ = 0x0D
 C2S_LOGOUT_REQ = 0x0E
 S2C_LOGOUT_RSP = 0x0F
@@ -150,6 +152,20 @@ def fill_protocol_version(msg):
     pv = msg.protocol_version
     pv.major = 1
     pv.minor = 0
+
+
+def parse_gateway_auth_rsp(data: bytes):
+    rsp = LoginMsg_pb2.S2CGatewayAuthRsp()
+    if not rsp.ParseFromString(data):
+        return None
+    return {"code": rsp.code, "msg": rsp.msg, "accid": rsp.accid}
+
+
+def parse_enter_world_rsp(data: bytes):
+    rsp = LoginMsg_pb2.S2CEnterWorldRsp()
+    if not rsp.ParseFromString(data):
+        return None
+    return {"code": rsp.code, "msg": rsp.msg, "userID": rsp.user_id}
 
 
 def parse_login_rsp(data: bytes):
@@ -280,14 +296,14 @@ def main():
     fill_protocol_version(auth_req)
     send_msg(gw, LOGIN_MODULE, C2S_GATEWAY_AUTH_REQ, auth_req.SerializeToString())
 
-    pending = reader.collect({S2C_LOGIN_RSP, S2C_USER_LIST}, timeout=12.0)
+    pending = reader.collect({S2C_GATEWAY_AUTH_RSP, S2C_USER_LIST}, timeout=12.0)
     user_list = None
     auth_ok = False
     for mod, sub, data in pending:
-        if mod == LOGIN_MODULE and sub == S2C_LOGIN_RSP:
-            rsp = parse_login_rsp(data)
+        if mod == LOGIN_MODULE and sub == S2C_GATEWAY_AUTH_RSP:
+            rsp = parse_gateway_auth_rsp(data)
             if rsp:
-                print(f"    S2C_LOGIN_RSP auth code={rsp['code']}")
+                print(f"    S2C_GATEWAY_AUTH_RSP code={rsp['code']} accid={rsp['accid']}")
                 auth_ok = rsp["code"] == 0
         if mod == LOGIN_MODULE and sub == S2C_USER_LIST:
             user_list = parse_user_list(data)
@@ -343,14 +359,14 @@ def main():
     select_req.login_txn_id = 0
     send_msg(gw, LOGIN_MODULE, C2S_SELECT_USER_REQ, select_req.SerializeToString())
 
-    pending = reader.collect({S2C_ENTER_GAME, S2C_LOGIN_RSP}, timeout=20.0)
+    pending = reader.collect({S2C_ENTER_GAME, S2C_ENTER_WORLD_RSP}, timeout=20.0)
     enter_ok = False
     spawn_ok = False
     for mod, sub, data in pending:
-        if mod == LOGIN_MODULE and sub == S2C_LOGIN_RSP:
-            rsp = parse_login_rsp(data)
+        if mod == LOGIN_MODULE and sub == S2C_ENTER_WORLD_RSP:
+            rsp = parse_enter_world_rsp(data)
             if rsp:
-                print(f"    S2C_LOGIN_RSP enter code={rsp['code']} userID={rsp['userID']}")
+                print(f"    S2C_ENTER_WORLD_RSP code={rsp['code']} userID={rsp['userID']}")
         if mod == LOGIN_MODULE and sub == S2C_ENTER_GAME:
             eg = parse_enter_game(data)
             if eg:

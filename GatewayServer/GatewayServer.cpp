@@ -245,7 +245,7 @@ void GatewayServer::tickUpstreamConnect()
              m_scenePool.hasAnyCanSend() ? 1 : 0,
              m_upstreamReady ? 1 : 0);
 
-    if (m_upstreamReady && m_superClient.canSend() && !m_reportedToLogin)
+    if (m_superClient.canSend() && !m_reportedToLogin)
         reportGatewayToSuper();
 }
 
@@ -270,31 +270,6 @@ void GatewayServer::reconnectRecordClient()
         LOG_WARN("重连 Record 发起失败: %s:%u", rec->ip.c_str(), rec->port);
 }
 
-bool GatewayServer::ensureRecordReady(uint64_t timeoutMs)
-{
-    if (isRecordReady())
-        return true;
-    reconnectRecordClient();
-    const uint64_t deadline = TimerMgr::NowMs() + timeoutMs;
-    while (TimerMgr::NowMs() < deadline)
-    {
-        m_recordClient.Poll(10);
-        m_superClient.Poll(0);
-        if (isRecordReady())
-        {
-            if (!m_upstreamReady)
-            {
-                m_upstreamReady = true;
-                LOG_INFO("Record 上游已恢复（鉴权等待期间）");
-                if (m_superClient.canSend() && !m_reportedToLogin)
-                    reportGatewayToSuper();
-            }
-            return true;
-        }
-    }
-    return false;
-}
-
 void GatewayServer::upstreamHealthCheck()
 {
     if (isRecordReady())
@@ -303,16 +278,13 @@ void GatewayServer::upstreamHealthCheck()
         {
             m_upstreamReady = true;
             LOG_INFO("Record 上游已恢复");
-            if (m_superClient.canSend() && !m_reportedToLogin)
-                reportGatewayToSuper();
         }
         return;
     }
     if (m_upstreamReady)
     {
-        LOG_WARN("Record 上游不可用，暂停 Login 网关注册");
+        LOG_WARN("Record 上游不可用，暂停客户端转发与鉴权");
         m_upstreamReady = false;
-        m_reportedToLogin = false;
     }
     reconnectRecordClient();
     for (int i = 0; i < 5 && !isRecordReady(); ++i)
@@ -321,18 +293,11 @@ void GatewayServer::upstreamHealthCheck()
     {
         m_upstreamReady = true;
         LOG_INFO("Record 上游重连成功");
-        if (m_superClient.canSend() && !m_reportedToLogin)
-            reportGatewayToSuper();
     }
 }
 
 void GatewayServer::reportGatewayToSuper()
 {
-    if (!isRecordReady())
-    {
-        LOG_WARN("Record 未就绪，跳过网关注册");
-        return;
-    }
     if (!m_superClient.canSend())
     {
         LOG_WARN("超级服未连接，跳过网关注册");
@@ -359,7 +324,7 @@ void GatewayServer::reportGatewayToSuper()
 
 void GatewayServer::sendLoginGatewayHeartbeat()
 {
-    if (!m_upstreamReady || !isRecordReady() || !m_superClient.canSend())
+    if (!m_superClient.canSend())
         return;
     if (!m_reportedToLogin)
     {
@@ -508,11 +473,11 @@ void GatewayServer::onGatewayAuth(ConnID connID, const char* data, uint16_t len)
 {
     if (!isRecordReady())
     {
-        rpg::login::S2CLoginRsp loginRsp;
-        loginRsp.set_code(-1);
-        loginRsp.set_msg("网关服务初始化中，请稍后重试");
+        rpg::login::S2CGatewayAuthRsp authRsp;
+        authRsp.set_code(-1);
+        authRsp.set_msg("网关服务初始化中，请稍后重试");
         sendClientProtoModule(m_clientServer, connID, kLoginModule,
-                     static_cast<uint8_t>(rpg::login::S2C_LOGIN_RSP), loginRsp);
+                     static_cast<uint8_t>(rpg::login::S2C_GATEWAY_AUTH_RSP), authRsp);
         logLoginFlow(LoginFlowPhase::GATEWAY_AUTH, 0, 0, connID, -1, "上游未就绪");
         return;
     }
@@ -530,11 +495,11 @@ void GatewayServer::onGatewayAuth(ConnID connID, const char* data, uint16_t len)
     if (protoReq.zone_id() != m_zoneId ||
         static_cast<uint8_t>(protoReq.game_type()) != m_gameType)
     {
-        rpg::login::S2CLoginRsp loginRsp;
-        loginRsp.set_code(1);
-        loginRsp.set_msg("区服或游戏类型与网关不匹配");
+        rpg::login::S2CGatewayAuthRsp authRsp;
+        authRsp.set_code(1);
+        authRsp.set_msg("区服或游戏类型与网关不匹配");
         sendClientProtoModule(m_clientServer, connID, kLoginModule,
-                     static_cast<uint8_t>(rpg::login::S2C_LOGIN_RSP), loginRsp);
+                     static_cast<uint8_t>(rpg::login::S2C_GATEWAY_AUTH_RSP), authRsp);
         logLoginFlow(LoginFlowPhase::GATEWAY_AUTH, 0, 0, connID, 1, "区服不匹配");
         return;
     }
@@ -552,11 +517,11 @@ void GatewayServer::onGatewayAuth(ConnID connID, const char* data, uint16_t len)
                                 reinterpret_cast<char*>(&verifyReq), sizeof(verifyReq)))
     {
         user->setClientState(ClientState::CONNECTED);
-        rpg::login::S2CLoginRsp loginRsp;
-        loginRsp.set_code(1);
-        loginRsp.set_msg("存档服务暂不可用，请稍后重试");
+        rpg::login::S2CGatewayAuthRsp authRsp;
+        authRsp.set_code(1);
+        authRsp.set_msg("存档服务暂不可用，请稍后重试");
         sendClientProtoModule(m_clientServer, connID, kLoginModule,
-                     static_cast<uint8_t>(rpg::login::S2C_LOGIN_RSP), loginRsp);
+                     static_cast<uint8_t>(rpg::login::S2C_GATEWAY_AUTH_RSP), authRsp);
         LOG_WARN("Gateway 票据校验发送失败: conn=%u", connID);
         logLoginFlow(LoginFlowPhase::GATEWAY_AUTH, 0, 0, connID, 1, "转发Record失败");
         return;
@@ -851,14 +816,14 @@ void GatewayServer::onValidateTokenRsp(ConnID /*fromConn*/, const Msg_REC_Valida
     if (rsp.code != 0)
     {
         ServiceHealthMetrics::instance().incLoginAuthFail();
-        rpg::login::S2CLoginRsp loginRsp;
-        loginRsp.set_code(1);
-        loginRsp.set_msg("登录票据无效或已过期");
+        rpg::login::S2CGatewayAuthRsp authRsp;
+        authRsp.set_code(1);
+        authRsp.set_msg("登录票据无效或已过期");
         user->setClientState(ClientState::CONNECTED);
         user->setAccid(0);
         user->setRoleListReady(false);
         sendClientProtoModule(m_clientServer, clientConn, kLoginModule,
-                     static_cast<uint8_t>(rpg::login::S2C_LOGIN_RSP), loginRsp);
+                     static_cast<uint8_t>(rpg::login::S2C_GATEWAY_AUTH_RSP), authRsp);
         LOG_WARN("Gateway 票据鉴权失败: conn=%u", clientConn);
         logLoginFlow(LoginFlowPhase::GATEWAY_AUTH, 0, 0, clientConn, rsp.code, nullptr);
         m_clientServer.Kick(clientConn);
@@ -868,15 +833,15 @@ void GatewayServer::onValidateTokenRsp(ConnID /*fromConn*/, const Msg_REC_Valida
 
     user->setRoleListReady(false);
 
-    // Record 不可达：下发 S2C_USER_LIST code=-1（与创角后刷新一致）并 S2C_LOGIN_RSP code=-1
+    // Record 不可达：下发 S2C_USER_LIST code=-1 并 S2C_GATEWAY_AUTH_RSP code=-1
     if (!sendUserListToClient(clientConn, rsp.accid, user->getZoneId(), true))
     {
         user->setClientState(ClientState::CONNECTED);
-        rpg::login::S2CLoginRsp loginRsp;
-        loginRsp.set_code(-1);
-        loginRsp.set_msg("存档服务不可用，请稍后重试");
+        rpg::login::S2CGatewayAuthRsp authRsp;
+        authRsp.set_code(-1);
+        authRsp.set_msg("存档服务不可用，请稍后重试");
         sendClientProtoModule(m_clientServer, clientConn, kLoginModule,
-                     static_cast<uint8_t>(rpg::login::S2C_LOGIN_RSP), loginRsp);
+                     static_cast<uint8_t>(rpg::login::S2C_GATEWAY_AUTH_RSP), authRsp);
         LOG_WARN("Gateway 鉴权后无法拉取角色列表: Record 未连接 conn=%u", clientConn);
         logLoginFlow(LoginFlowPhase::GATEWAY_AUTH, rsp.accid, 0, clientConn, -1,
                      "Record 未连接");
@@ -889,13 +854,12 @@ void GatewayServer::onValidateTokenRsp(ConnID /*fromConn*/, const Msg_REC_Valida
     user->setClientState(ClientState::ACCOUNT_OK);
     ServiceHealthMetrics::instance().incLoginAuthSuccess();
 
-    rpg::login::S2CLoginRsp loginRsp;
-    loginRsp.set_code(0);
-    loginRsp.set_user_id(0);
-    loginRsp.set_accid(rsp.accid);
-    loginRsp.set_msg("网关鉴权成功");
+    rpg::login::S2CGatewayAuthRsp authRsp;
+    authRsp.set_code(0);
+    authRsp.set_accid(rsp.accid);
+    authRsp.set_msg("网关鉴权成功");
     sendClientProtoModule(m_clientServer, clientConn, kLoginModule,
-                 static_cast<uint8_t>(rpg::login::S2C_LOGIN_RSP), loginRsp);
+                 static_cast<uint8_t>(rpg::login::S2C_GATEWAY_AUTH_RSP), authRsp);
 
     logLoginFlow(LoginFlowPhase::GATEWAY_AUTH, rsp.accid, 0, clientConn, 0, "鉴权成功");
 }
@@ -1050,14 +1014,15 @@ void GatewayServer::onUserLoginRsp(ConnID /*fromConn*/, const Msg_GW_UserLoginRs
     auto user = m_userManager.findUser(clientConn);
     if (!user) return;
 
-    rpg::login::S2CLoginRsp loginRsp;
-    loginRsp.set_code(rsp.code);
-    loginRsp.set_user_id(rsp.userID);
     if (rsp.code == 0)
     {
         user->setClientState(ClientState::IN_WORLD);
         user->setSceneServerId(rsp.sceneServerId);
-        loginRsp.set_msg("进入游戏成功");
+
+        rpg::login::S2CEnterWorldRsp enterRsp;
+        enterRsp.set_code(0);
+        enterRsp.set_user_id(rsp.userID);
+        enterRsp.set_msg("进入游戏成功");
 
         rpg::login::S2CEnterGame enter;
         enter.set_user_id(rsp.userID);
@@ -1073,7 +1038,7 @@ void GatewayServer::onUserLoginRsp(ConnID /*fromConn*/, const Msg_GW_UserLoginRs
         enter.set_name(rsp.name);
 
         sendClientProtoModule(m_clientServer, clientConn, kLoginModule,
-                     static_cast<uint8_t>(rpg::login::S2C_LOGIN_RSP), loginRsp);
+                     static_cast<uint8_t>(rpg::login::S2C_ENTER_WORLD_RSP), enterRsp);
         sendClientProtoModule(m_clientServer, clientConn, kLoginModule,
                      static_cast<uint8_t>(rpg::login::S2C_ENTER_GAME), enter);
         LOG_INFO("进入游戏成功: connID=%u userID=%llu map=%u sceneServerId=%u",
@@ -1082,9 +1047,12 @@ void GatewayServer::onUserLoginRsp(ConnID /*fromConn*/, const Msg_GW_UserLoginRs
     else
     {
         user->setClientState(ClientState::ACCOUNT_OK);
-        loginRsp.set_msg("进入游戏失败");
+        rpg::login::S2CEnterWorldRsp enterRsp;
+        enterRsp.set_code(rsp.code);
+        enterRsp.set_user_id(rsp.userID);
+        enterRsp.set_msg("进入游戏失败");
         sendClientProtoModule(m_clientServer, clientConn, kLoginModule,
-                     static_cast<uint8_t>(rpg::login::S2C_LOGIN_RSP), loginRsp);
+                     static_cast<uint8_t>(rpg::login::S2C_ENTER_WORLD_RSP), enterRsp);
         LOG_WARN("进入游戏失败: conn=%u userID=%llu code=%d",
                  clientConn, rsp.userID, rsp.code);
         logLoginFlow(LoginFlowPhase::CHAR_SELECT, user->getAccid(), rsp.userID, clientConn,
@@ -1172,11 +1140,11 @@ void GatewayServer::checkTimeout()
                      "进世界超时");
         leaveWorldSession(user, true, "进世界超时");
         resetToAccountSession(user);
-        rpg::login::S2CLoginRsp loginRsp;
-        loginRsp.set_code(1);
-        loginRsp.set_msg("进入游戏超时，请重新选角");
+        rpg::login::S2CEnterWorldRsp enterRsp;
+        enterRsp.set_code(1);
+        enterRsp.set_msg("进入游戏超时，请重新选角");
         sendClientProtoModule(m_clientServer, connId, kLoginModule,
-                     static_cast<uint8_t>(rpg::login::S2C_LOGIN_RSP), loginRsp);
+                     static_cast<uint8_t>(rpg::login::S2C_ENTER_WORLD_RSP), enterRsp);
     }
     for (ConnID cid : m_userManager.collectExpiredConnIds(now, 60000))
     {

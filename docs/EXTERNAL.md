@@ -119,7 +119,7 @@ Gateway **不直连** Login RegisterListen，而是：
 ### 4.3.1 Super→Login 外联约束
 
 - 所有发往 Login 注册口的消息（网关注册、心跳、区状态、`LOGIN_VERIFY_TOKEN_REQ`）由 **`LoginExternOutbox` 统一队列** 串行发送，每主循环至多 flush 一条校验类消息；**票据校验入队 `push_front` 优先**。
-- TLS 重连后 **`LOGIN_CONN_WARMUP_MS`（1.5s）** 内仅发心跳/注册，不发票据校验。
+- TLS 重连后 **`LOGIN_CONN_WARMUP_MS`（2.5s）** 内仅发心跳/注册，不发票据校验。
 - **外联 TLS 闪断**：在途校验**退回队列重发**（日志 `外联断开，票据校验重排队`），12s 内仍失败才向 Record 回失败；勿与旧二进制「在途时断开即 fail」混淆。
 - **出站队列满**（256）：立即 `REC_VERIFY_TOKEN_RSP code=1`，避免 Record/Gateway 盲等 15s。
 - **禁止**在同一主循环帧内对 Login 外联 `poll` 两次（`externHub.poll` 后不得再 `tickGameZoneExtern` 二次 poll）。主循环顺序：`externHub.poll` → 区内 `Poll` → `LoginExternOutbox::onExternTick`。详见 [TLS.md](TLS.md) §7.1。

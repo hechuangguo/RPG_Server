@@ -123,8 +123,8 @@ enum class InternalMsgID : uint16_t
     REC_LOAD_USER_RSP    = 0x1202,  /**< 用户数据加载响应 */
     REC_SAVE_USER_REQ    = 0x1203,  /**< 保存用户数据到 DB */
     REC_SAVE_USER_RSP    = 0x1204,  /**< 保存结果响应 */
-    REC_LOGIN_VERIFY_REQ = 0x1205,  /**< @deprecated 已废弃；请走 LoginServer+REC_VALIDATE_TOKEN */
-    REC_LOGIN_VERIFY_RSP = 0x1206,  /**< @deprecated 已废弃 */
+    REC_LOGIN_VERIFY_REQ = 0x1205,  /**< @deprecated 已移除 handler；勿发送，请走 REC_VALIDATE_TOKEN */
+    REC_LOGIN_VERIFY_RSP = 0x1206,  /**< @deprecated 已移除 handler */
     REC_RELATION_PRELOAD_REQ = 0x1207, /**< SessionServer → RecordServer: 启动预载 Relation 全表 */
     REC_RELATION_PRELOAD_RSP = 0x1208, /**< RecordServer → SessionServer: 预载响应（变长多行） */
     REC_RELATION_LOAD_REQ    = 0x1209, /**< SessionServer → RecordServer: 单用户 Relation 加载 */

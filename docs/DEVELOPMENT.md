@@ -129,8 +129,11 @@ Scene Lua 扩展：见 [LUA.md](LUA.md) § 扩展指南。
 ./Build.sh LoginServer     # 或只编译指定服（支持多个目标）
 ./Build.sh clean           # 清除 .build/ 与各服目录下可执行文件
 ./Build.sh rebuild         # clean 后全量重编
-mysql -u root -p < tables/init.sql
-./RunServer.sh             # 从项目根启动（影响 Lua 路径）
+./tables/setup_database.sh # 建三库（推荐）；存量见 tables/README.md 迁移脚本
+cp LoginServer/serverlist.xml.example LoginServer/serverlist.xml  # 首次克隆
+cp LoginServer/extern_login.xml.example LoginServer/extern_login.xml
+./RunServer.sh             # 区内 6 服
+./RunServer.sh login       # 外联 Login（两阶段登录必需）
 ./log.sh                   # 跟踪 logs/*.log
 ./StopServer.sh
 ```

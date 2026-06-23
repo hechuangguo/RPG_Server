@@ -206,7 +206,7 @@ RPG/
 
 ### LoginServer — 外联登录与网关列表
 
-- **ClientListen**（默认 9010）：`C2S_LOGIN_REQ` → **rpg_login** `GameUser`（bcrypt）→ `S2C_LOGIN_RSP` + `S2C_GATEWAY_INFO`
+- **ClientListen**（默认 9010）：连接后下发 `S2C_LOGIN_CHALLENGE` → `C2S_LOGIN_REQ` → **rpg_login** `GameUser`（bcrypt）→ `LoginSession` 票据 → `S2C_LOGIN_RSP` + `S2C_GATEWAY_INFO`
 - **RegisterListen**（默认 19010）：Super 代理 Gateway `LOGIN_GATEWAY_REGISTER` / `LOGIN_GATEWAY_HEARTBEAT`（Gateway **不直连** Login）
 - 不向 SuperServer 注册；配置见 `LoginServer/extern_login.xml`
 
@@ -237,7 +237,7 @@ while (true) {
 
 ### 消息帧
 
-`MsgHeader { bodyLen, module, sub }`（6 字节）+ body（见 `sdk/net/NetDefine.h`）。
+`MsgHeader { bodyLen, module, sub }`（4 字节）+ body（见 `sdk/net/NetDefine.h`）。
 
 扁平 ID：`makeMsgId(module, sub)`，见 `sdk/net/MsgId.h`。
 
@@ -246,7 +246,7 @@ while (true) {
 ```mermaid
 flowchart TB
     subgraph L1 [L1 收包 - TcpConnection]
-        Tcp[ProcessMessages 6 字节头拆包]
+        Tcp[ProcessMessages 4 字节头拆包]
     end
     subgraph L2 [L2 Ingress - MsgIngress]
         Kind{连接语义}
@@ -334,7 +334,7 @@ flowchart TB
 
 | 步骤 | 说明 |
 |------|------|
-| 拆包 | `TcpConnection` 解析 6 字节头 |
+| 拆包 | `TcpConnection` 解析 4 字节头 |
 | 校验 | `ClientMsgValidator.h` |
 | 路由 | `ClientMsgRouter.h` |
 | 本地处理 | `GatewayClientMsgRegister` → `ClientMsgDispatcher` |
@@ -367,7 +367,7 @@ flowchart TB
 | 结构体 | 方向 | 说明 |
 |--------|------|------|
 | `Msg_GW_ClientMsg` | Gateway → Scene/Session | `clientConnID` + module + sub + body |
-| `Msg_GW_SendToClient` | Scene/Session → Gateway | 同上，Gateway 再组 6 字节头发给客户端 |
+| `Msg_GW_SendToClient` | Scene/Session → Gateway | 同上，Gateway 再组 4 字节头发给客户端 |
 
 ### 服务器内部协议（protocal/InternalMsg.h）
 
@@ -400,7 +400,8 @@ sequenceDiagram
     participant LReg as LoginServer_19010
     participant SCE as SceneServer
 
-    C->>LS: C2S_LOGIN_REQ
+    C->>LS: TLS + S2C_LOGIN_CHALLENGE
+    C->>LS: C2S_LOGIN_REQ（SHA-256 digest + login_nonce）
     LS-->>C: S2C_LOGIN_RSP + S2C_GATEWAY_INFO
     C->>GW: C2S_GATEWAY_AUTH_REQ
     GW->>REC: REC_VALIDATE_TOKEN_REQ
@@ -410,7 +411,7 @@ sequenceDiagram
     LReg-->>SS: LOGIN_VERIFY_TOKEN_RSP
     SS-->>REC: REC_VERIFY_TOKEN_RSP
     REC-->>GW: REC_VALIDATE_TOKEN_RSP
-    GW-->>C: S2C_LOGIN_RSP authOK
+    GW-->>C: S2C_GATEWAY_AUTH_RSP authOK
     GW->>REC: REC_LIST_CHARACTERS_REQ
     REC-->>GW: REC_LIST_CHARACTERS_RSP
     GW-->>C: S2C_USER_LIST
@@ -424,7 +425,7 @@ sequenceDiagram
     SS->>SCE: SCE_USER_ENTER_REQ
     SCE-->>SS: SCE_USER_ENTER_RSP
     SS-->>GW: GW_USER_LOGIN_RSP
-    GW-->>C: S2C_ENTER_GAME + S2C_SPAWN_ENTITY
+    GW-->>C: S2C_ENTER_WORLD_RSP + S2C_ENTER_GAME + S2C_SPAWN_ENTITY
 ```
 
 角色选择全流程见 [LOGIN_CHAR_FLOW.md](LOGIN_CHAR_FLOW.md)。

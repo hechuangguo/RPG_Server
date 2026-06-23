@@ -11,7 +11,7 @@
 
 | 规则文件 | 内容 |
 |----------|------|
-| `.cursor/rules/project.mdc` | 架构红线、目录约定、**6 字节消息头**、网关必校验 |
+| `.cursor/rules/project.mdc` | 架构红线、目录约定、**4 字节消息头**、网关必校验 |
 | `.cursor/rules/naming-conventions.mdc` | PascalCase / camelCase / ALL_CAPS |
 | `.cursor/rules/comments-required.mdc` | **所有 `.h` / `config/*.xml` / `tables/*.sql`** 及新增源码的注释要求 |
 | `docs/COMMENTS.md` | 注释规范人类可读版（与上表一致） |

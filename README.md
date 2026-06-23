@@ -20,7 +20,7 @@ Client → GatewayServer ─┬→ SceneServer → AOIServer
 | RecordServer | 9002 | rpg_game 持久化（角色主写库） | 区内 |
 | AOIServer | 9003 | 9 宫格视野管理 | 区内 |
 | SceneServer | 9004 | 在线逻辑、Lua 脚本、**Scene / CopyScene 实例** | 区内 |
-| GatewayServer | 9005 / 19005 | 客户端接入、**消息校验**、按模块转发 Scene/Session | 区内 |
+| GatewayServer | 9005 | 客户端接入、**消息校验**、按模块转发 Scene/Session | 区内 |
 | LoggerServer | 9006 | 集中日志 | 外联可选 |
 | GlobalServer | 9007 | 全区排行榜 / HTTP API | 外联可选 |
 | ZoneServer | 9008 | 跨区转发 | 外联可选 |
@@ -35,7 +35,7 @@ Client → GatewayServer ─┬→ SceneServer → AOIServer
 
 | 字段 | 长度 | 说明 |
 |------|------|------|
-| bodyLen | 2 | 消息体字节数（不含 6 字节头） |
+| bodyLen | 2 | 消息体字节数（不含 4 字节头） |
 | module | 1 | 功能模块号（见 `ClientModule`） |
 | sub | 1 | 模块内子消息号 |
 | body | 变长 | Protobuf message 二进制（proto3，`parseProto` / `serializeProto`） |
@@ -150,6 +150,19 @@ git submodule update --init --recursive
 
 修改 `Common/*.proto` 时：在 submodule 内 commit/push 到 **RPG_Common**，回到本仓库运行 `./scripts/gen_proto.sh` 并 commit submodule 指针。完整流程见 [docs/COMMON.md](docs/COMMON.md) 与 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
 
+### 本地配置（首次克隆）
+
+以下文件在 `.gitignore` 中，**不会**随仓库下发，需从 `.example` 复制并按本机 IP/数据库修改：
+
+```bash
+cp LoginServer/serverlist.xml.example LoginServer/serverlist.xml
+cp LoginServer/extern_login.xml.example LoginServer/extern_login.xml
+cp loginserverlist.xml.example loginserverlist.xml
+cp config/server_info.xml.example config/server_info.xml
+```
+
+`serverlist.xml` 中 `<Zone ip>` 须为客户端可达的 LAN IP；`extern_login.xml` 中 Database 指向 `rpg_login`。详见 [config/README.md](config/README.md) 与 [docs/EXTERNAL.md](docs/EXTERNAL.md) §4.6。
+
 ### 环境依赖
 
 - g++（C++17）、CMake 3.16+、make、tar
@@ -205,6 +218,9 @@ sudo dnf install -y gcc-c++ cmake make tar openssl-devel zlib-devel
 
 # 存量升级（rpg_game 含 GameUser/ZoneInfo 时）
 mysql -u root -p < tables/migrate_login_db.sql
+
+# 存量库：LoginSession 唯一索引（LoginServer 启动校验 uk_accid_zone）
+mysql -h HOST -u USER -p rpg_login < tables/migrate_login_session_unique.sql
 
 # 已有库且 Relation 表无 binary 列时（执行一次）
 mysql -h 127.0.0.1 -u rpg_table -prpg_table rpg_game < tables/alter_relation_add_binary.sql

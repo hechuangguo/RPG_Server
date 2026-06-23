@@ -42,7 +42,7 @@ constexpr ConnID INVALID_CONN_ID = 0;
 #pragma pack(push, 1)
 
 /**
- * @brief 二进制消息头（定长 6 字节）
+ * @brief 二进制消息头（定长 4 字节）
  *
  * 线上帧 = MsgHeader + Body。
  * bodyLen 仅含消息体长度；module/sub 区分功能模块与具体消息。

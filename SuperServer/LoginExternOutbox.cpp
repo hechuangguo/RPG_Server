@@ -69,19 +69,6 @@ void sendVerifyTokenFailToRecord(SuperServer& super, ConnID recordConn,
                               reinterpret_cast<const char*>(&failRsp), sizeof(failRsp));
 }
 
-void failAllPendingVerify(SuperServer& super, const char* reason)
-{
-    if (g_recordConnByVerifySeq.empty())
-        return;
-    LOG_WARN("登录外联: %s pending=%zu", reason, g_recordConnByVerifySeq.size());
-    for (const auto& [seq, pending] : g_recordConnByVerifySeq)
-    {
-        (void)seq;
-        sendVerifyTokenFailToRecord(super, pending.recordConn, pending.verifyReq, reason);
-    }
-    g_recordConnByVerifySeq.clear();
-}
-
 bool isVerifyItem(const OutboxItem& item)
 {
     return item.kind == OutboxKind::VerifyToken;

@@ -29,7 +29,7 @@
 ### 3.1 鉴权
 
 - 发 `C2S_GATEWAY_AUTH_REQ`（`login_token`、`zone_id`、`game_type` 与登录区一致）。
-- 等待 `S2C_LOGIN_RSP`（`code=0`）表示账号鉴权成功，状态进入 **ACCOUNT_OK**。
+- 等待 **`S2C_GATEWAY_AUTH_RSP`**（sub=0x11，`code=0`）表示账号鉴权成功，状态进入 **ACCOUNT_OK**。
 - Super→Login 外联偶发重试时，**最多等待 17s**（`GATEWAY_AUTHING_TIMEOUT_MS`），期间仅发心跳，勿断开。
 
 ### 3.2 角色列表（关键）
@@ -50,7 +50,7 @@
 ### 3.4 选角进世界
 
 - `C2S_SELECT_USER_REQ`：`user_id` 必须属于当前 `S2C_USER_LIST` 或创角返回的 `user_id`。
-- 成功后可能先收 `S2C_SPAWN_ENTITY`（邻居/NPC），再收 `S2C_ENTER_GAME`；客户端须缓冲 AOI 包。
+- 成功后可能先收 `S2C_SPAWN_ENTITY`（邻居/NPC），再收 **`S2C_ENTER_WORLD_RSP`**（0x12）+ **`S2C_ENTER_GAME`**（0x09）；客户端须缓冲 AOI 包。
 - 进世界前状态为 `ENTERING`：仅心跳，勿重复发选角/创角。
 
 ### 3.5 常见错误（日志对照）
@@ -75,9 +75,9 @@
 ## 5. Unity 检查清单
 
 - [ ] 9010：解析 `S2C_LOGIN_CHALLENGE`，密码摘要算法正确
-- [ ] 9005：鉴权成功后**不**断开
+- [ ] 9005：等待 `S2C_GATEWAY_AUTH_RSP`（0x11），鉴权成功后**不**断开
 - [ ] `S2C_USER_LIST count=0` → 创角界面
 - [ ] `S2C_CREATE_USER_RSP code!=0` → 提示，**不断开**
 - [ ] 列表 `count>=1` → 选角 UI，发 `C2S_SELECT_USER_REQ`
-- [ ] 缓冲 `S2C_SPAWN_ENTITY` 直至 `S2C_ENTER_GAME`
+- [ ] 缓冲 `S2C_SPAWN_ENTITY` 直至 `S2C_ENTER_WORLD_RSP` + `S2C_ENTER_GAME`
 - [ ] AUTHING 等待 ≤17s，期间发心跳

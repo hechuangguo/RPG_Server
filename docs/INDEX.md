@@ -20,7 +20,7 @@
 
 ### 客户端 / 协议对接
 
-1. [PROTOCOL.md](PROTOCOL.md) — 6 字节帧、ClientModule、消息表
+1. [PROTOCOL.md](PROTOCOL.md) — 4 字节帧、ClientModule、消息表
 2. [3D_DESIGN.md](3D_DESIGN.md) — **Unity 3D 客户端设计、服/客户端目录、迁移路线**
 3. [COMMON.md](COMMON.md) — RPG_Common submodule 克隆与双端同步
 3. [Common/*.proto](../Common/LoginMsg.proto) — 客户端 Protobuf 真源（`Protobuf/` 供 Server 链接）

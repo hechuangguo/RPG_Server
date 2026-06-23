@@ -39,14 +39,16 @@ void LoginAuthService::onClientZoneList(ConnID connID, const char* data, uint16_
 {
     uint8_t gameTypeFilter = static_cast<uint8_t>(ZONE_LIST_ALL_GAME_TYPES);
     rpg::zone::C2SZoneListReq protoReq;
-    if (parseProto(data, len, protoReq))
-        gameTypeFilter = static_cast<uint8_t>(protoReq.game_type());
-    else if (len >= 1)
+    if (!parseProto(data, len, protoReq))
     {
-        gameTypeFilter = static_cast<uint8_t>(data[0]);
-        LOG_DEBUG("区列表请求非 Protobuf，按首字节 gameType=0x%02X: conn=%u",
-                  gameTypeFilter, connID);
+        LOG_WARN("区列表请求非 Protobuf，已拒绝: conn=%u len=%u", connID, len);
+        rpg::zone::S2CZoneListRsp rsp;
+        rsp.set_code(-1);
+        sendClientProtoModule(m_owner.clientServer(), connID, kLoginModule,
+                       static_cast<uint8_t>(rpg::zone::S2C_ZONE_LIST_RSP), rsp);
+        return;
     }
+    gameTypeFilter = static_cast<uint8_t>(protoReq.game_type());
 
     std::vector<ZoneInfoRow> zones;
     m_owner.zoneInfoStore().listAll(zones, gameTypeFilter);

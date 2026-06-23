@@ -60,7 +60,7 @@ Wire 序列化：[`sdk/util/UserWireUtil.h`](../sdk/util/UserWireUtil.h)（`User
 
 | 文件 | 职责 |
 |------|------|
-| `NetDefine.h` | `MsgHeader`（6 字节）、`ConnID`、`MAX_PACKET_SIZE`、`INetCallback` |
+| `NetDefine.h` | `MsgHeader`（4 字节）、`ConnID`、`MAX_PACKET_SIZE`、`INetCallback` |
 | `MsgId.h` | `makeMsgId` / `msgModule` / `msgSub` / `makeMsgKey` |
 | `TlsConfig.h` | `TlsConfig` 与 XML `<Tls>` 解析 |
 | `TlsContext.h` | 进程级 `SSL_CTX`（mTLS） |

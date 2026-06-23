@@ -1,6 +1,17 @@
 # config — 运行时 XML 配置
 
-本目录存放各服务器进程启动时读取的 XML 配置。**每个文件须有文件头与关键段注释**（见 [`docs/COMMENTS.md`](../docs/COMMENTS.md)）。
+本目录存放各服务器进程启动时读取的 XML 配置。**每个文件须有文件头与关键段注释**（见 [`docs/COMMENTS.md`](../docs/COMMENTS.md)。
+
+## 首次克隆
+
+以下路径在 `.gitignore` 中，需从 `.example` 复制（项目根执行）：
+
+```bash
+cp config/server_info.xml.example config/server_info.xml
+cp LoginServer/serverlist.xml.example LoginServer/serverlist.xml
+cp LoginServer/extern_login.xml.example LoginServer/extern_login.xml
+cp loginserverlist.xml.example loginserverlist.xml
+```
 
 | 文件 | 读取方 | 说明 |
 |------|--------|------|

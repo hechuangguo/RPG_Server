@@ -8,12 +8,12 @@
 
 | UI 步骤 | 客户端动作 | 服务端处理 | 关键消息 |
 |---------|-----------|-----------|---------|
-| 1 登录后进选角 | Login 9010 收 `S2C_LOGIN_CHALLENGE` → 登录 → 断开 → 连 Gateway 9005 | LoginServer 发 token；Gateway 鉴权 | `C2S_LOGIN_REQ`（**SHA-256 密码摘要** + 回显 `login_nonce`）→ `S2C_LOGIN_RSP` + `S2C_GATEWAY_INFO`；`C2S_GATEWAY_AUTH_REQ` |
+| 1 登录后进选角 | Login 9010 收 `S2C_LOGIN_CHALLENGE` → 登录 → 断开 → 连 Gateway 9005 | LoginServer 发 token；Gateway 鉴权 | `C2S_LOGIN_REQ` → `S2C_LOGIN_RSP` + `S2C_GATEWAY_INFO`；`C2S_GATEWAY_AUTH_REQ` → `S2C_GATEWAY_AUTH_RSP` |
 | 2 右上角角色列表 | 等待列表 | Gateway 鉴权成功后**主动推送**（无 `C2S_USER_LIST_REQ`） | `S2C_USER_LIST`（变长，`count` 条 `EntryWire`） |
 | 3 无角色点「创建角色」 | 打开创角 UI | Gateway 校验 `ACCOUNT_OK` | — |
 | 4 输入名字 + 选职业 | 发创角包 | Gateway → Record 写 `CharBase` | `C2S_CREATE_USER_REQ` → `S2C_CREATE_USER_RSP`；成功后刷新 `S2C_USER_LIST` |
 | 5 选中角色点「进入游戏」 | 发选角包 | Gateway → Super 编排进 Scene | `C2S_SELECT_USER_REQ` |
-| 6 加载地图/角色 | 收进世界 + AOI | Scene 下发实体 | `S2C_LOGIN_RSP` + `S2C_ENTER_GAME`；`S2C_SPAWN_ENTITY`（邻居/NPC 可能早于 `S2C_ENTER_GAME` 到达，客户端须缓冲） |
+| 6 加载地图/角色 | 收进世界 + AOI | Scene 下发实体 | `S2C_ENTER_WORLD_RSP` + `S2C_ENTER_GAME`；`S2C_SPAWN_ENTITY`（邻居/NPC 可能早于 `S2C_ENTER_GAME` 到达，客户端须缓冲） |
 
 **同账号重登**：`LoginSession` 按 `(accid, zone_id)` 唯一；再次 `C2S_LOGIN_REQ` 会 `REPLACE` 覆盖旧 token，尚未完成 Gateway 鉴权的旧 token 将失效。
 
@@ -62,7 +62,7 @@ sequenceDiagram
     LReg->>S: LOGIN_VERIFY_TOKEN_RSP
     S->>R: REC_VERIFY_TOKEN_RSP
     R->>G: REC_VALIDATE_TOKEN_RSP
-    G->>C: S2C_LOGIN_RSP authOK
+    G->>C: S2C_GATEWAY_AUTH_RSP authOK
     G->>R: REC_LIST_CHARACTERS_REQ
     R->>G: REC_LIST_CHARACTERS_RSP
     G->>C: S2C_USER_LIST
@@ -85,7 +85,7 @@ sequenceDiagram
     Sc->>C: S2C_SPAWN_ENTITY via GW
     Sc->>S: SCE_USER_ENTER_RSP
     S->>G: GW_USER_LOGIN_RSP
-    G->>C: S2C_LOGIN_RSP + S2C_ENTER_GAME
+    G->>C: S2C_ENTER_WORLD_RSP + S2C_ENTER_GAME
 ```
 
 ---
@@ -109,15 +109,13 @@ sequenceDiagram
 | `userID` | 须属于当前 `accid` 且已在 Gateway 缓存的 `ownedRoleIds` |
 | `loginTxnId` | 幂等事务 ID；非 0 时 Super 对重复请求去重 |
 
-### 4.3 `S2C_LOGIN_RSP` 复用
+### 4.3 Gateway 阶段回包（sub 拆分）
 
-同一消息用于三处，客户端需结合 **Gateway 状态** 与 `code` 区分：
-
-| 时机 | `code` | 含义 |
-|------|--------|------|
-| Gateway 鉴权成功 | 0 | 可进入选角/创角 UI |
-| 进世界成功 | 0 | 已 `IN_WORLD`，随后收 `S2C_ENTER_GAME` |
-| 鉴权/进世界失败 | 非 0 | 见 `GatewayAuthError` / `SuperEnterError` |
+| sub | 消息 | 阶段 | 说明 |
+|-----|------|------|------|
+| 0x02 | `S2C_LOGIN_RSP` | Login 9010 | **仅**账号登录；含 `login_token` |
+| 0x11 | `S2C_GATEWAY_AUTH_RSP` | Gateway 9005 | 票据鉴权成功/失败；成功后可等 `S2C_USER_LIST` |
+| 0x12 | `S2C_ENTER_WORLD_RSP` | Gateway 9005 | 选角进世界结果；成功时另收 `S2C_ENTER_GAME`（0x09） |
 
 **鉴权时序预算**（Gateway Phase B）：
 
@@ -244,6 +242,7 @@ grep '\[登录链路\]' logs/gateway.log logs/login.log logs/super.log
 
 ```bash
 mysql -h 192.168.45.128 -u rpg_table -prpg_table rpg_login < tables/migrate_login_session.sql
+mysql -h 192.168.45.128 -u rpg_table -prpg_table rpg_login < tables/migrate_login_session_unique.sql
 ```
 
 验证：
@@ -260,8 +259,8 @@ mysql -h 192.168.45.128 -u rpg_table -prpg_table -e "USE rpg_login; SHOW TABLES 
 **根因**：[`LoginGatewayRegistry`](../LoginServer/LoginGatewayRegistry.h) 内存表为空或未含所选 `zoneId/gameType` 的网关。常见触发场景：
 
 1. **Gateway 未运行** — `fetchServerList` TLS 连 Super 失败时 [`GatewayServer/main.cpp`](../GatewayServer/main.cpp) 直接退出
-2. **仅重启 Login** — 网关表随进程清空；需 Gateway 仍在运行并通过 Super 重新 `LOGIN_GATEWAY_REGISTER`（约 10s 内心跳补注册）
-3. **Super→Login 外联未通** — `loginserverlist.xml` 未启用 Login 或 Super 日志出现 `登录外联: 登录服未连接`
+2. **仅重启 Login** — 网关表随进程清空；需 Gateway 仍在运行并通过 Super 重新 `LOGIN_GATEWAY_REGISTER`（约 10s 内心跳补注册）。**网关注册不再依赖 Record 就绪**，但鉴权/拉列表仍需要 Record
+3. **Super→Login 外联未通** — `loginserverlist.xml` 未启用 Login 或 Super 日志 `登录网关注册回包失败: code=-1`（Login 未起 / 19010 未通）
 
 **推荐启动顺序**：
 
@@ -325,7 +324,7 @@ grep '客户端退出请求\|客户端连接断开' logs/gateway.log
 | 3 | INVALID_NAME | 名非法 |
 | 4 | INVALID_VOCATION | 职业或性别非法 |
 
-### SuperEnterError（进世界失败，`S2C_LOGIN_RSP.code`）
+### SuperEnterError（进世界失败，`S2C_ENTER_WORLD_RSP.code`）
 
 见 [PROTOCOL.md](PROTOCOL.md) §2.3 与 `sdk/util/LoginEnterErrorCode.h`。
 

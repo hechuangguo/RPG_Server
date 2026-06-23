@@ -1,7 +1,7 @@
 # 全链路 TLS 加密
 
 本文档说明 RPG Server 的 **TLS 1.2+ over TCP** 传输层加密：配置、证书、客户端接入与运维自检。  
-应用层协议帧不变（6 字节 `MsgHeader` + body），见 [PROTOCOL.md](PROTOCOL.md)。
+应用层协议帧不变（4 字节 `MsgHeader` + body），见 [PROTOCOL.md](PROTOCOL.md)。
 
 ---
 
@@ -89,7 +89,7 @@ Login 的 9010 与 19010 共用同一 `SSL_CTX`。
 
 1. TCP 连接后立刻进行 TLS 握手（OpenSSL / 平台 SSL API）。
 2. 加载 `ca.crt` 校验服务端；dev 可跳过校验。
-3. 握手成功后仍发送 **6 字节头 + body**（与明文时代相同）。
+3. 握手成功后仍发送 **4 字节头 + body**（与明文时代相同）。
 4. Login 9010 与 Gateway 9005 **均须 TLS**。
 
 ### 5.1 区列表（9010）接入清单

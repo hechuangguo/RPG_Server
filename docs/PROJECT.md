@@ -23,7 +23,7 @@
 | 语言 | C++17、Lua 5.4 |
 | 网络 | 单线程 epoll ET + 自研 TCP（`sdk/net`） |
 | 配置 | XML（tinyxml2） |
-| 持久化 | MySQL（MariaDB Connector/C，仅 RecordServer 直连） |
+| 持久化 | MySQL 三库（rpg_login / rpg_game / rpg_global；Login/Super/Session/Record/Global 各进程直连对应库） |
 | 策划数据 | Excel（`DataDoc/`）→ Lua 配表（`database/`） |
 | 构建 | CMake 3.16+，产物默认输出到各服务器目录（如 `SuperServer/SuperServer`） |
 | 第三方库 | Lua、tinyxml2、MariaDB 客户端（`3Party/` 自包含） |
@@ -48,7 +48,7 @@ Client → GatewayServer ─┬→ SceneServer / AOIServer
 | RecordServer | 9002 | 唯一写库进程，角色列表/创角/加载存档 | 区内 |
 | AOIServer | 9003 | 9 宫格 AOI 视野 | 区内 |
 | SceneServer | 9004 | 在线玩法、地图实例、Lua 脚本（可多台） | 区内 |
-| GatewayServer | 9005 / 19005 | 客户端接入、消息校验、按 module 转发 | 区内 |
+| GatewayServer | 9005 | 客户端接入、消息校验、按 module 转发 | 区内 |
 | LoggerServer | 9006 | 集中写日志 | 外联 |
 | GlobalServer | 9007 | 全区排行榜 / HTTP（骨架：Sync 未完成） | 外联 |
 | ZoneServer | 9008 | 跨区转发（骨架） | 外联 |
@@ -58,7 +58,7 @@ Client → GatewayServer ─┬→ SceneServer / AOIServer
 
 - 单线程无锁：每进程一个 `Poll()` 事件循环 + `TimerMgr`
 - SuperServer 中心化：子服注册、心跳、按用户/地图路由
-- DB 收敛：仅 RecordServer 访问 MySQL
+- DB 分工：RecordServer 负责角色主写；Login/Super/Session/Global 各连对应库（见 [DATA.md](DATA.md)）
 - Scene 可扩展：多台 SceneServer，Session 侧统一登记与选服
 
 ### 1.4 目录结构
@@ -101,7 +101,7 @@ RPG/
 
 #### 网络与消息
 
-- 帧格式：`MsgHeader { bodyLen, module, sub }`（6 字节）+ body，见 `sdk/net/NetDefine.h`
+- 帧格式：`MsgHeader { bodyLen, module, sub }`（4 字节）+ body，见 `sdk/net/NetDefine.h`
 - 工具：`sdk/net/MsgId.h`（`makeMsgId` / `msgModule` / `msgSub`）
 - 分发：`MsgDispatcher` 按 `(module, sub)` 查表；仍支持扁平 `uint16_t` 注册
 - 协议：各域 `Common/*.proto`（客户端 Protobuf，RPG_Common submodule）→ `Protobuf/*.pb.h`；服间 `protocal/InternalMsg.h`
@@ -204,7 +204,7 @@ mysql -u root -p < tables/seed_test_data.sql  # 可选：开发测试账号
 | 登录与存档 | LoginServer 账号 + Gateway 票据；Gateway 角色列表/创角/选角；Record 读写 `CharBase` |
 | 场景运行 | Scene/CopyScene、SceneManager、地图配置、AOI 登记 |
 | 全区调度 | SessionSceneManager：注册、副本复用、SceneServer 负载选择（登录选服为 Super 取首个存活 Scene） |
-| 客户端接入 | Gateway 双端口、6 字节消息头、校验与按模块转发 Scene/Session |
+| 客户端接入 | Gateway 9005、4 字节消息头、校验与按模块转发 Scene/Session |
 | 脚本层 | Lua VM、事件/NPC/技能/任务框架、C++↔Lua 绑定 |
 | 策划数据 | DataDoc → database Lua + basefile 加载，集成 autoinit/build |
 | 外联服 | Login 两阶段登录；Logger 远程日志；Global rank 写入；Zone 转发骨架 |

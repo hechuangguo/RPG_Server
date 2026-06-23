@@ -33,9 +33,6 @@ void RecordInternMsgRegister(RecordServer& server)
     registerInternal(d, &server,
                      static_cast<uint16_t>(InternalMsgID::REC_VALIDATE_TOKEN_REQ),
                      &RecordServer::onValidateTokenReq);
-    registerInternalRaw(d, &server,
-                        static_cast<uint16_t>(InternalMsgID::SS_EXTERN_FWD_RSP),
-                        &RecordServer::onExternForwardRsp);
     registerInternal(d, &server,
                      static_cast<uint16_t>(InternalMsgID::REC_VERIFY_TOKEN_RSP),
                      &RecordServer::onLoginVerifyTokenRsp);

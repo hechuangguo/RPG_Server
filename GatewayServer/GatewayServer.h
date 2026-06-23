@@ -126,14 +126,7 @@ private:
     /** @brief Record 断开时重连（已就绪则 no-op） */
     void reconnectRecordClient();
 
-    /**
-     * @brief 等待 Record 上游就绪（鉴权前短轮询 + 必要时重连）
-     * @param timeoutMs 最长等待毫秒
-     * @return Record canSend 时 true
-     */
-    bool ensureRecordReady(uint64_t timeoutMs);
-
-    /** @brief 周期性检测 Record；断开则暂停 Login 注册并尝试重连 */
+    /** @brief 周期性检测 Record；断开则暂停客户端转发/鉴权，Login 网关注册保持 */
     void upstreamHealthCheck();
 
     /** @brief 经 Super 向 LoginServer 上报本网关 */
