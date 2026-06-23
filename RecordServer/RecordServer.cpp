@@ -69,7 +69,8 @@ bool RecordServer::Init(const std::string& ip, uint16_t port,
     TimerMgr::Instance().Register(500, 0, [this] { RegisterToSuper(); });
     TimerMgr::Instance().Register(10000, 10000, [this] { sendHeartbeat(); });
     TimerMgr::Instance().Register(10000, 10000, [this] { tryReconnectSuper(); });
-    TimerMgr::Instance().Register(5000, 5000, [this] { CleanupPendingVerifyTokenTimeout(); });
+    TimerMgr::Instance().Register(VERIFY_TOKEN_CLEANUP_POLL_MS, VERIFY_TOKEN_CLEANUP_POLL_MS,
+                                  [this] { CleanupPendingVerifyTokenTimeout(); });
     // 每 60 秒自动保存所有脏数据
     TimerMgr::Instance().Register(60000, 60000, [this] { autoSaveAll(); });
     LOG_INFO("存档服启动完成");

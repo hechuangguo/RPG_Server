@@ -199,6 +199,22 @@ void SceneServer::onUserEnter(ConnID /*fromConn*/, const Msg_SCE_UserEnterReq& r
     LOG_INFO("用户进入场景: userID=%llu mapID=%u clientConn=%u",
              req.userID, req.mapID, req.gatewayClientConnID);
 
+    if (auto existing = SceneUserManager::Instance().findUser(req.userID))
+    {
+        LOG_WARN("同 userID 重复进入，先清理旧会话: userID=%llu", req.userID);
+        if (auto scene = SceneManager::Instance().findNormalSceneByMapId(existing->Base().mapID))
+            scene->removePlayer(req.userID);
+        existing->onOffline();
+        if (existing->needSave())
+        {
+            sendCharBaseToRecord(*existing);
+            existing->save();
+        }
+        m_aoiClient.leaveEntity(req.userID);
+        callLuaOnLeave(req.userID);
+        SceneUserManager::Instance().removeUser(req.userID);
+    }
+
     uint32_t mapID = req.mapID ? req.mapID : 1001;
     auto scene = SceneManager::Instance().findNormalSceneByMapId(mapID);
     if (!scene)

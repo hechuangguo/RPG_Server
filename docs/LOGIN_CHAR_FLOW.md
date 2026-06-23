@@ -8,7 +8,7 @@
 
 | UI 步骤 | 客户端动作 | 服务端处理 | 关键消息 |
 |---------|-----------|-----------|---------|
-| 1 登录后进选角 | Login 9010 登录 → 断开 → 连 Gateway 9005 | LoginServer 发 token；Gateway 鉴权 | `C2S_LOGIN_REQ`（**SHA-256 密码摘要**）→ `S2C_LOGIN_RSP` + `S2C_GATEWAY_INFO`；`C2S_GATEWAY_AUTH_REQ` |
+| 1 登录后进选角 | Login 9010 收 `S2C_LOGIN_CHALLENGE` → 登录 → 断开 → 连 Gateway 9005 | LoginServer 发 token；Gateway 鉴权 | `C2S_LOGIN_REQ`（**SHA-256 密码摘要** + 回显 `login_nonce`）→ `S2C_LOGIN_RSP` + `S2C_GATEWAY_INFO`；`C2S_GATEWAY_AUTH_REQ` |
 | 2 右上角角色列表 | 等待列表 | Gateway 鉴权成功后**主动推送**（无 `C2S_USER_LIST_REQ`） | `S2C_USER_LIST`（变长，`count` 条 `EntryWire`） |
 | 3 无角色点「创建角色」 | 打开创角 UI | Gateway 校验 `ACCOUNT_OK` | — |
 | 4 输入名字 + 选职业 | 发创角包 | Gateway → Record 写 `CharBase` | `C2S_CREATE_USER_REQ` → `S2C_CREATE_USER_RSP`；成功后刷新 `S2C_USER_LIST` |
@@ -118,6 +118,29 @@ sequenceDiagram
 | Gateway 鉴权成功 | 0 | 可进入选角/创角 UI |
 | 进世界成功 | 0 | 已 `IN_WORLD`，随后收 `S2C_ENTER_GAME` |
 | 鉴权/进世界失败 | 非 0 | 见 `GatewayAuthError` / `SuperEnterError` |
+
+**鉴权时序预算**（Gateway Phase B）：
+
+| 阶段 | 超时 | 说明 |
+|------|------|------|
+| `CONNECTED` 未发鉴权 | 10s | `GATEWAY_AUTH_TIMEOUT_MS` |
+| `AUTHING` 票据校验 | 17s | `VERIFY_TOKEN_TIMEOUT_MS + 2s`；Super 外联闪断会重排队 |
+| `ENTERING` 进世界 | 60s | 对齐 Super `LOGIN_TXN_LOCK_TIMEOUT_MS` |
+
+Unity 客户端契约见 [UNITY_LOGIN_CLIENT.md](UNITY_LOGIN_CLIENT.md)。
+
+### 4.4 创角 `S2C_CREATE_USER_RSP.code`
+
+与 C++ `CreateCharacterError`（[`LoginEnterErrorCode.h`](../sdk/util/LoginEnterErrorCode.h)）一致：
+
+| code | 含义 | 客户端处理 |
+|------|------|-----------|
+| 0 | 成功 | 等待刷新 `S2C_USER_LIST`，可发选角 |
+| 1 | 角色名已存在（**全局唯一**） | 提示换名，**保持 Gateway 连接** |
+| 2 | 本账号角色数达上限（3） | 提示，保持连接 |
+| 3 | 角色名非法 | 修正后重试 |
+| 4 | 职业/性别非法 | 修正后重试 |
+| 其它 | 系统错误 | 可重试或重连 |
 
 ---
 

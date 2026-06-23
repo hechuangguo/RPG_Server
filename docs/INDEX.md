@@ -14,6 +14,7 @@
 4. [SDK.md](SDK.md) — 网络、定时器、配置、Bootstrap
 5. [PROTOCOL.md](PROTOCOL.md) — 客户端与服间协议
 6. [LOGIN_CHAR_FLOW.md](LOGIN_CHAR_FLOW.md) — 选角/创角/进游戏 UI 对照
+7. [UNITY_LOGIN_CLIENT.md](UNITY_LOGIN_CLIENT.md) — Unity 客户端登录契约（鉴权后保持 Gateway）
 6. [SERVERS.md](SERVERS.md) — 10 个进程职责与 handler
 7. [SceneServer/SceneServer.h](../SceneServer/SceneServer.h) — 核心玩法入口
 

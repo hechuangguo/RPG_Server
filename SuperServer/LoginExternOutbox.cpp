@@ -51,6 +51,7 @@ struct PendingVerifyForward
 std::deque<OutboxItem> g_outbox;
 std::unordered_map<uint32_t, PendingVerifyForward> g_recordConnByVerifySeq;
 uint64_t g_loginConnReadyMs = 0;
+uint32_t g_loginStableTicks = 0;
 
 constexpr size_t MAX_OUTBOX_SIZE = 256;
 constexpr size_t MAX_FLUSH_PER_TICK = 1;
@@ -378,16 +379,27 @@ void onExternTick(SuperServer& super)
     TcpClient* login = super.externHub().client(SubServerType::LOGIN);
 
     const bool loginConnected = login && login->IsConnected();
-    if (loginConnected && login->canSend())
+    if (!loginConnected)
     {
-        if (g_loginConnReadyMs == 0)
-            g_loginConnReadyMs = nowMs;
-    }
-    else if (!loginConnected)
-    {
+        g_loginStableTicks = 0;
         g_loginConnReadyMs = 0;
         requeueInFlightVerifyOnDisconnect(super);
         resetQueuedVerifySendState();
+    }
+    else if (login->canSend() && !login->hasPendingSend())
+    {
+        if (g_loginStableTicks < LOGIN_CONN_STABLE_TICKS)
+            ++g_loginStableTicks;
+        if (g_loginStableTicks >= LOGIN_CONN_STABLE_TICKS && g_loginConnReadyMs == 0)
+        {
+            g_loginConnReadyMs = nowMs;
+            LOG_INFO("登录外联: TLS 连接已稳定，预热 %llums 后可发校验",
+                     static_cast<unsigned long long>(LOGIN_CONN_WARMUP_MS));
+        }
+    }
+    else
+    {
+        g_loginStableTicks = 0;
     }
 
     for (auto it = g_recordConnByVerifySeq.begin(); it != g_recordConnByVerifySeq.end(); )

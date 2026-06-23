@@ -47,19 +47,41 @@ if ! mysql_root -e "SELECT 1" >/dev/null 2>&1; then
     exit 1
 fi
 
-echo "[1/5] 创建三库与用户 ${DB_USER} ..."
+echo "[1/7] 创建三库与用户 ${DB_USER} ..."
 mysql_root < "$SCRIPT_DIR/create_user_and_db.sql"
 
-echo "[2/5] 建表 (tables/init.sql) ..."
+echo "[2/7] 建表 (tables/init.sql) ..."
 mysql_root < "$SCRIPT_DIR/init.sql"
 
-echo "[3/5] 验证 ${DB_USER} 可连接 ${DB_NAME}（游戏区 6 表）..."
+echo "[3/7] 验证 ${DB_USER} 可连接 ${DB_NAME}（游戏区 6 表）..."
 mysql_app -e "USE ${DB_NAME}; SHOW TABLES;"
 
-echo "[4/5] 验证 ${DB_USER} 可连接 ${LOGIN_DB_NAME}（登录服 3 表：GameUser/ZoneInfo/LoginSession）..."
+echo "[4/7] 验证 ${DB_USER} 可连接 ${LOGIN_DB_NAME}（登录服 3 表：GameUser/ZoneInfo/LoginSession）..."
 mysql_app -e "USE ${LOGIN_DB_NAME}; SHOW TABLES;"
 
-echo "[5/5] 验证 ${DB_USER} 可连接 ${GLOBAL_DB_NAME}（全局服 1 表）..."
+echo "[5/7] 验证 ${DB_USER} 可连接 ${GLOBAL_DB_NAME}（全局服 1 表）..."
 mysql_app -e "USE ${GLOBAL_DB_NAME}; SHOW TABLES;"
+
+echo "[6/7] 登录流程存量迁移 (alter_login_flow.sql) ..."
+mysql_root < "$SCRIPT_DIR/alter_login_flow.sql"
+
+echo "[7/7] LoginSession 唯一约束 (migrate_login_session_unique.sql) ..."
+mysql_root < "$SCRIPT_DIR/migrate_login_session_unique.sql"
+
+echo "[校验] CharBase.accid 列与 LoginSession.uk_accid_zone ..."
+accid_ok=$(mysql_root -N -e "
+SELECT COUNT(*) FROM information_schema.COLUMNS
+WHERE TABLE_SCHEMA='${DB_NAME}' AND TABLE_NAME='CharBase' AND COLUMN_NAME='accid';")
+uk_ok=$(mysql_root -N -e "
+SELECT COUNT(*) FROM information_schema.STATISTICS
+WHERE TABLE_SCHEMA='${LOGIN_DB_NAME}' AND TABLE_NAME='LoginSession' AND INDEX_NAME='uk_accid_zone';")
+if [[ "${accid_ok:-0}" -lt 1 ]]; then
+    echo "错误: ${DB_NAME}.CharBase 缺少 accid 列，请检查 alter_login_flow.sql" >&2
+    exit 1
+fi
+if [[ "${uk_ok:-0}" -lt 1 ]]; then
+    echo "错误: ${LOGIN_DB_NAME}.LoginSession 缺少 uk_accid_zone，请检查 migrate_login_session_unique.sql" >&2
+    exit 1
+fi
 
 echo "完成。区内服见 config/config.xml（${DB_NAME}）；登录服 extern_login.xml（${LOGIN_DB_NAME}）；全局服 extern_global.xml（${GLOBAL_DB_NAME}）。"

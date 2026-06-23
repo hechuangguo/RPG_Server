@@ -417,6 +417,14 @@ void SuperServer::onUserLeaveReq(ConnID /*connID*/, const Msg_GW_UserLeaveReq& r
     auto pendingIt = m_pendingLogins.find(userID);
     if (pendingIt != m_pendingLogins.end())
     {
+        if (pendingIt->second.sceneConnID != INVALID_CONN_ID)
+        {
+            m_server.SendMsg(pendingIt->second.sceneConnID,
+                             static_cast<uint16_t>(InternalMsgID::SCE_USER_LEAVE),
+                             reinterpret_cast<const char*>(&userID), sizeof(UserID));
+            LOG_INFO("ENTERING 断线清理: 通知场景服 userID=%llu sceneConn=%u",
+                     userID, pendingIt->second.sceneConnID);
+        }
         logLoginFlow(LoginFlowPhase::CHAR_LEAVE, 0, userID, req.gatewayClientConnID, 0,
                      "主动离开，取消 pending", pendingIt->second.loginTxnId);
         m_pendingLogins.erase(pendingIt);

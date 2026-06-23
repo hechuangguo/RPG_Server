@@ -46,6 +46,12 @@ public:
     /** @brief 记录进入 AUTHING 的时间戳 */
     void setAuthStartedAtMs(uint64_t ms) { authStartedAtMs = ms; }
 
+    /** @brief 进入 ENTERING 时刻（ms）；进世界超时检测用 */
+    uint64_t getEnteringStartedAtMs() const { return enteringStartedAtMs; }
+
+    /** @brief 记录进入 ENTERING 的时间戳 */
+    void setEnteringStartedAtMs(uint64_t ms) { enteringStartedAtMs = ms; }
+
     /** @brief 是否已记录「连接后未鉴权超时」告警 */
     bool isAuthWarnSent() const { return authWarnSent; }
 
@@ -147,6 +153,7 @@ private:
     uint64_t    lastHeartbeat = 0;                    /**< 最近心跳时间戳（ms） */
     uint64_t    connectedAtMs = 0;                    /**< TCP 连接建立时刻（ms） */
     uint64_t    authStartedAtMs = 0;                  /**< 进入 AUTHING 时刻（ms） */
+    uint64_t    enteringStartedAtMs = 0;              /**< 进入 ENTERING 时刻（ms） */
     bool        authWarnSent = false;                   /**< 预留：CONNECTED 鉴权超时先 WARN 再踢（当前直接踢线） */
     bool        firstUplinkLogged = false;              /**< CONNECTED 态首条上行已记录 */
     uint32_t    sceneServerId = 0;                    /**< 绑定的 SceneServer 实例 ID */
