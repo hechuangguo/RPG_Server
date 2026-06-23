@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <cstdio>
 #include <cstring>
 #include <unistd.h>
 #include <sys/socket.h>
@@ -21,6 +22,21 @@ namespace {
 bool isWouldBlock(int err)
 {
     return err == EAGAIN || err == EWOULDBLOCK;
+}
+
+/** @brief TLS 应用层读写失败时输出 OpenSSL 错误（每连接一次，避免 Poll 刷屏） */
+void logTlsIoErrorOnce(ConnID connId, bool& logged, const char* phase, int sslErr)
+{
+    if (logged)
+        return;
+    logged = true;
+    char detail[256];
+    const unsigned long opensslErr = ERR_get_error();
+    if (opensslErr != 0)
+        ERR_error_string_n(opensslErr, detail, sizeof(detail));
+    else
+        snprintf(detail, sizeof(detail), "sslErr=%d errno=%d", sslErr, errno);
+    LOG_WARN("TLS %s失败: conn=%u %s", phase, connId, detail);
 }
 
 } // namespace
@@ -175,6 +191,8 @@ void TcpConnection::readTls()
         }
         else if (n == 0)
         {
+            if (m_ssl)
+                logTlsIoErrorOnce(m_id, m_tlsIoFailLogged, "读对端关闭", SSL_ERROR_ZERO_RETURN);
             Close();
             return;
         }
@@ -185,9 +203,11 @@ void TcpConnection::readTls()
                 break;
             if (err == SSL_ERROR_ZERO_RETURN)
             {
+                logTlsIoErrorOnce(m_id, m_tlsIoFailLogged, "读对端关闭", err);
                 Close();
                 return;
             }
+            logTlsIoErrorOnce(m_id, m_tlsIoFailLogged, "读", err);
             Close();
             return;
         }
@@ -274,6 +294,7 @@ void TcpConnection::writeTls()
             const int err = SSL_get_error(m_ssl, n);
             if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE)
                 break;
+            logTlsIoErrorOnce(m_id, m_tlsIoFailLogged, "写", err);
             Close();
             return;
         }
@@ -313,6 +334,7 @@ void TcpConnection::freeSsl()
     }
     m_tlsState = TlsState::None;
     m_tlsFailLogged = false;
+    m_tlsIoFailLogged = false;
 }
 
 void TcpConnection::Close()

@@ -6,6 +6,9 @@
 #include "LoginServer.h"
 #include "LoginGameZoneMsg.h"
 #include "LoginClientMsgRegister.h"
+#include "LoginClientMsgValidator.h"
+#include "../sdk/util/ConnRateLimiter.h"
+#include "../sdk/util/ServiceHealthMetrics.h"
 #include "ClientCommon.pb.h"
 #include "LoginCommon.pb.h"
 #include "LoginMsg.pb.h"
@@ -39,6 +42,8 @@ struct LoginServer::ClientPortBridge : INetCallback
     void OnMessage(ConnID id, uint8_t module, uint8_t sub,
                    const char* data, uint16_t len) override
     {
+        if (!m_owner->allowClientMessage(id, module, sub, data, len))
+            return;
         IngressContext ctx{};
         ctx.kind = ConnKind::ClientWire;
         ctx.connId = id;
@@ -65,6 +70,11 @@ struct LoginServer::RegisterPortBridge : INetCallback
     void OnMessage(ConnID id, uint8_t module, uint8_t sub,
                    const char* data, uint16_t len) override
     {
+        if (module == 0x19)
+        {
+            LOG_DEBUG("登录服注册口收到区内消息: conn=%u mod=0x%02X sub=0x%02X len=%u",
+                      id, module, sub, len);
+        }
         MsgIngress::dispatchInternal(id, module, sub, data, len);
     }
 
@@ -138,6 +148,23 @@ bool LoginServer::verifyLoginSchema()
             return false;
         }
     }
+
+    if (mysql_query(m_db, "SHOW INDEX FROM LoginSession WHERE Key_name = 'uk_accid_zone'") != 0)
+    {
+        LOG_FATAL("登录服校验 LoginSession 索引失败: %s", mysql_error(m_db));
+        return false;
+    }
+    MYSQL_RES* idxRes = mysql_store_result(m_db);
+    const bool hasUnique = idxRes && mysql_fetch_row(idxRes) != nullptr;
+    if (idxRes)
+        mysql_free_result(idxRes);
+    if (!hasUnique)
+    {
+        LOG_FATAL("LoginSession 缺少 uk_accid_zone 唯一索引（请执行: "
+                  "mysql ... rpg_login < tables/migrate_login_session_unique.sql）");
+        return false;
+    }
+
     LOG_INFO("登录服数据表校验通过: GameUser, LoginSession");
     return true;
 }
@@ -263,6 +290,7 @@ bool LoginServer::verifyAndConsumeLoginNonce(ConnID connId, const std::string& l
 void LoginServer::onClientDisconnect(ConnID id)
 {
     m_loginChallengeNonces.erase(id);
+    m_clientRateLimiter.erase(id);
     if (!m_clientServer.connectNotified(id))
     {
         LOG_WARN("登录客户端 TLS 握手未完成即断开: conn=%u（客户端可能仍用明文 TCP）",
@@ -270,6 +298,26 @@ void LoginServer::onClientDisconnect(ConnID id)
         return;
     }
     LOG_INFO("登录客户端断开: conn=%u", id);
+}
+
+bool LoginServer::allowClientMessage(ConnID connId, uint8_t module, uint8_t sub,
+                                     const char* data, uint16_t len)
+{
+    if (!m_clientRateLimiter.allow(connId))
+    {
+        ServiceHealthMetrics::instance().incRateLimitHit();
+        LOG_WARN("登录客户端消息被限速: conn=%u mod=0x%02X sub=0x%02X", connId, module, sub);
+        return false;
+    }
+
+    const LoginClientValidateResult vr = LoginClientMsgValidator::check(module, sub, data, len);
+    if (vr != LoginClientValidateResult::OK)
+    {
+        LOG_WARN("登录客户端消息被拒绝: conn=%u mod=0x%02X sub=0x%02X vr=%u",
+                 connId, module, sub, static_cast<unsigned>(vr));
+        return false;
+    }
+    return true;
 }
 
 void LoginServer::registerHandlers()
@@ -285,7 +333,7 @@ void LoginServer::onRegisterConnect(ConnID id)
 
 void LoginServer::onRegisterDisconnect(ConnID id)
 {
-    LOG_INFO("网关注册连接断开: conn=%u", id);
+    LOG_WARN("网关注册连接断开: conn=%u（Super 外联可能正在重连）", id);
 }
 
 void LoginServer::pruneGatewayTable()

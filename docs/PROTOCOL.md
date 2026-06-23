@@ -288,6 +288,10 @@ sequenceDiagram
     Note over Sc,C: Scene 经 GW_SEND_TO_CLIENT 下发 S2C_SPAWN_ENTITY
 ```
 
+**Gateway 鉴权超时**：`CONNECTED` 10s / `AUTHING` 17s；`checkTimeout` 每 1s 轮询（`GATEWAY_TIMEOUT_POLL_MS`）。
+
+**创角后立即选角**：`ownedRoleIds` 含目标 `user_id` 时不必等 `S2C_USER_LIST`（见 [LOGIN_CHAR_FLOW.md](LOGIN_CHAR_FLOW.md) §2）。
+
 完整 UI 对照见 [LOGIN_CHAR_FLOW.md](LOGIN_CHAR_FLOW.md)。
 
 ### 4.3 场景/副本登记

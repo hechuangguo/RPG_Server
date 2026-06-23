@@ -142,4 +142,21 @@ python3 scripts/test_login_gateway_e2e.py
 - **禁止**在 handler 内绕过 `TcpConnection` 裸 `recv`/`send`。
 - 不改 `MsgHeader`、Gateway `ClientMsgValidator` / 服间 `InternalMsg` 布局。
 
+### 7.1 Super ↔ Login 注册口（19010）
+
+Super 到 Login 注册口为 **单条 mTLS 长连接**，承载网关注册、心跳、区状态与 **票据校验**。实现要点：
+
+| 约束 | 说明 |
+|------|------|
+| 串行写 | `LoginExternOutbox` 队列；校验 `push_front` 优先；同帧禁止二次 poll |
+| 断线重试 | 外联断开时**在途校验退回队列**，预热后重发；日志 `外联断开，票据校验重排队`（非立即 fail Record） |
+| 预热 | 重连后 1.5s 内不发 `LOGIN_VERIFY_TOKEN_REQ` |
+| 半开检测 | `ExternalServerConnector::tickReconnect` 在 `IsConnected` 但 `!canSend()` 超过 3s 时强制断开重连 |
+| 队列满 | 出站队列满（256）时 Super 主动向 Record 回 `REC_VERIFY_TOKEN_RSP code=1` |
+| TLS 诊断 | `TcpConnection` 在 TLS 读写失败时输出 OpenSSL 错误（`TLS 读失败` / `TLS 写失败`），便于定位 19010 闪断 |
+
+成功校验日志链：`登录外联: 票据校验入队` → `已转发票据校验` → `登录服收到票据校验` → `登录服票据校验成功`。
+
+闪断重试日志链：`已转发票据校验` → `外联断开，票据校验重排队` →（重连+预热）→ `已转发票据校验` → `登录服收到票据校验`。
+
 相关文档：[ARCHITECTURE.md](ARCHITECTURE.md) · [SERVERS.md](SERVERS.md) · [EXTERNAL.md](EXTERNAL.md)

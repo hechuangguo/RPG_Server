@@ -92,4 +92,5 @@ private:
     TcpClient           m_client;      /**< 出站连接 */
     uint64_t            m_nextRetryMs; /**< 下次允许重连的时间戳 */
     uint32_t            m_retryDelayMs; /**< 当前重连间隔（指数退避） */
+    uint64_t            m_tlsStuckSinceMs; /**< TLS 半开起始时刻（0 表示可写或未连接） */
 };

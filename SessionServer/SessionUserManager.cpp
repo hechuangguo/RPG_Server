@@ -16,6 +16,7 @@ void SessionUserManager::applyPreloadRows(const std::vector<RelationRowData>& ro
         auto user = SessionUser::create(base);
         user->init();
         user->applyRelationRow(row);
+        user->markRelationLoaded();
         m_users[row.userID] = user;
     }
     LOG_INFO("会话用户管理器: 预加载关系数据 %zu 行，缓存大小=%zu",

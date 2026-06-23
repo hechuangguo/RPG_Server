@@ -10,6 +10,7 @@
 #include "../sdk/net/NetTls.h"
 #include "SuperExternRouter.h"
 #include "SuperLoginMsg.h"
+#include "LoginExternOutbox.h"
 #include "SuperLoggerMsg.h"
 #include "SuperGlobalMsg.h"
 #include "SuperZoneMsg.h"
@@ -64,6 +65,10 @@ bool SuperServer::Init(const std::string& ip, uint16_t port, const ServerConfig&
 
     TimerMgr::Instance().Register(30000, 30000, [this] { checkHeartbeat(); });
     TimerMgr::Instance().Register(10000, 10000, [this] { checkPendingLoginTimeouts(); });
+    TimerMgr::Instance().Register(60000, 60000, [this] {
+        if (!refreshServerListFromDb())
+            LOG_WARN("超级服增量刷新服务器列表失败");
+    });
     SuperZoneStatusMsgRegister(*this);
     LOG_INFO("超级服启动完成");
     return true;
@@ -113,16 +118,53 @@ bool SuperServer::loadServerList(const ServerConfig& cfg)
     return true;
 }
 
+bool SuperServer::refreshServerListFromDb()
+{
+    if (!m_db)
+        return false;
+
+    const char* sql = "SELECT server_id, server_type, ip, port, name FROM ServerList";
+    if (mysql_query(m_db, sql) != 0)
+    {
+        LOG_WARN("增量刷新服务器列表查询失败: %s", mysql_error(m_db));
+        return false;
+    }
+    MYSQL_RES* res = mysql_store_result(m_db);
+    if (!res)
+    {
+        LOG_WARN("增量刷新服务器列表读取失败: %s", mysql_error(m_db));
+        return false;
+    }
+
+    ServerList refreshed;
+    MYSQL_ROW row;
+    while ((row = mysql_fetch_row(res)) != nullptr)
+    {
+        ServerEntry e;
+        e.id   = row[0] ? (uint32_t)strtoul(row[0], nullptr, 10) : 0;
+        e.type = (SubServerType)(row[1] ? (uint8_t)strtoul(row[1], nullptr, 10) : 0);
+        e.ip   = row[2] ? row[2] : "";
+        e.port = row[3] ? (uint16_t)strtoul(row[3], nullptr, 10) : 0;
+        e.name = row[4] ? row[4] : "";
+        refreshed.add(e);
+    }
+    mysql_free_result(res);
+    m_serverList = std::move(refreshed);
+    LOG_INFO("超级服增量刷新服务器列表完成: 条目=%zu", m_serverList.size());
+    return true;
+}
+
 void SuperServer::Run()
 {
     while (true)
     {
-        /** 先 poll 外联，保证 Login TLS 就绪后再处理区内 Record 票据校验 */
+        /** 先处理区内消息入队，再刷新外联出站 */
         m_externHub.poll();
         m_server.Poll(10);
+        superLoginOnExternTick(*this);
         const SubServerType skipLoginReconnect =
             superLoginHasPendingVerify() ? SubServerType::LOGIN : SubServerType::UNKNOWN;
-        ServerBootstrap::tickGameZoneExtern(m_externHub, skipLoginReconnect);
+        m_externHub.tickReconnect(TimerMgr::NowMs(), skipLoginReconnect);
         TimerMgr::Instance().Update();
     }
 }
@@ -229,10 +271,7 @@ void SuperServer::reportZoneStatusToLogin()
     report.gatewayCount = gatewayCount;
     report.alive = (gatewayCount > 0) ? 1 : 0;
 
-    login->SendMsg(static_cast<uint16_t>(InternalMsgID::LOGIN_ZONE_STATUS_REPORT),
-                   reinterpret_cast<char*>(&report), sizeof(report));
-    LOG_DEBUG("区状态上报: zone=%u online=%u gateways=%u alive=%u",
-              report.zoneId, report.onlineCount, report.gatewayCount, report.alive);
+    LoginExternOutbox::enqueueZoneStatusReport(report);
 }
 
 void SuperServer::onServerListReq(ConnID connID, const char* /*data*/, uint16_t /*len*/)
@@ -673,8 +712,44 @@ ConnID SuperServer::findSubServerByServerId(SubServerType type, uint32_t serverI
 
 void SuperServer::removeSubServer(ConnID connID)
 {
+    SubServerType disconnectedType = SubServerType::UNKNOWN;
     auto it = m_servers.find(connID);
-    if (it != m_servers.end() && it->second.type == SubServerType::GATEWAY)
-        m_gatewayOnline.erase(it->second.serverID);
+    if (it != m_servers.end())
+    {
+        disconnectedType = it->second.type;
+        if (it->second.type == SubServerType::GATEWAY)
+            m_gatewayOnline.erase(it->second.serverID);
+    }
     m_servers.erase(connID);
+
+    if (disconnectedType == SubServerType::RECORD || disconnectedType == SubServerType::SESSION)
+        failPendingLoginsOnSubServerDisconnect(disconnectedType);
+}
+
+void SuperServer::failPendingLoginsOnSubServerDisconnect(SubServerType type)
+{
+    std::vector<UserID> toFail;
+    toFail.reserve(m_pendingLogins.size());
+    for (const auto& [uid, pending] : m_pendingLogins)
+    {
+        if (type == SubServerType::RECORD)
+            toFail.push_back(uid);
+        else if (type == SubServerType::SESSION
+                 && (pending.awaitingMapResolve || pending.phase == LoginTxnPhase::RESOLVE_MAP))
+            toFail.push_back(uid);
+    }
+
+    for (UserID uid : toFail)
+    {
+        auto pit = m_pendingLogins.find(uid);
+        if (pit == m_pendingLogins.end())
+            continue;
+        const int32_t code = type == SubServerType::RECORD
+            ? static_cast<int32_t>(SuperEnterError::LOAD_USER_FAILED)
+            : static_cast<int32_t>(SuperEnterError::NO_SESSION);
+        sendLoginFailToGateway(pit->second.gatewayConnID, pit->second.gatewayClientConnID, code);
+        LOG_WARN("子服断连清理登录事务: userID=%llu type=%d code=%d",
+                 static_cast<unsigned long long>(uid), static_cast<int>(type), code);
+        m_pendingLogins.erase(pit);
+    }
 }

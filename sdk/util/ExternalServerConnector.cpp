@@ -8,6 +8,7 @@
 #include "../log/Logger.h"
 #include "../net/NetTls.h"
 #include "../timer/TimerMgr.h"
+#include "LoginFlowTimeouts.h"
 
 #include <algorithm>
 
@@ -33,6 +34,7 @@ ExternalServerConnector::ExternalServerConnector(INetCallback* cb)
     : m_client(cb ? cb : &m_cb)
     , m_nextRetryMs(0)
     , m_retryDelayMs(MIN_RETRY_MS)
+    , m_tlsStuckSinceMs(0)
 {
 }
 
@@ -76,8 +78,20 @@ void ExternalServerConnector::tickReconnect(uint64_t nowMs)
         return;
     if (m_client.IsConnected())
     {
-        m_retryDelayMs = MIN_RETRY_MS;
-        return;
+        if (m_client.canSend())
+        {
+            m_tlsStuckSinceMs = 0;
+            m_retryDelayMs = MIN_RETRY_MS;
+            return;
+        }
+        if (m_tlsStuckSinceMs == 0)
+            m_tlsStuckSinceMs = nowMs;
+        if (nowMs - m_tlsStuckSinceMs < EXTERNAL_TLS_STUCK_MS)
+            return;
+        LOG_WARN("外联 TLS 半开连接强制断开: %s %s:%u",
+                 externalServerName(m_entry.type), m_entry.ip.c_str(), m_entry.port);
+        m_client.Disconnect();
+        m_tlsStuckSinceMs = 0;
     }
     if (nowMs < m_nextRetryMs)
         return;

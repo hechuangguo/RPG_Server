@@ -397,14 +397,18 @@ sequenceDiagram
     participant GW as GatewayServer
     participant REC as RecordServer
     participant SS as SuperServer
+    participant LReg as LoginServer_19010
     participant SCE as SceneServer
 
     C->>LS: C2S_LOGIN_REQ
     LS-->>C: S2C_LOGIN_RSP + S2C_GATEWAY_INFO
     C->>GW: C2S_GATEWAY_AUTH_REQ
     GW->>REC: REC_VALIDATE_TOKEN_REQ
-    REC->>LS: LOGIN_VERIFY_TOKEN_REQ
-    LS-->>REC: LOGIN_VERIFY_TOKEN_RSP
+    REC->>SS: LOGIN_VERIFY_TOKEN_REQ
+    SS->>LReg: LOGIN_VERIFY_TOKEN_REQ（裸转发，LoginExternOutbox）
+    Note over SS,LReg: 外联闪断时重排队+预热重发
+    LReg-->>SS: LOGIN_VERIFY_TOKEN_RSP
+    SS-->>REC: REC_VERIFY_TOKEN_RSP
     REC-->>GW: REC_VALIDATE_TOKEN_RSP
     GW-->>C: S2C_LOGIN_RSP authOK
     GW->>REC: REC_LIST_CHARACTERS_REQ

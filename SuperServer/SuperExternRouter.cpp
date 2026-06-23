@@ -5,6 +5,7 @@
 
 #include "SuperExternRouter.h"
 #include "SuperServer.h"
+#include "LoginExternOutbox.h"
 #include "../sdk/util/ExternalServerHub.h"
 #include "../sdk/util/MsgHandlerBinder.h"
 #include "../sdk/log/Logger.h"
@@ -34,6 +35,23 @@ void SuperExternMsgRegister(SuperServer& super)
 bool SuperExternSendToExtern(SuperServer& super, SubServerType targetType,
                              const Msg_SS_ExternForward& hdr, const char* body)
 {
+    if (targetType == SubServerType::LOGIN)
+    {
+        TcpClient* login = super.externHub().client(SubServerType::LOGIN);
+        if (!login || !login->IsConnected())
+        {
+            LOG_WARN("外联转发: 外联服 %u 未连接", static_cast<unsigned>(targetType));
+            return false;
+        }
+        std::vector<char> buf(sizeof(Msg_SS_ExternForward) + hdr.dataLen);
+        std::memcpy(buf.data(), &hdr, sizeof(Msg_SS_ExternForward));
+        if (hdr.dataLen > 0 && body)
+            std::memcpy(buf.data() + sizeof(Msg_SS_ExternForward), body, hdr.dataLen);
+        LoginExternOutbox::enqueueExternGameZoneFwd(buf.data(),
+                                                    static_cast<uint16_t>(buf.size()));
+        return true;
+    }
+
     TcpClient* client = super.externHub().client(targetType);
     if (!client || !client->IsConnected())
     {

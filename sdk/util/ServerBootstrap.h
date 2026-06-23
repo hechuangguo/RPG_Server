@@ -16,6 +16,7 @@
 #include "../log/RemoteLogClient.h"
 #include "../net/NetTls.h"
 #include "../timer/TimerMgr.h"
+#include "ProductionConfigValidator.h"
 #include "XmlConfigUtil.h"
 
 #include <cstdio>
@@ -134,10 +135,20 @@ inline bool loadGlobalConfig(int argc, char* argv[], ServerConfig& cfg,
     return false;
 }
 
-/** @brief 按 config.xml 的 Tls 段初始化 OpenSSL */
+/** @brief 按 config.xml 的 Tls 段初始化 OpenSSL；RPG_PRODUCTION=1 时强校验 TLS/DB */
 inline bool initNetTlsFromConfig(const ServerConfig& cfg)
 {
-    return initNetTls(cfg.tls);
+    if (!initNetTls(cfg.tls))
+        return false;
+    const bool enforceProduction = std::getenv("RPG_PRODUCTION") != nullptr;
+    const ProductionConfigCheckResult check =
+        validateProductionConfig(cfg.tls, cfg.dbPass, enforceProduction);
+    if (!check.ok)
+    {
+        std::fprintf(stderr, "生产配置校验失败: %s\n", check.message.c_str());
+        return false;
+    }
+    return true;
 }
 
 /**

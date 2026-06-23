@@ -223,6 +223,12 @@ private:
      */
     bool loadServerList(const ServerConfig& cfg);
 
+    /** @brief 运行期增量刷新 ServerList（复用 m_db 连接） */
+    bool refreshServerListFromDb();
+
+    /** @brief Record/Session 断连时立即失败关联中的登录事务 */
+    void failPendingLoginsOnSubServerDisconnect(SubServerType type);
+
     /**
      * @brief 处理用户登录请求
      *

@@ -45,6 +45,9 @@ void SessionInternMsgRegister(SessionServer& server)
     registerInternal(d, &server,
                      static_cast<uint16_t>(InternalMsgID::SES_RESOLVE_MAP_REQ),
                      &SessionServer::onResolveMapReq);
+    registerInternal(d, &server,
+                     static_cast<uint16_t>(InternalMsgID::SES_SCENE_MAP_LOAD_REPORT),
+                     &SessionServer::onSceneMapLoadReport);
 
     registerGwClientUnwrapHandler(d, [&server](ConnID fromConn, const UnwrappedClientMsg& msg) {
         if (fromConn != INVALID_CONN_ID)

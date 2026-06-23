@@ -40,6 +40,12 @@ public:
     /** @brief 处理 SES_SCENE_REGISTER_RSP */
     void onRegisterRsp(const char* data, uint16_t len);
 
+    /** @brief 上报单地图在线人数（负载均衡） */
+    void reportMapLoad(uint32_t sceneServerId, uint32_t mapId, uint32_t playerCount);
+
+    /** @brief 上报 Scene 节点总在线人数 */
+    void reportServerLoad(uint32_t sceneServerId, uint32_t totalPlayers);
+
     /** @brief 连接就绪后重发待注册场景 */
     void flushPendingRegistrations();
 

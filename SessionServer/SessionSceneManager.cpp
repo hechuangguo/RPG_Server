@@ -184,6 +184,28 @@ uint64_t SessionSceneManager::generateCopyInstanceId()
     return m_nextCopyInstanceId++;
 }
 
+
+void SessionSceneManager::reportMapPlayerCount(uint32_t sceneServerId, uint32_t mapId,
+                                               uint32_t playerCount)
+{
+    for (auto& [instanceId, scene] : m_normalScenes)
+    {
+        (void)instanceId;
+        if (scene.getSceneServerId() == sceneServerId && scene.getMapId() == mapId)
+            scene.setPlayerCount(playerCount);
+    }
+    auto it = m_sceneServers.find(sceneServerId);
+    if (it != m_sceneServers.end())
+        it->second.playerCount = std::max(it->second.playerCount, playerCount);
+}
+
+void SessionSceneManager::reportServerPlayerCount(uint32_t sceneServerId, uint32_t totalPlayers)
+{
+    auto it = m_sceneServers.find(sceneServerId);
+    if (it != m_sceneServers.end())
+        it->second.playerCount = totalPlayers;
+}
+
 void SessionSceneManager::adjustServerSceneCount(uint32_t sceneServerId, int delta)
 {
     auto it = m_sceneServers.find(sceneServerId);

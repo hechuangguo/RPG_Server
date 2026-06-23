@@ -38,6 +38,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <deque>
 #include <mysql/mysql.h>
 #include "RelationStore.h"
 #include <cinttypes>
@@ -187,6 +188,15 @@ private:
      */
     void autoSaveAll();
 
+    /** @brief Super 出站断线时尝试重连并重新注册 */
+    void tryReconnectSuper();
+
+    /** @brief 从有界队列取出一条写库任务执行（每主循环一次） */
+    void drainSaveQueue();
+
+    /** @brief Super 不可达时失败所有待校验票据 */
+    void failAllPendingVerifyTokens();
+
     /** @brief Record 发往 Login 校验票据的待回包上下文 */
     struct PendingVerifyToken
     {
@@ -202,6 +212,29 @@ private:
     ServerEntry m_self;           /**< 本进程在 ServerList 中的拓扑条目（注册上报用） */
     RecordUserManager m_userManager;  /**< Record 用户缓存（userID -> RecordUser） */
     GameZoneExternSender m_externSender; /**< 经 Super 转发 Logger */
+    std::string m_superIP;           /**< Super 地址（重连用） */
+    uint16_t m_superPort = 0;        /**< Super 端口 */
     uint32_t m_loginVerifySeq = 0; /**< LOGIN_VERIFY_TOKEN_REQ 请求序号（发送时前置自增，首包序号为 1） */
     std::unordered_map<uint32_t, PendingVerifyToken> m_pendingVerifyToken; /**< seq -> 上下文 */
+
+    /** @brief 异步写库队列项 */
+    enum class SaveQueueKind : uint8_t
+    {
+        USER = 0,
+        RELATION = 1,
+    };
+
+    struct SaveQueueItem
+    {
+        SaveQueueKind kind = SaveQueueKind::USER;
+        UserID userId = INVALID_USER_ID;
+        ConnID replyConn = INVALID_CONN_ID;
+        std::vector<char> payload;
+    };
+
+    static constexpr size_t MAX_SAVE_QUEUE_DEPTH = 8192;
+    std::deque<SaveQueueItem> m_saveQueue; /**< 有界写库队列 */
+    uint32_t m_superRetryDelayMs = 1000;   /**< Super 重连退避毫秒 */
+    uint64_t m_superNextRetryMs = 0;       /**< 下次允许重连时刻 */
+    uint64_t m_superTlsStuckSinceMs = 0;   /**< TLS 半开检测起点 */
 };

@@ -13,7 +13,9 @@
 | 3 无角色点「创建角色」 | 打开创角 UI | Gateway 校验 `ACCOUNT_OK` | — |
 | 4 输入名字 + 选职业 | 发创角包 | Gateway → Record 写 `CharBase` | `C2S_CREATE_USER_REQ` → `S2C_CREATE_USER_RSP`；成功后刷新 `S2C_USER_LIST` |
 | 5 选中角色点「进入游戏」 | 发选角包 | Gateway → Super 编排进 Scene | `C2S_SELECT_USER_REQ` |
-| 6 加载地图/角色 | 收进世界 + AOI | Scene 下发实体 | `S2C_LOGIN_RSP` + `S2C_ENTER_GAME`；`S2C_SPAWN_ENTITY` |
+| 6 加载地图/角色 | 收进世界 + AOI | Scene 下发实体 | `S2C_LOGIN_RSP` + `S2C_ENTER_GAME`；`S2C_SPAWN_ENTITY`（邻居/NPC 可能早于 `S2C_ENTER_GAME` 到达，客户端须缓冲） |
+
+**同账号重登**：`LoginSession` 按 `(accid, zone_id)` 唯一；再次 `C2S_LOGIN_REQ` 会 `REPLACE` 覆盖旧 token，尚未完成 Gateway 鉴权的旧 token 将失效。
 
 ---
 
@@ -33,7 +35,7 @@ CONNECTED → AUTHING → ACCOUNT_OK → ENTERING → IN_WORLD
 | `ENTERING` | 心跳（进世界中，选角/创角被拒） |
 | `IN_WORLD` | 场景/战斗/聊天等（经 Validator 白名单） |
 
-鉴权成功后 Gateway 置 `ACCOUNT_OK` 并请求 Record 拉列表；创角成功后会刷新列表，并允许在列表包到达前选角（`roleListReady` + `ownedRoleIds`）。
+鉴权成功后 Gateway 置 `ACCOUNT_OK` 并请求 Record 拉列表。创角成功后会刷新 `S2C_USER_LIST`；在列表包到达前，若 `ownedRoleIds` 已包含创角返回的 `user_id`，也允许 `C2S_SELECT_USER_REQ`（`roleListReady` 仍为 false 时由 `ownedRoleIds` 兜底）。
 
 ---
 
@@ -46,6 +48,7 @@ sequenceDiagram
     participant G as GatewayServer
     participant R as RecordServer
     participant S as SuperServer
+    participant LReg as LoginServer_19010
     participant Ses as SessionServer
     participant Sc as SceneServer
 
@@ -53,8 +56,11 @@ sequenceDiagram
     L->>C: S2C_LOGIN_RSP + S2C_GATEWAY_INFO
     C->>G: C2S_GATEWAY_AUTH_REQ
     G->>R: REC_VALIDATE_TOKEN_REQ
-    R->>L: LOGIN_VERIFY_TOKEN_REQ via EXT_GAMEZONE
-    L->>R: EXT_GAMEZONE_FWD_RSP
+    R->>S: LOGIN_VERIFY_TOKEN_REQ
+    S->>LReg: LOGIN_VERIFY_TOKEN_REQ（裸转发，LoginExternOutbox 串行）
+    Note over S,LReg: 外联 TLS 闪断时 Super 重排队，预热后重发（非立即 fail）
+    LReg->>S: LOGIN_VERIFY_TOKEN_RSP
+    S->>R: REC_VERIFY_TOKEN_RSP
     R->>G: REC_VALIDATE_TOKEN_RSP
     G->>C: S2C_LOGIN_RSP authOK
     G->>R: REC_LIST_CHARACTERS_REQ
@@ -198,11 +204,12 @@ grep '\[登录链路\]' logs/gateway.log logs/login.log logs/super.log
 | 现象 | 日志特征 | 可能原因 |
 |------|----------|----------|
 | UI 停在「获取角色列表」 | `gateway.log` 仅有 `客户端连接建立`，无 `Gateway 票据鉴权` / `phase=网关鉴权` | 客户端连上 Gateway 但未发 `C2S_GATEWAY_AUTH_REQ` |
-| 同上，约 10s 后出现 WARN | `phase=网关鉴权 code=-1 连接后未鉴权超时` | 同上（服务端诊断日志） |
-| 有 `客户端首条上行` 但无鉴权 | mod/sub 不是 `0x00/0x0D` | 客户端发了错误消息号 |
-| 有 `客户端消息被拒绝` | vr=BAD_LENGTH/BAD_PAYLOAD 或 `legacy wire v2` | body 非 Protobuf；鉴权定长 107B 须改为 `C2SGatewayAuthReq` Protobuf |
+| 同上，约 10s 后踢线 | `Gateway 鉴权超时踢线` 或 `phase=网关鉴权 ... 鉴权超时` | CONNECTED ≥10s 未鉴权，或 AUTHING ≥17s（`checkTimeout` 每 1s 轮询） |
+| 票据无效或已过期 | `login.log` 无 `登录服收到票据校验`；`super.log` 见 `外联断开，票据校验重排队` 或（旧二进制）`票据校验在途时登录外联断开` | Super→Login 19010 mTLS 闪断；新 Super 会重排队重试，见 [TLS.md](TLS.md) §7.1 |
 | 鉴权后无列表 | 有 `Record转发Login校验` 无 `phase=角色列表` | Record/Login 票据校验失败 |
-| 客户端「会话写入失败」 | `login.log`：`写入 LoginSession 失败: Table 'rpg_login.LoginSession' doesn't exist` | `rpg_login` 缺 `LoginSession` 表，执行 `tables/migrate_login_session.sql` |
+| 有 `客户端首条上行` 但无鉴权 | mod/sub 不是 `0x00/0x0D` | 客户端发了错误消息号 |
+| 有 `客户端消息被拒绝` | vr=BAD_LENGTH/BAD_PAYLOAD | body 非 Protobuf；须 `C2SGatewayAuthReq` Protobuf |
+| 客户端「会话写入失败」 | `login.log`：`写入 LoginSession 失败` | `rpg_login` 缺 `LoginSession` 或缺 `uk_accid_zone` |
 
 ### 6.4 LoginSession 表缺失（会话写入失败）
 

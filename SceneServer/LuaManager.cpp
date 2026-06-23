@@ -19,13 +19,28 @@ extern "C"
 namespace
 {
 
+/** @brief 打开受限 Lua 标准库（禁止 io/os/debug） */
+void openSandboxLibs(lua_State* L)
+{
+    luaL_requiref(L, "_G", luaopen_base, 1);
+    lua_pop(L, 1);
+    luaL_requiref(L, LUA_TABLIBNAME, luaopen_table, 1);
+    lua_pop(L, 1);
+    luaL_requiref(L, LUA_STRLIBNAME, luaopen_string, 1);
+    lua_pop(L, 1);
+    luaL_requiref(L, LUA_MATHLIBNAME, luaopen_math, 1);
+    lua_pop(L, 1);
+    luaL_requiref(L, LUA_LOADLIBNAME, luaopen_package, 1);
+    lua_pop(L, 1);
+}
+
+} // namespace
+
 /** @brief userdata 内保存的 SceneEntry 指针（不拥有对象） */
 struct SceneEntryUd
 {
     SceneEntry* entry = nullptr;
 };
-
-} // namespace
 
 LuaArg LuaArg::nil() { return LuaArg{}; }
 
@@ -91,7 +106,7 @@ bool LuaManager::init(const char* initScriptPath)
         return false;
     }
 
-    luaL_openlibs(m_lua);
+    openSandboxLibs(m_lua);
     ScriptFun::registerAll(m_lua);
 
     /* 兼容项目根目录与 .build/bin 两种 cwd */

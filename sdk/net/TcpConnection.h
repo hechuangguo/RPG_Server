@@ -80,5 +80,6 @@ private:
     bool          m_connectFired;
     bool          m_inReadHandler = false; /**< 正在 processMessages，禁止 SendMsg 同步写 */
     bool          m_tlsFailLogged = false; /**< 本连接已记录 TLS 握手失败 WARN，避免 Poll 重复刷 */
+    bool          m_tlsIoFailLogged = false; /**< 本连接已记录 TLS 读写失败 WARN */
     std::array<char, MAX_PACKET_SIZE> m_msgBody; /**< 拆包临时缓冲，避免栈上大数组 */
 };

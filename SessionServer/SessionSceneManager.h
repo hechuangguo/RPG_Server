@@ -90,11 +90,18 @@ public:
     /** @brief 已注册副本数量 */
     size_t getCopySceneCount() const { return m_copyScenes.size(); }
 
+    /** @brief 更新某地图实例在线人数（Scene 上报） */
+    void reportMapPlayerCount(uint32_t sceneServerId, uint32_t mapId, uint32_t playerCount);
+
+    /** @brief 更新 SceneServer 节点总在线人数 */
+    void reportServerPlayerCount(uint32_t sceneServerId, uint32_t totalPlayers);
+
 private:
     SessionSceneManager() = default;
 
     /** @brief 调整 SceneServer 的场景数量统计 */
     void adjustServerSceneCount(uint32_t sceneServerId, int delta);
+
     std::unordered_map<uint32_t, SessionSceneServerNode>  m_sceneServers;      /**< serverId -> 节点状态 */
     std::unordered_map<ConnID, uint32_t>                  m_connToServerId;    /**< connId -> serverId 反向索引 */
     std::unordered_map<uint64_t, SessionScene>            m_normalScenes;      /**< 普通场景表 */

@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS LoginSession (
     zone_id     INT UNSIGNED NOT NULL COMMENT '游戏区号',
     game_type   TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '游戏类型',
     expire_time DATETIME NOT NULL COMMENT '过期时间',
-    INDEX idx_accid_zone (accid, zone_id)
+    UNIQUE KEY uk_accid_zone (accid, zone_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ============================================================

@@ -77,6 +77,7 @@ docs/LUA.md                      # Lua 绑定与模块
 
 - [ ] 三库配置与 `tables/init.sql` 一致（login/game/global）
 - [ ] 未破坏单线程 / Session 调度边界 / 三库分工
+- [ ] 登录排障 grep 见下表；创角后立即选角：`TLS_INSECURE=1 python3 scripts/test_login_gateway_e2e.py <账号> <密码>`
 - [ ] 新命名与注释符合 `.cursor/rules/*`（`.h` 文件头+API；XML 段/属性；SQL 表/字段 `COMMENT`）
 - [ ] 新增/修改日志均为中文文案，且术语与项目约定一致（如“登录服/网关服/场景服/会话服/存档服/超级服/视野服/全局服/跨区服/日志服”）
 - [ ] 新建或改动的 `.h` 中，**本次新增**符号均有 Doxygen 注释
@@ -96,3 +97,19 @@ docs/LUA.md                      # Lua 绑定与模块
 - 无说明地重命名存量 `OnXxx` / `m_` 前缀符号
 - 使用 `strncpy` 写入 `ClientMsg` / `InternalMsg` 定长字符串字段
 - 新增英文整句日志或在同一概念上混用中英文术语（如 `LoginServer` 与“登录服”并存）
+
+## 登录排障日志关键字
+
+```bash
+grep -E '登录链路|票据校验|登录服收到|登录外联|鉴权超时|票据校验重排队|TLS 读失败' logs/{login,super,gateway,record}.log
+```
+
+| 关键字 | 进程 | 含义 |
+|--------|------|------|
+| `登录外联: 票据校验入队` / `已转发票据校验` | 超级服 | Super 已向 Login 外联发出校验 |
+| `登录服收到票据校验` / `登录服票据校验成功` | 登录服 | Login 注册口收到并消费票据 |
+| `Record校验token成功` | 存档服 | 校验链完成，即将回 Gateway |
+| `鉴权成功` / `phase=角色列表` | 网关服 | Gateway Phase B 成功 |
+| `外联断开，票据校验重排队` | 超级服 | 外联闪断后重试（新 Super）；旧二进制见下行 |
+| `票据校验在途时登录外联断开` | 超级服 | **旧 Super** 立即 fail；应升级并查 [TLS.md](docs/TLS.md) §7.1 |
+| `Gateway 鉴权超时踢线` | 网关服 | CONNECTED/AUTHING 超时 |

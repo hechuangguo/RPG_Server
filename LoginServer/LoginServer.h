@@ -21,6 +21,8 @@
 #include "LoginRegisterService.h"
 #include "LoginRechargeService.h"
 #include "LoginGmService.h"
+#include "../sdk/util/ConnRateLimiter.h"
+#include "LoginClientMsgValidator.h"
 #include "../sdk/net/TcpServer.h"
 #include "../sdk/util/MsgDispatcher.h"
 #include "../sdk/util/Singleton.h"
@@ -80,6 +82,13 @@ public:
     void onClientDisconnect(ConnID id);
 
     /**
+     * @brief 客户端上行限速与白名单校验
+     * @return 允许继续派发 true
+     */
+    bool allowClientMessage(ConnID connId, uint8_t module, uint8_t sub,
+                            const char* data, uint16_t len);
+
+    /**
      * @brief 校验连接挑战 nonce（不消费，注册/区列表后仍可登录）
      * @param connId 客户端连接
      * @param loginNonce C2S 请求中的 login_nonce 字段
@@ -132,4 +141,5 @@ private:
     MYSQL* m_db = nullptr;       /**< 可选 MySQL（与 Record 同库） */
     bool m_dbRequired = false;   /**< 配置了 Database 则须连库成功 */
     std::unordered_map<ConnID, std::string> m_loginChallengeNonces; /**< 每连接 16 字节挑战 nonce */
+    ConnRateLimiter m_clientRateLimiter{20, 1000}; /**< 客户端口滑动窗口限速 */
 };

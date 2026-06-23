@@ -67,3 +67,6 @@ void superLoginOnUpdateLastUserReq(SuperServer& super, ConnID fromConn,
 
 /** @brief 是否存在尚未回包的票据校验（用于暂缓 Login 外联重连） */
 bool superLoginHasPendingVerify();
+
+/** @brief 每帧 poll 外联后调用：预热检测、延后转发、在途断开清理 */
+void superLoginOnExternTick(SuperServer& super);

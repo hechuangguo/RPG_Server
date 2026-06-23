@@ -25,6 +25,7 @@
 #include "LuaManager.h"
 
 #include <cstdio>
+#include <unordered_map>
 
 namespace
 {
@@ -139,6 +140,7 @@ bool SceneServer::Init(const std::string& ip, uint16_t port,
     TimerMgr::Instance().Register(500, 0, [this] { registerToSuper(); });
     TimerMgr::Instance().Register(10000, 10000, [this] { sendHeartbeat(); });
     TimerMgr::Instance().Register(1000, 1000, [this] { onTick(); });
+    TimerMgr::Instance().Register(30000, 30000, [this] { reportMapLoadToSession(); });
 
     LOG_INFO("场景服启动完成: sceneID=%u %s:%d", m_sceneID, ip.c_str(), port);
     return true;
@@ -360,13 +362,22 @@ void SceneServer::onViewNotify(ConnID /*fromConn*/, const char* data, uint16_t l
     }
 }
 
-void SceneServer::onMoveReq(uint32_t /*clientConnID*/, const char* data, uint16_t len)
+void SceneServer::onMoveReq(uint32_t clientConnID, const char* data, uint16_t len)
 {
     rpg::mapdata::C2SMoveReq req;
     if (!parseMoveReq(data, len, req))
         return;
-    auto user = SceneUserManager::Instance().findUser(req.user_id());
-    if (!user) return;
+    auto user = SceneUserManager::Instance().findUserByClientConn(clientConnID);
+    if (!user)
+        return;
+    if (req.user_id() != 0 && req.user_id() != user->GetID())
+    {
+        LOG_WARN("移动请求 user_id 与连接不匹配: conn=%u req=%llu actual=%llu",
+                 clientConnID,
+                 static_cast<unsigned long long>(req.user_id()),
+                 static_cast<unsigned long long>(user->GetID()));
+        return;
+    }
 
     const float dstX = req.has_pos() ? req.pos().x() : user->Base().posX;
     const float dstY = req.has_pos() ? req.pos().y() : user->Base().posY;
@@ -512,6 +523,21 @@ void SceneServer::callLuaOnLeave(UserID userID)
     LuaManager::Instance().callGlobalVoid("OnUserLeave", {
         LuaArg::integer(static_cast<int64_t>(userID)),
     });
+}
+
+void SceneServer::reportMapLoadToSession()
+{
+    std::unordered_map<uint32_t, uint32_t> mapCounts;
+    SceneUserManager::Instance().forEach([&](UserID /*uid*/, const std::shared_ptr<SceneUser>& user) {
+        if (user)
+            ++mapCounts[user->getMapId()];
+    });
+
+    for (const auto& [mapId, count] : mapCounts)
+        m_sessionClient.reportMapLoad(m_sceneID, mapId, count);
+
+    m_sessionClient.reportServerLoad(m_sceneID,
+                                     static_cast<uint32_t>(SceneUserManager::Instance().getUserCount()));
 }
 
 void SceneServer::onTick()

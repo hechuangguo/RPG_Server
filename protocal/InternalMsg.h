@@ -27,7 +27,11 @@
  *   LoginServer → Client                           (S2C_LOGIN_RSP + S2C_GATEWAY_INFO)
  *   Client → GatewayServer                         (C2S_GATEWAY_AUTH_REQ)
  *   GatewayServer → RecordServer                   (REC_VALIDATE_TOKEN_REQ)
- *   RecordServer → LoginServer                     (LOGIN_VERIFY_TOKEN_REQ)
+ *   RecordServer → SuperServer                     (LOGIN_VERIFY_TOKEN_REQ)
+ *   SuperServer → LoginServer                      (LOGIN_VERIFY_TOKEN_REQ 裸转发)
+ *   LoginServer → SuperServer                      (LOGIN_VERIFY_TOKEN_RSP)
+ *   SuperServer → RecordServer                     (REC_VERIFY_TOKEN_RSP)
+ *   RecordServer → GatewayServer                   (REC_VALIDATE_TOKEN_RSP)
  *   GatewayServer → SuperServer                    (GW_USER_LOGIN_REQ)
  *   SuperServer → RecordServer                       (REC_LOAD_USER_REQ)
  *   RecordServer → SuperServer                       (REC_LOAD_USER_RSP)
@@ -110,6 +114,7 @@ enum class InternalMsgID : uint16_t
     SES_COPY_CREATE_CMD    = 0x1111, /**< Session → SceneServer: 在目标进程创建副本 */
     SES_RESOLVE_MAP_REQ    = 0x1112, /**< Super → Session: 按 mapId 解析 sceneServerId */
     SES_RESOLVE_MAP_RSP    = 0x1113, /**< Session → Super: mapId 解析结果 */
+    SES_SCENE_MAP_LOAD_REPORT = 0x1114, /**< SceneServer → Session: 地图在线人数上报（LB） */
 
     // ============================================================
     //  RecordServer (0x1201 ~ 0x1213)
@@ -126,13 +131,13 @@ enum class InternalMsgID : uint16_t
     REC_RELATION_LOAD_RSP    = 0x120A, /**< RecordServer → SessionServer: 单用户 Relation 响应 */
     REC_RELATION_SAVE_REQ    = 0x120B, /**< SessionServer → RecordServer: 保存 Relation 行 */
     REC_RELATION_SAVE_RSP    = 0x120C, /**< RecordServer → SessionServer: 保存结果 */
-    REC_VALIDATE_TOKEN_REQ   = 0x120D, /**< Gateway → Record: 校验 loginToken */
-    REC_VALIDATE_TOKEN_RSP   = 0x120E, /**< Record → Gateway: 校验结果 */
+    REC_VALIDATE_TOKEN_REQ   = 0x120D, /**< Gateway → Record: 校验 loginToken（触发 Super→Login 链） */
+    REC_VALIDATE_TOKEN_RSP   = 0x120E, /**< Record → Gateway: 校验终态（accid/code）；Gateway 鉴权闭环 */
     REC_LIST_CHARACTERS_REQ  = 0x120F, /**< Gateway → Record: 角色列表 */
     REC_LIST_CHARACTERS_RSP  = 0x1210, /**< Record → Gateway: 角色列表（变长） */
     REC_CREATE_CHARACTER_REQ = 0x1211, /**< Gateway → Record: 创角 */
     REC_CREATE_CHARACTER_RSP = 0x1212, /**< Record → Gateway: 创角结果 */
-    REC_VERIFY_TOKEN_RSP     = 0x1213, /**< Super → Record: 透传 loginToken 校验结果 */
+    REC_VERIFY_TOKEN_RSP     = 0x1213, /**< Super → Record: 透传 LOGIN_VERIFY_TOKEN_RSP；外联闪断时 Super 可重排队重发 */
 
     // ============================================================
     //  SceneServer (0x1301 ~ 0x1306)
@@ -861,6 +866,14 @@ struct Msg_SES_ResolveMapRsp
 };
 
 /** @brief SceneServer → SessionServer：请求创建副本 */
+/** @brief SceneServer → Session: 单地图在线人数（负载均衡） */
+struct Msg_SES_SceneMapLoadReport
+{
+    uint32_t sceneServerId;  /**< Scene 实例 ID */
+    uint32_t mapId;          /**< 地图模板 ID */
+    uint32_t playerCount;    /**< 该地图当前在线人数 */
+};
+
 struct Msg_SES_CopyCreateReq
 {
     uint32_t reqSceneServerId; /**< 请求方 SceneServer ID */

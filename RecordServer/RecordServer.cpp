@@ -9,6 +9,9 @@
 #include "../sdk/net/NetTls.h"
 #include "RecordCharService.h"
 #include "../sdk/util/LoginFlowLog.h"
+#include "../sdk/util/LoginFlowTimeouts.h"
+#include "../sdk/util/ServiceHealthMetrics.h"
+#include "../sdk/util/LoginFlowTimeouts.h"
 #include "../sdk/util/ServerBootstrap.h"
 
 #include <cstring>
@@ -25,8 +28,7 @@ RecordServer::RecordServer()
 
 namespace
 {
-constexpr uint64_t VERIFY_TOKEN_TIMEOUT_MS = 15000;
-}
+} // namespace
 
 RecordServer::~RecordServer()
 {
@@ -58,12 +60,15 @@ bool RecordServer::Init(const std::string& ip, uint16_t port,
     }
 
     wireTlsClient(m_superClient);
-    m_superClient.Connect(cfg.superIP, (uint16_t)cfg.superPort);
+    m_superIP = cfg.superIP;
+    m_superPort = static_cast<uint16_t>(cfg.superPort);
+    m_superClient.Connect(m_superIP, m_superPort);
 
     registerHandlers();
 
     TimerMgr::Instance().Register(500, 0, [this] { RegisterToSuper(); });
     TimerMgr::Instance().Register(10000, 10000, [this] { sendHeartbeat(); });
+    TimerMgr::Instance().Register(10000, 10000, [this] { tryReconnectSuper(); });
     TimerMgr::Instance().Register(5000, 5000, [this] { CleanupPendingVerifyTokenTimeout(); });
     // 每 60 秒自动保存所有脏数据
     TimerMgr::Instance().Register(60000, 60000, [this] { autoSaveAll(); });
@@ -78,6 +83,7 @@ void RecordServer::Run()
         m_server.Poll(10);
         TimerMgr::Instance().Update();
         m_superClient.Poll(0);
+        drainSaveQueue();
     }
 }
 
@@ -89,6 +95,67 @@ void RecordServer::OnConnect(ConnID id)
 void RecordServer::OnDisconnect(ConnID id)
 {
     LOG_WARN("内部连接断开: conn=%u", id);
+    if (!m_superClient.canSend())
+        failAllPendingVerifyTokens();
+}
+
+void RecordServer::tryReconnectSuper()
+{
+    const uint64_t nowMs = TimerMgr::NowMs();
+    if (m_superClient.IsConnected() && m_superClient.canSend())
+    {
+        m_superTlsStuckSinceMs = 0;
+        m_superRetryDelayMs = 1000;
+        return;
+    }
+    if (m_superClient.IsConnected() && !m_superClient.canSend())
+    {
+        if (m_superTlsStuckSinceMs == 0)
+            m_superTlsStuckSinceMs = nowMs;
+        if (nowMs - m_superTlsStuckSinceMs < EXTERNAL_TLS_STUCK_MS)
+            return;
+        LOG_WARN("超级服 TLS 半开连接强制断开: %s:%u", m_superIP.c_str(), m_superPort);
+        m_superClient.Disconnect();
+        m_superTlsStuckSinceMs = 0;
+    }
+    if (nowMs < m_superNextRetryMs)
+        return;
+
+    ServiceHealthMetrics::instance().incReconnectAttempt();
+    m_superClient.Disconnect();
+    wireTlsClient(m_superClient);
+    if (!m_superClient.Connect(m_superIP, m_superPort))
+    {
+        LOG_WARN("超级服重连失败: %s:%u", m_superIP.c_str(), m_superPort);
+        m_superRetryDelayMs = std::min(m_superRetryDelayMs * 2u, 30000u);
+    }
+    else
+    {
+        LOG_INFO("超级服重连已发起: %s:%u", m_superIP.c_str(), m_superPort);
+        m_superRetryDelayMs = 1000;
+        RegisterToSuper();
+    }
+    m_superNextRetryMs = nowMs + m_superRetryDelayMs;
+}
+
+void RecordServer::failAllPendingVerifyTokens()
+{
+    if (m_pendingVerifyToken.empty())
+        return;
+    for (const auto& [seq, pending] : m_pendingVerifyToken)
+    {
+        Msg_REC_ValidateTokenRsp rsp{};
+        rsp.code = 1;
+        rsp.accid = 0;
+        rsp.gatewayConnID = pending.gatewayConnID;
+        m_server.SendMsg(pending.replyConn,
+                         static_cast<uint16_t>(InternalMsgID::REC_VALIDATE_TOKEN_RSP),
+                         reinterpret_cast<char*>(&rsp), sizeof(rsp));
+        LOG_WARN("超级服断开，票据校验失败: seq=%u gatewayConn=%u", seq, pending.gatewayConnID);
+        logLoginFlow(LoginFlowPhase::GATEWAY_AUTH, 0, 0, pending.gatewayConnID, 1,
+                     "Super断开校验失败");
+    }
+    m_pendingVerifyToken.clear();
 }
 
 void RecordServer::OnMessage(ConnID id, uint8_t module, uint8_t sub, const char* data, uint16_t len)
@@ -230,12 +297,24 @@ void RecordServer::onSaveUser(ConnID fromConn, const char* data, uint16_t len)
         return;
     }
 
-    saveUserToDb(rid);
+    if (m_saveQueue.size() >= MAX_SAVE_QUEUE_DEPTH)
+    {
+        LOG_WARN("存档写库队列已满，拒绝入队: userID=%llu", static_cast<unsigned long long>(rid));
+        return;
+    }
+
+    SaveQueueItem item{};
+    item.kind = SaveQueueKind::USER;
+    item.userId = rid;
+    item.replyConn = fromConn;
+    m_saveQueue.push_back(std::move(item));
+
     Msg_REC_LoadUserRsp rsp{};
     rsp.code = 0;
     rsp.userID = rid;
-    m_server.SendMsg(fromConn, static_cast<uint16_t>(InternalMsgID::REC_SAVE_USER_RSP),
-                     reinterpret_cast<char*>(&rsp), sizeof(rsp));
+    if (!m_server.SendMsg(fromConn, static_cast<uint16_t>(InternalMsgID::REC_SAVE_USER_RSP),
+                          reinterpret_cast<char*>(&rsp), sizeof(rsp)))
+        ServiceHealthMetrics::instance().incSendMsgFail();
 }
 
 void RecordServer::onRelationPreloadReq(ConnID fromConn, const char* /*data*/, uint16_t /*len*/)
@@ -276,10 +355,8 @@ void RecordServer::onRelationLoadReq(ConnID fromConn, const char* data, uint16_t
 
 void RecordServer::onRelationSaveReq(ConnID fromConn, const char* data, uint16_t len)
 {
-    RelationStore store(m_db);
     RelationRow row;
     Msg_REC_RelationSaveRsp rsp{};
-    rsp.userID = row.userID;
     if (!RelationStore::decodeSaveReq(data, len, row))
     {
         rsp.code = -1;
@@ -289,9 +366,49 @@ void RecordServer::onRelationSaveReq(ConnID fromConn, const char* data, uint16_t
     }
 
     rsp.userID = row.userID;
-    rsp.code = store.saveOne(row) ? 0 : -1;
+    if (m_saveQueue.size() >= MAX_SAVE_QUEUE_DEPTH)
+    {
+        rsp.code = -1;
+        LOG_WARN("关系写库队列已满: userID=%llu", static_cast<unsigned long long>(row.userID));
+        m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::REC_RELATION_SAVE_RSP,
+                         reinterpret_cast<char*>(&rsp), sizeof(rsp));
+        return;
+    }
+
+    SaveQueueItem item{};
+    item.kind = SaveQueueKind::RELATION;
+    item.userId = row.userID;
+    item.replyConn = fromConn;
+    item.payload.assign(data, data + len);
+    m_saveQueue.push_back(std::move(item));
+
+    rsp.code = 0;
     m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::REC_RELATION_SAVE_RSP,
                      reinterpret_cast<char*>(&rsp), sizeof(rsp));
+}
+
+void RecordServer::drainSaveQueue()
+{
+    if (m_saveQueue.empty())
+        return;
+
+    SaveQueueItem item = std::move(m_saveQueue.front());
+    m_saveQueue.pop_front();
+
+    if (item.kind == SaveQueueKind::USER)
+    {
+        saveUserToDb(item.userId);
+        return;
+    }
+
+    RelationStore store(m_db);
+    RelationRow row;
+    if (RelationStore::decodeSaveReq(item.payload.data(),
+                                     static_cast<uint16_t>(item.payload.size()), row))
+    {
+        if (!store.saveOne(row))
+            LOG_WARN("关系异步写库失败: userID=%llu", static_cast<unsigned long long>(row.userID));
+    }
 }
 
 void RecordServer::loadUserFromDb(UserID rid)
@@ -437,6 +554,10 @@ void RecordServer::onLoginVerifyTokenExternFail(uint32_t requestSeq)
                  "Login校验外联失败");
 }
 
+/**
+ * @deprecated 遗留 EXT_GAMEZONE 转发路径；主路径为 Record 裸发 LOGIN_VERIFY_TOKEN_REQ 经 Super 转发。
+ *             新部署勿依赖 SS_EXTERN_FWD_RSP + LOGIN_VERIFY_TOKEN 分支。
+ */
 void RecordServer::onExternForwardRsp(ConnID /*fromConn*/, const char* data, uint16_t len)
 {
     if (len < sizeof(Msg_SS_ExternForwardRsp))

@@ -14,13 +14,16 @@
 #include "SessionLoginMsg.h"
 #include "../sdk/net/GwClientRelay.h"
 #include "../sdk/util/LoginFlowLog.h"
+#include "../sdk/util/ServiceHealthMetrics.h"
+#include "../sdk/util/LoginFlowTimeouts.h"
 
 #include <vector>
 #include <cstdio>
 
 namespace {
 
-constexpr uint64_t RELATION_SYNC_TIMEOUT_MS = 30000;
+constexpr uint64_t RELATION_PRELOAD_TIMEOUT_MS = 30000;
+constexpr uint64_t RELATION_ASYNC_LOAD_TIMEOUT_MS = VERIFY_TOKEN_TIMEOUT_MS;
 
 } // namespace
 
@@ -105,6 +108,14 @@ bool SessionServer::Init(const std::string& ip, uint16_t port,
     TimerMgr::Instance().Register(500, 0, [this] { registerToSuper(); });
     TimerMgr::Instance().Register(10000, 10000, [this] { sendHeartbeat(); });
     TimerMgr::Instance().Register(60000, 60000, [this] { autoSaveAll(); });
+    TimerMgr::Instance().Register(1000, 1000, [this] { tickPendingUserLoads(); });
+    TimerMgr::Instance().Register(60000, 60000, [this] {
+        auto& m = ServiceHealthMetrics::instance();
+        LOG_INFO("会话服健康指标: 发送失败=%llu 重连=%llu 待加载用户=%zu",
+                 static_cast<unsigned long long>(m.getSendMsgFail()),
+                 static_cast<unsigned long long>(m.getReconnectAttempt()),
+                 m_pendingUserLoads.size());
+    });
     s_active = this;
     LOG_INFO("会话服启动完成（Record 关系预载将在主循环异步进行）");
     return true;
@@ -143,7 +154,7 @@ bool SessionServer::beginRelationPreload()
     }
 
     m_relationPreloadSent = true;
-    m_relationPreloadDeadlineMs = TimerMgr::NowMs() + RELATION_SYNC_TIMEOUT_MS;
+    m_relationPreloadDeadlineMs = TimerMgr::NowMs() + RELATION_PRELOAD_TIMEOUT_MS;
     return true;
 }
 
@@ -165,7 +176,7 @@ void SessionServer::tickStartup()
     {
         if (TimerMgr::NowMs() > m_relationPreloadDeadlineMs)
         {
-            LOG_FATAL("REC_RELATION_PRELOAD_REQ 响应超时（%ums）", RELATION_SYNC_TIMEOUT_MS);
+            LOG_FATAL("REC_RELATION_PRELOAD_REQ 响应超时（%ums）", RELATION_PRELOAD_TIMEOUT_MS);
             m_startupFailed = true;
         }
         return;
@@ -203,32 +214,6 @@ void SessionServer::OnMessage(ConnID id, uint8_t module, uint8_t sub, const char
 void SessionServer::setGatewayInboundConn(ConnID conn)
 {
     m_gatewayInboundConn = conn;
-}
-
-void SessionServer::pollForRelationSync()
-{
-    m_recordClient.Poll(10);
-    m_superClient.Poll(0);
-    m_server.Poll(0);
-}
-
-bool SessionServer::loadRelationSync(UserID userID, RelationRowData& out)
-{
-    m_relationLoadDone = false;
-    m_relationLoadOk   = false;
-
-    if (!m_recordClient.SendMsg((uint16_t)InternalMsgID::REC_RELATION_LOAD_REQ,
-                                reinterpret_cast<const char*>(&userID), sizeof(userID)))
-        return false;
-
-    const uint64_t deadline = TimerMgr::NowMs() + RELATION_SYNC_TIMEOUT_MS;
-    while (!m_relationLoadDone && TimerMgr::NowMs() < deadline)
-        pollForRelationSync();
-
-    if (!m_relationLoadOk)
-        return false;
-    out = m_relationLoadRow;
-    return true;
 }
 
 bool SessionServer::saveRelation(const RelationRowData& row)
@@ -280,30 +265,67 @@ void SessionServer::onRelationLoadRsp(ConnID /*fromConn*/, const char* data, uin
 {
     if (len < sizeof(Msg_REC_RelationLoadRsp))
     {
-        m_relationLoadOk   = false;
-        m_relationLoadDone = true;
         return;
     }
     const auto* hdr = reinterpret_cast<const Msg_REC_RelationLoadRsp*>(data);
-    if (hdr->code != 0)
-    {
-        m_relationLoadOk   = false;
-        m_relationLoadDone = true;
-        return;
-    }
-
     std::vector<RelationRowData> rows;
-    if (!RelationWireUtil::parseAllRows(data, len, sizeof(Msg_REC_RelationLoadRsp), rows)
+    if (hdr->code != 0
+        || !RelationWireUtil::parseAllRows(data, len, sizeof(Msg_REC_RelationLoadRsp), rows)
         || rows.empty())
     {
-        m_relationLoadOk   = false;
-        m_relationLoadDone = true;
+        finishPendingUserLoad(hdr->userID, false, nullptr);
         return;
     }
 
-    m_relationLoadRow  = rows[0];
-    m_relationLoadOk   = true;
-    m_relationLoadDone = true;
+    finishPendingUserLoad(hdr->userID, true, &rows[0]);
+}
+
+void SessionServer::finishPendingUserLoad(UserID userId, bool ok, const RelationRowData* row)
+{
+    auto pit = m_pendingUserLoads.find(userId);
+    if (pit == m_pendingUserLoads.end())
+        return;
+
+    const ConnID replyConn = pit->second.replyConn;
+    m_pendingUserLoads.erase(pit);
+
+    if (!ok)
+    {
+        LOG_WARN("会话用户关系异步加载失败: userID=%llu", static_cast<unsigned long long>(userId));
+        return;
+    }
+
+    auto user = SessionUserManager::Instance().findUser(userId);
+    if (!user)
+        return;
+
+    user->applyRelationRow(*row);
+    user->onOnline();
+
+    if (!m_server.SendMsg(replyConn, (uint16_t)InternalMsgID::SES_LOAD_USER_RSP,
+                          reinterpret_cast<const char*>(&userId), sizeof(userId)))
+    {
+        ServiceHealthMetrics::instance().incSendMsgFail();
+        LOG_WARN("会话用户加载响应发送失败: userID=%llu conn=%u",
+                 static_cast<unsigned long long>(userId), replyConn);
+    }
+}
+
+void SessionServer::tickPendingUserLoads()
+{
+    const uint64_t nowMs = TimerMgr::NowMs();
+    std::vector<UserID> expired;
+    expired.reserve(m_pendingUserLoads.size());
+    for (const auto& [userId, pending] : m_pendingUserLoads)
+    {
+        if (nowMs >= pending.deadlineMs)
+            expired.push_back(userId);
+    }
+    for (UserID userId : expired)
+    {
+        LOG_WARN("会话用户关系加载超时: userID=%llu", static_cast<unsigned long long>(userId));
+        finishPendingUserLoad(userId, false, nullptr);
+    }
 }
 
 void SessionServer::registerToSuper()
@@ -338,10 +360,36 @@ void SessionServer::onLoadUserReq(ConnID fromConn, const char* data, uint16_t le
     UserID uid = *reinterpret_cast<const UserID*>(data);
 
     auto user = SessionUserManager::Instance().getOrCreateUser(uid);
-    user->load(*this);
-    user->onOnline();
+    user->init();
 
-    m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::SES_LOAD_USER_RSP, data, len);
+    if (user->hasRelationLoaded())
+    {
+        user->onOnline();
+        if (!m_server.SendMsg(fromConn, (uint16_t)InternalMsgID::SES_LOAD_USER_RSP,
+                              data, len))
+        {
+            ServiceHealthMetrics::instance().incSendMsgFail();
+            LOG_WARN("会话用户加载响应发送失败(缓存命中): userID=%llu conn=%u",
+                     static_cast<unsigned long long>(uid), fromConn);
+        }
+        return;
+    }
+
+    if (m_pendingUserLoads.count(uid) > 0)
+        return;
+
+    PendingUserLoad pending{};
+    pending.replyConn = fromConn;
+    pending.deadlineMs = TimerMgr::NowMs() + RELATION_ASYNC_LOAD_TIMEOUT_MS;
+    m_pendingUserLoads[uid] = pending;
+
+    if (!m_recordClient.SendMsg((uint16_t)InternalMsgID::REC_RELATION_LOAD_REQ,
+                                reinterpret_cast<const char*>(&uid), sizeof(uid)))
+    {
+        m_pendingUserLoads.erase(uid);
+        ServiceHealthMetrics::instance().incSendMsgFail();
+        LOG_WARN("会话用户关系加载请求发送失败: userID=%llu", static_cast<unsigned long long>(uid));
+    }
 }
 
 void SessionServer::onSaveUserReq(ConnID /*fromConn*/, const char* data, uint16_t len)
@@ -395,9 +443,17 @@ void SessionServer::onResolveMapReq(ConnID /*fromConn*/, const Msg_SES_ResolveMa
     logLoginFlow(LoginFlowPhase::SUPER_ENTER, 0, req.userID, 0, rsp.code, detail);
 }
 
+void SessionServer::onSceneMapLoadReport(ConnID /*fromConn*/, const Msg_SES_SceneMapLoadReport& req)
+{
+    if (req.mapId == 0)
+        SessionSceneManager::Instance().reportServerPlayerCount(req.sceneServerId, req.playerCount);
+    else
+        SessionSceneManager::Instance().reportMapPlayerCount(req.sceneServerId, req.mapId,
+                                                               req.playerCount);
+}
+
 void SessionServer::onCopyCreateReq(ConnID fromConn, const Msg_SES_CopyCreateReq& req)
 {
-    SessionSceneManager::Instance().bindSceneServer(fromConn, req.reqSceneServerId);
 
     Msg_SES_CopyCreateRsp rsp{};
     rsp.code = 0;

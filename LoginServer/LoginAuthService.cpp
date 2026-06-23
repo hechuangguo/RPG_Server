@@ -106,7 +106,17 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
 {
     rpg::login::C2SLoginReq req;
     if (!parseProto(data, len, req))
+    {
+        rpg::login::S2CLoginRsp loginRsp;
+        loginRsp.set_code(1);
+        loginRsp.set_msg("请求格式错误");
+        sendClientProtoModule(m_owner.clientServer(), connID, kLoginModule,
+                       static_cast<uint8_t>(rpg::login::S2C_LOGIN_RSP), loginRsp);
+        logLoginFlow(LoginFlowPhase::ACCOUNT_LOGIN, 0, 0, connID, loginRsp.code(),
+                     loginRsp.msg().c_str());
+        sendGatewayInfo(connID, -1, "登录失败");
         return;
+    }
 
     rpg::login::S2CLoginRsp loginRsp;
     loginRsp.set_user_id(0);
@@ -230,14 +240,7 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
                         char escToken[sizeof(token) * 2 + 1];
                         mysql_real_escape_string(db, escToken, token, strlen(token));
                         snprintf(sql, sizeof(sql),
-                                 "DELETE FROM LoginSession WHERE accid=%llu AND zone_id=%u",
-                                 static_cast<unsigned long long>(loginRsp.accid()), req.zone_id());
-                        if (mysql_query(db, sql) != 0)
-                            LOG_WARN("清理旧 LoginSession 失败: accid=%llu zone=%u err=%s",
-                                     static_cast<unsigned long long>(loginRsp.accid()),
-                                     req.zone_id(), mysql_error(db));
-                        snprintf(sql, sizeof(sql),
-                                 "INSERT INTO LoginSession (token, accid, zone_id, game_type, expire_time) "
+                                 "REPLACE INTO LoginSession (token, accid, zone_id, game_type, expire_time) "
                                  "VALUES ('%s', %llu, %u, %u, DATE_ADD(NOW(), INTERVAL %u SECOND))",
                                  escToken,
                                  static_cast<unsigned long long>(loginRsp.accid()),

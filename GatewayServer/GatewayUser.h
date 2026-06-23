@@ -40,6 +40,12 @@ public:
     /** @brief TCP 连接建立时刻（ms） */
     uint64_t getConnectedAtMs() const { return connectedAtMs; }
 
+    /** @brief 发起网关票据鉴权时刻（ms）；AUTHING 超时检测用 */
+    uint64_t getAuthStartedAtMs() const { return authStartedAtMs; }
+
+    /** @brief 记录进入 AUTHING 的时间戳 */
+    void setAuthStartedAtMs(uint64_t ms) { authStartedAtMs = ms; }
+
     /** @brief 是否已记录「连接后未鉴权超时」告警 */
     bool isAuthWarnSent() const { return authWarnSent; }
 
@@ -103,10 +109,10 @@ public:
     /** @brief 设置登录事务幂等键 */
     void setLoginTxnId(uint64_t txnId) { loginTxnId = txnId; }
 
-    /** @brief 缓存本账号已拉取的角色 ID（选角归属校验） */
+    /** @brief 缓存本账号已拉取的角色 ID（选角归属校验；创角成功后会 addOwnedRole） */
     void setOwnedRoleIds(std::unordered_set<uint64_t> ids) { ownedRoleIds = std::move(ids); }
 
-    /** @brief 角色是否属于当前账号会话 */
+    /** @brief 角色是否属于当前账号会话（列表未就绪时创角返回的 user_id 亦可凭此选角） */
     bool ownsRole(uint64_t roleId) const
     {
         return ownedRoleIds.find(roleId) != ownedRoleIds.end();
@@ -115,7 +121,7 @@ public:
     /** @brief 创角成功后追加角色 ID */
     void addOwnedRole(uint64_t roleId) { ownedRoleIds.insert(roleId); }
 
-    /** @brief 角色列表快照是否可用 */
+    /** @brief 角色列表快照是否可用（false 时若 ownedRoleIds 含目标 user_id 仍可选角） */
     bool isRoleListReady() const { return roleListReady; }
 
     /** @brief 更新角色列表快照状态 */
@@ -140,7 +146,8 @@ private:
     ClientState clientState = ClientState::CONNECTED; /**< 会话状态机状态 */
     uint64_t    lastHeartbeat = 0;                    /**< 最近心跳时间戳（ms） */
     uint64_t    connectedAtMs = 0;                    /**< TCP 连接建立时刻（ms） */
-    bool        authWarnSent = false;                   /**< 已输出未鉴权超时告警 */
+    uint64_t    authStartedAtMs = 0;                  /**< 进入 AUTHING 时刻（ms） */
+    bool        authWarnSent = false;                   /**< 预留：CONNECTED 鉴权超时先 WARN 再踢（当前直接踢线） */
     bool        firstUplinkLogged = false;              /**< CONNECTED 态首条上行已记录 */
     uint32_t    sceneServerId = 0;                    /**< 绑定的 SceneServer 实例 ID */
     uint64_t    accid = 0;                            /**< 账号 ID（票据鉴权后） */

@@ -49,8 +49,14 @@ public:
     /** @brief 是否存在待落库改动 */
     bool needSave() const;
 
-    /** @brief 经 RecordServer 加载社交数据 */
+    /** @brief 经 RecordServer 加载社交数据（仅当已缓存关系数据时成功） */
     bool load(SessionServer& server);
+
+    /** @brief 关系数据是否已从 Record 加载到内存 */
+    bool hasRelationLoaded() const { return m_relationLoaded; }
+
+    /** @brief 标记关系数据已就绪（预载或异步加载完成后调用） */
+    void markRelationLoaded() { m_relationLoaded = true; }
 
     /** @brief 用 Relation 行填充 m_social */
     void applyRelationRow(const RelationRowData& row);
@@ -100,6 +106,7 @@ private:
     explicit SessionUser(const UserBase& base);
     SocialData m_social;                               /**< 社交关系缓存 */
     bool       m_initialized    = false;               /**< 是否已初始化 */
+    bool       m_relationLoaded = false;               /**< 关系数据是否已加载 */
     bool       m_dirty          = false;               /**< 是否需要保存 */
     int64_t    m_lastDayStartMs = -1;                  /**< 上次跨日基准时间戳（ms） */
     uint32_t   m_gatewayClientConn = 0;                /**< Gateway 客户端连接 ID */

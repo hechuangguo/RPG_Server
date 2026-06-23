@@ -29,6 +29,15 @@
 #include "ClientMsgValidator.h"
 #include "ClientMsgRouter.h"
 #include "GatewayScenePool.h"
+#include "../sdk/util/ConnRateLimiter.h"
+
+namespace {
+
+constexpr uint32_t GATEWAY_CLIENT_RATE_MAX = 40;
+constexpr uint64_t GATEWAY_CLIENT_RATE_WINDOW_MS = 1000;
+constexpr uint32_t GATEWAY_SUPER_RECONNECT_MIN_MS = 1000;
+
+} // namespace
 #include <string>
 #include <vector>
 
@@ -298,4 +307,8 @@ private:
     uint8_t m_gameType = 0;          /**< 游戏类型 */
     // --- 客户端管理 ---
     GatewayUserManager m_userManager;  /**< 客户端会话表（connID -> GatewayUser） */
+    ConnRateLimiter m_clientRateLimiter{GATEWAY_CLIENT_RATE_MAX, GATEWAY_CLIENT_RATE_WINDOW_MS};
+    uint32_t m_superRetryDelayMs = GATEWAY_SUPER_RECONNECT_MIN_MS; /**< Super 重连退避毫秒 */
+    uint64_t m_superNextRetryMs = 0;                       /**< 下次允许重连时刻 */
+    uint64_t m_superTlsStuckSinceMs = 0;                   /**< TLS 半开检测起点 */
 };

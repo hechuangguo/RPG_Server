@@ -120,6 +120,7 @@ void SessionUser::applyRelationRow(const RelationRowData& row)
                            row.binary.empty() ? nullptr
                                               : reinterpret_cast<const char*>(row.binary.data()),
                            static_cast<unsigned long>(row.binary.size()));
+    m_relationLoaded = true;
 }
 
 RelationRowData SessionUser::toRelationRow() const
@@ -136,11 +137,11 @@ RelationRowData SessionUser::toRelationRow() const
 
 bool SessionUser::load(SessionServer& server)
 {
-    if (!m_initialized && !init()) return false;
-    RelationRowData row;
-    if (!server.loadRelationSync(GetID(), row))
+    (void)server;
+    if (!m_initialized && !init())
         return false;
-    applyRelationRow(row);
+    if (!m_relationLoaded)
+        return false;
     LOG_DEBUG("会话用户读档完成 userID=%llu friends=%zu binary=%zu",
               GetID(), m_social.friends.size(), m_social.binary.size());
     return true;

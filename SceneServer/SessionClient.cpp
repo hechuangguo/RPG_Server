@@ -4,6 +4,7 @@
  */
 
 #include "SessionClient.h"
+#include "../protocal/InternalMsg.h"
 #include "../sdk/util/WireStringUtil.h"
 #include "../sdk/log/Logger.h"
 
@@ -89,6 +90,26 @@ void SessionClient::onRegisterRsp(const char* data, uint16_t len)
         return;
     }
     LOG_INFO("会话客户端注册场景成功: instance=%llu", rsp->sceneInstanceId);
+}
+
+void SessionClient::reportMapLoad(uint32_t sceneServerId, uint32_t mapId, uint32_t playerCount)
+{
+    Msg_SES_SceneMapLoadReport rpt{};
+    rpt.sceneServerId = sceneServerId;
+    rpt.mapId = mapId;
+    rpt.playerCount = playerCount;
+    sendMsg(static_cast<uint16_t>(InternalMsgID::SES_SCENE_MAP_LOAD_REPORT),
+            reinterpret_cast<char*>(&rpt), sizeof(rpt));
+}
+
+void SessionClient::reportServerLoad(uint32_t sceneServerId, uint32_t totalPlayers)
+{
+    Msg_SES_SceneMapLoadReport rpt{};
+    rpt.sceneServerId = sceneServerId;
+    rpt.mapId = 0;
+    rpt.playerCount = totalPlayers;
+    sendMsg(static_cast<uint16_t>(InternalMsgID::SES_SCENE_MAP_LOAD_REPORT),
+            reinterpret_cast<char*>(&rpt), sizeof(rpt));
 }
 
 void SessionClient::flushPendingRegistrations()

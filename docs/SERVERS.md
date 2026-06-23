@@ -105,7 +105,7 @@ Gateway 连接状态：`CONNECTED → AUTHING → ACCOUNT_OK → ENTERING → IN
 |------|------|------|
 | C2S_GATEWAY_AUTH_REQ | CONNECTED | Record 校验 token → `S2C_LOGIN_RSP` + 推送 `S2C_USER_LIST` |
 | C2S_CREATE_USER_REQ | ACCOUNT_OK | Record 创角 → `S2C_CREATE_USER_RSP` + 刷新列表 |
-| C2S_SELECT_USER_REQ | ACCOUNT_OK | Super 进世界 → `S2C_ENTER_GAME` |
+| C2S_SELECT_USER_REQ | ACCOUNT_OK | Super 进世界 → `S2C_ENTER_GAME`；列表未就绪时凭 `ownedRoleIds`（创角后）亦可选角 |
 | C2S_LOGOUT_REQ | ENTERING / IN_WORLD | 离世界清理 → `S2C_LOGOUT_RSP`；`RETURN_CHAR_SELECT` 时刷新 `S2C_USER_LIST` 并回 `ACCOUNT_OK` |
 | C2S_HEARTBEAT | 多状态 | `S2C_HEARTBEAT` |
 | 其它 | IN_WORLD 等 | Validator + Router 转发 Scene/Session |

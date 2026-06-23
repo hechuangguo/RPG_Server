@@ -9,6 +9,9 @@
 #include "../sdk/net/MsgIngress.h"
 #include "../sdk/util/LoginEnterErrorCode.h"
 #include "../sdk/util/LoginFlowLog.h"
+#include "../sdk/util/LoginFlowTimeouts.h"
+#include "../sdk/util/ServiceHealthMetrics.h"
+#include "../sdk/util/ConnRateLimiter.h"
 #include "../sdk/net/ClientWireSend.h"
 #include "../sdk/net/NetTls.h"
 #include "../sdk/net/GwClientRelay.h"
@@ -26,8 +29,8 @@
 namespace {
 
 constexpr uint64_t UPSTREAM_CONNECT_TIMEOUT_MS = 5000;
-constexpr uint64_t GATEWAY_AUTH_WAIT_MS = 3000;
-constexpr uint64_t GATEWAY_AUTH_TIMEOUT_MS = 10000;
+constexpr uint32_t SUPER_RECONNECT_MIN_MS = 1000;
+constexpr uint32_t SUPER_RECONNECT_MAX_MS = 30000;
 
 constexpr uint8_t kLoginModule  = static_cast<uint8_t>(rpg::client::LOGIN);
 constexpr uint8_t kSystemModule = static_cast<uint8_t>(rpg::client::SYSTEM);
@@ -109,9 +112,18 @@ bool GatewayServer::Init(uint16_t clientPort,
         tryReconnectSuper();
     });
     TimerMgr::Instance().Register(10000, 10000, [this]{ sendHeartbeat(); });
-    TimerMgr::Instance().Register(30000, 30000, [this]{ checkTimeout(); });
+    TimerMgr::Instance().Register(GATEWAY_TIMEOUT_POLL_MS, GATEWAY_TIMEOUT_POLL_MS,
+                                  [this] { checkTimeout(); });
     TimerMgr::Instance().Register(10000, 10000, [this]{ sendLoginGatewayHeartbeat(); });
     TimerMgr::Instance().Register(5000, 5000, [this]{ upstreamHealthCheck(); });
+    TimerMgr::Instance().Register(60000, 60000, [this] {
+        auto& m = ServiceHealthMetrics::instance();
+        LOG_INFO("网关服健康指标: 鉴权成功=%llu 鉴权失败=%llu 发送失败=%llu 限速=%llu",
+                 static_cast<unsigned long long>(m.getLoginAuthSuccess()),
+                 static_cast<unsigned long long>(m.getLoginAuthFail()),
+                 static_cast<unsigned long long>(m.getSendMsgFail()),
+                 static_cast<unsigned long long>(m.getRateLimitHit()));
+    });
 
     LOG_INFO("网关服启动完成（等待 S2S_REGISTER_RSP 后连接上游）");
     return true;
@@ -146,6 +158,7 @@ void GatewayServer::OnDisconnect(ConnID id)
         LOG_INFO("客户端连接断开: connID=%u userID=%llu state=%d",
                  id, user->GetID(),
                  static_cast<int>(user->getClientState()));
+        m_clientRateLimiter.erase(id);
         if (user->GetID() != INVALID_USER_ID)
             leaveWorldSession(user, true, "客户端TCP断开");
         m_userManager.removeUser(id);
@@ -390,6 +403,14 @@ void GatewayServer::handleClientMsg(ConnID connID, uint8_t module, uint8_t sub,
     if (!user) return;
     user->touchHeartbeat();
 
+    if (!m_clientRateLimiter.allow(connID))
+    {
+        ServiceHealthMetrics::instance().incRateLimitHit();
+        sendClientError(connID, ValidateResult::RATE_LIMITED);
+        LOG_WARN("客户端消息被限速: conn=%u mod=0x%02X sub=0x%02X", connID, module, sub);
+        return;
+    }
+
     if (user->getClientState() == ClientState::CONNECTED && !user->isFirstUplinkLogged())
     {
         user->setFirstUplinkLogged(true);
@@ -485,7 +506,7 @@ void GatewayServer::sendClientLegacyWireError(ConnID connID)
 
 void GatewayServer::onGatewayAuth(ConnID connID, const char* data, uint16_t len)
 {
-    if (!ensureRecordReady(GATEWAY_AUTH_WAIT_MS))
+    if (!isRecordReady())
     {
         rpg::login::S2CLoginRsp loginRsp;
         loginRsp.set_code(-1);
@@ -506,17 +527,40 @@ void GatewayServer::onGatewayAuth(ConnID connID, const char* data, uint16_t len)
         sendClientError(connID, ValidateResult::BAD_STATE);
         return;
     }
+    if (protoReq.zone_id() != m_zoneId ||
+        static_cast<uint8_t>(protoReq.game_type()) != m_gameType)
+    {
+        rpg::login::S2CLoginRsp loginRsp;
+        loginRsp.set_code(1);
+        loginRsp.set_msg("区服或游戏类型与网关不匹配");
+        sendClientProtoModule(m_clientServer, connID, kLoginModule,
+                     static_cast<uint8_t>(rpg::login::S2C_LOGIN_RSP), loginRsp);
+        logLoginFlow(LoginFlowPhase::GATEWAY_AUTH, 0, 0, connID, 1, "区服不匹配");
+        return;
+    }
     user->setZoneId(protoReq.zone_id());
     user->setGameType(static_cast<uint8_t>(protoReq.game_type()));
     user->setClientState(ClientState::AUTHING);
+    user->setAuthStartedAtMs(TimerMgr::NowMs());
 
     Msg_REC_ValidateTokenReq verifyReq{};
     copyToWire(verifyReq.loginToken, sizeof(verifyReq.loginToken), protoReq.login_token().c_str());
     verifyReq.zoneId = protoReq.zone_id();
     verifyReq.gameType = static_cast<uint8_t>(protoReq.game_type());
     verifyReq.gatewayConnID = connID;
-    m_recordClient.SendMsg(static_cast<uint16_t>(InternalMsgID::REC_VALIDATE_TOKEN_REQ),
-                           reinterpret_cast<char*>(&verifyReq), sizeof(verifyReq));
+    if (!m_recordClient.SendMsg(static_cast<uint16_t>(InternalMsgID::REC_VALIDATE_TOKEN_REQ),
+                                reinterpret_cast<char*>(&verifyReq), sizeof(verifyReq)))
+    {
+        user->setClientState(ClientState::CONNECTED);
+        rpg::login::S2CLoginRsp loginRsp;
+        loginRsp.set_code(1);
+        loginRsp.set_msg("存档服务暂不可用，请稍后重试");
+        sendClientProtoModule(m_clientServer, connID, kLoginModule,
+                     static_cast<uint8_t>(rpg::login::S2C_LOGIN_RSP), loginRsp);
+        LOG_WARN("Gateway 票据校验发送失败: conn=%u", connID);
+        logLoginFlow(LoginFlowPhase::GATEWAY_AUTH, 0, 0, connID, 1, "转发Record失败");
+        return;
+    }
     LOG_INFO("Gateway 票据鉴权: account=%s conn=%u zone=%u", protoReq.account().c_str(), connID,
              protoReq.zone_id());
     logLoginFlow(LoginFlowPhase::GATEWAY_AUTH, 0, 0, connID, 0, "发起 token 校验");
@@ -539,7 +583,7 @@ void GatewayServer::onSelectUser(ConnID connID, const char* data, uint16_t len)
         return;
     }
 
-    if (!user->isRoleListReady())
+    if (!user->isRoleListReady() && !user->ownsRole(protoReq.user_id()))
     {
         sendClientError(connID, ValidateResult::BAD_STATE);
         logLoginFlow(LoginFlowPhase::CHAR_SELECT, user->getAccid(), protoReq.user_id(), connID,
@@ -572,8 +616,18 @@ void GatewayServer::onSelectUser(ConnID connID, const char* data, uint16_t len)
     enterReq.userID = protoReq.user_id();
     enterReq.gatewayClientConnID = connID;
     enterReq.loginTxnId = txnId;
-    m_superClient.SendMsg(static_cast<uint16_t>(InternalMsgID::GW_USER_LOGIN_REQ),
-                          reinterpret_cast<char*>(&enterReq), sizeof(enterReq));
+    if (!m_superClient.SendMsg(static_cast<uint16_t>(InternalMsgID::GW_USER_LOGIN_REQ),
+                               reinterpret_cast<char*>(&enterReq), sizeof(enterReq)))
+    {
+        user->setClientState(ClientState::ACCOUNT_OK);
+        sendClientError(connID, ValidateResult::BAD_STATE);
+        ServiceHealthMetrics::instance().incSendMsgFail();
+        LOG_WARN("选角进世界发送失败: conn=%u userID=%llu",
+                 connID, static_cast<unsigned long long>(protoReq.user_id()));
+        logLoginFlow(LoginFlowPhase::CHAR_SELECT, user->getAccid(), protoReq.user_id(), connID,
+                     static_cast<int32_t>(ValidateResult::BAD_STATE), "转发超级服失败");
+        return;
+    }
     LOG_INFO("选角进世界: conn=%u userID=%llu txn=%llu", connID,
              static_cast<unsigned long long>(protoReq.user_id()),
              static_cast<unsigned long long>(txnId));
@@ -753,8 +807,16 @@ void GatewayServer::onValidateTokenRsp(ConnID /*fromConn*/, const Msg_REC_Valida
     if (!user)
         return;
 
+    if (user->getClientState() != ClientState::AUTHING)
+    {
+        LOG_WARN("Gateway 票据鉴权回包丢弃: conn=%u state=%u",
+                 clientConn, static_cast<unsigned>(user->getClientState()));
+        return;
+    }
+
     if (rsp.code != 0)
     {
+        ServiceHealthMetrics::instance().incLoginAuthFail();
         rpg::login::S2CLoginRsp loginRsp;
         loginRsp.set_code(1);
         loginRsp.set_msg("登录票据无效或已过期");
@@ -791,6 +853,7 @@ void GatewayServer::onValidateTokenRsp(ConnID /*fromConn*/, const Msg_REC_Valida
 
     user->setAccid(rsp.accid);
     user->setClientState(ClientState::ACCOUNT_OK);
+    ServiceHealthMetrics::instance().incLoginAuthSuccess();
 
     rpg::login::S2CLoginRsp loginRsp;
     loginRsp.set_code(0);
@@ -1019,18 +1082,34 @@ void GatewayServer::forwardClientMsg(TcpClient& target, ConnID connID,
 
 void GatewayServer::checkTimeout()
 {
-    uint64_t now = TimerMgr::NowMs();
+    const uint64_t now = TimerMgr::NowMs();
+    std::vector<ConnID> authTimeoutConns;
     m_userManager.forEach([&](ConnID connId, GatewayUser& user) {
         if (user.getClientState() == ClientState::CONNECTED &&
-            !user.isAuthWarnSent() &&
             now > user.getConnectedAtMs() &&
             now - user.getConnectedAtMs() >= GATEWAY_AUTH_TIMEOUT_MS)
         {
-            user.setAuthWarnSent(true);
-            logLoginFlow(LoginFlowPhase::GATEWAY_AUTH, 0, 0, connId, -1,
-                         "连接后未鉴权超时");
+            authTimeoutConns.push_back(connId);
+            return;
+        }
+        if (user.getClientState() == ClientState::AUTHING &&
+            user.getAuthStartedAtMs() != 0 &&
+            now - user.getAuthStartedAtMs() >= GATEWAY_AUTHING_TIMEOUT_MS)
+        {
+            authTimeoutConns.push_back(connId);
         }
     });
+    for (ConnID connId : authTimeoutConns)
+    {
+        auto user = m_userManager.findUser(connId);
+        if (!user)
+            continue;
+        LOG_WARN("Gateway 鉴权超时踢线: conn=%u state=%u",
+                 connId, static_cast<unsigned>(user->getClientState()));
+        logLoginFlow(LoginFlowPhase::GATEWAY_AUTH, user->getAccid(), 0, connId, 1, "鉴权超时");
+        m_clientServer.Kick(connId);
+        m_userManager.removeUser(connId);
+    }
     for (ConnID cid : m_userManager.collectExpiredConnIds(now, 60000))
     {
         auto user = m_userManager.findUser(cid);
@@ -1100,18 +1179,44 @@ void GatewayServer::onSuperRegisterTimerFired()
 
 void GatewayServer::tryReconnectSuper()
 {
+    const uint64_t nowMs = TimerMgr::NowMs();
+    if (m_superClient.IsConnected() && m_superClient.canSend())
+    {
+        m_superTlsStuckSinceMs = 0;
+        m_superRetryDelayMs = SUPER_RECONNECT_MIN_MS;
+        return;
+    }
+    if (m_superClient.IsConnected() && !m_superClient.canSend())
+    {
+        if (m_superTlsStuckSinceMs == 0)
+            m_superTlsStuckSinceMs = nowMs;
+        if (nowMs - m_superTlsStuckSinceMs < EXTERNAL_TLS_STUCK_MS)
+            return;
+        LOG_WARN("超级服 TLS 半开连接强制断开: %s:%u", m_superIP.c_str(), m_superPort);
+        m_superClient.Disconnect();
+        m_superTlsStuckSinceMs = 0;
+    }
+    if (nowMs < m_superNextRetryMs)
+        return;
+
+    ServiceHealthMetrics::instance().incReconnectAttempt();
     m_superClient.Disconnect();
     wireTlsClient(m_superClient);
     if (!m_superClient.Connect(m_superIP, m_superPort))
     {
         LOG_WARN("超级服重连失败: %s:%u", m_superIP.c_str(), m_superPort);
-        return;
+        m_superRetryDelayMs = std::min(m_superRetryDelayMs * 2, SUPER_RECONNECT_MAX_MS);
     }
-    LOG_INFO("超级服重连已发起: %s:%u", m_superIP.c_str(), m_superPort);
-    m_upstreamReady = false;
-    m_reportedToLogin = false;
-    m_superRegisterPending = false;
-    scheduleSuperRegister();
+    else
+    {
+        LOG_INFO("超级服重连已发起: %s:%u", m_superIP.c_str(), m_superPort);
+        m_superRetryDelayMs = SUPER_RECONNECT_MIN_MS;
+        m_upstreamReady = false;
+        m_reportedToLogin = false;
+        m_superRegisterPending = false;
+        scheduleSuperRegister();
+    }
+    m_superNextRetryMs = nowMs + m_superRetryDelayMs;
 }
 
 void GatewayServer::sendHeartbeat()

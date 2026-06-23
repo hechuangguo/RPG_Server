@@ -65,8 +65,14 @@ void ExternalServerHub::tickReconnect(uint64_t nowMs, SubServerType skipType)
         m_global.tickReconnect(nowMs);
     if (m_wantZone)
         m_zone.tickReconnect(nowMs);
-    if (m_wantLogin && skipType != SubServerType::LOGIN)
-        m_login.tickReconnect(nowMs);
+    /** 仅在连接仍存活时暂缓 Login 重连；已断线则允许重连并交由上层清理在途校验 */
+    if (m_wantLogin)
+    {
+        const bool skipLoginReconnect =
+            skipType == SubServerType::LOGIN && m_login.isConnected();
+        if (!skipLoginReconnect)
+            m_login.tickReconnect(nowMs);
+    }
 }
 
 ExternalServerConnector* ExternalServerHub::connector(SubServerType type)

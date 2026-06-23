@@ -33,8 +33,9 @@ bool GameZoneExternSender::sendForward(SubServerType target, uint16_t innerMsgId
     if (len > 0 && data)
         std::memcpy(buf.data() + sizeof(Msg_SS_ExternForward), data, len);
 
-    m_superClient.SendMsg(static_cast<uint16_t>(InternalMsgID::SS_EXTERN_FWD_REQ),
-                          buf.data(), static_cast<uint16_t>(buf.size()));
+    if (!m_superClient.SendMsg(static_cast<uint16_t>(InternalMsgID::SS_EXTERN_FWD_REQ),
+                               buf.data(), static_cast<uint16_t>(buf.size())))
+        return false;
     return true;
 }
 

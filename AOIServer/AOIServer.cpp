@@ -56,6 +56,33 @@ void AOIServer::OnConnect(ConnID id)
 void AOIServer::OnDisconnect(ConnID id)
 {
     LOG_WARN("视野服内部连接断开: conn=%u", id);
+    std::vector<uint64_t> toRemove;
+    for (const auto& [entityId, entity] : m_entities)
+    {
+        if (entity.sceneConnID == id)
+            toRemove.push_back(entityId);
+    }
+    for (uint64_t entityId : toRemove)
+    {
+        notifyViewChange(entityId, false);
+        auto it = m_entities.find(entityId);
+        if (it == m_entities.end())
+            continue;
+        auto git = m_entityGrid.find(entityId);
+        if (git != m_entityGrid.end())
+        {
+            const AOIEntity& e = it->second;
+            uint64_t key = ((uint64_t)e.mapID << 32)
+                | (uint32_t)(((uint16_t)git->second.gx << 16) | (uint16_t)git->second.gz);
+            auto mit = m_gridMap.find(key);
+            if (mit != m_gridMap.end())
+                mit->second.erase(entityId);
+            m_entityGrid.erase(git);
+        }
+        m_entities.erase(it);
+    }
+    if (!toRemove.empty())
+        LOG_INFO("视野服已清理断连场景实体: conn=%u count=%zu", id, toRemove.size());
 }
 
 void AOIServer::OnMessage(ConnID id, uint8_t module, uint8_t sub,

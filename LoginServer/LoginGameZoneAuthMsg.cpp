@@ -48,7 +48,7 @@ void sendVerifyTokenRsp(LoginServer& server, ConnID fromConn,
 
 void onVerifyTokenReq(LoginServer& server, ConnID fromConn, const Msg_Login_VerifyTokenReq& req)
 {
-    LOG_DEBUG("登录服收到票据校验: conn=%u seq=%u zone=%u", fromConn, req.requestSeq, req.zoneId);
+    LOG_INFO("登录服收到票据校验: conn=%u seq=%u zone=%u", fromConn, req.requestSeq, req.zoneId);
 
     Msg_Login_VerifyTokenRsp rsp{};
     rsp.requestSeq = req.requestSeq;
@@ -73,29 +73,77 @@ void onVerifyTokenReq(LoginServer& server, ConnID fromConn, const Msg_Login_Veri
     char escToken[sizeof(token) * 2 + 1];
     mysql_real_escape_string(db, escToken, token, strlen(token));
 
+    auto rollbackTxn = [&]() {
+        mysql_query(db, "ROLLBACK");
+    };
+
+    if (mysql_query(db, "START TRANSACTION") != 0)
+    {
+        LOG_ERR("登录服票据校验开启事务失败: %s", mysql_error(db));
+        sendVerifyTokenRsp(server, fromConn, rsp);
+        return;
+    }
+
     char sql[512];
     snprintf(sql, sizeof(sql),
              "SELECT accid FROM LoginSession "
-             "WHERE token='%s' AND zone_id=%u AND game_type=%u AND expire_time > NOW() LIMIT 1",
+             "WHERE token='%s' AND zone_id=%u AND game_type=%u AND expire_time > NOW() "
+             "LIMIT 1 FOR UPDATE",
              escToken, req.zoneId, req.gameType);
 
+    uint64_t accid = 0;
+    bool found = false;
     if (mysql_query(db, sql) == 0)
     {
         MYSQL_RES* res = mysql_store_result(db);
         MYSQL_ROW row = res ? mysql_fetch_row(res) : nullptr;
         if (row && row[0])
         {
-            rsp.code = 0;
-            rsp.accid = static_cast<uint64_t>(strtoull(row[0], nullptr, 10));
-            snprintf(sql, sizeof(sql), "DELETE FROM LoginSession WHERE token='%s'", escToken);
-            mysql_query(db, sql);
+            accid = static_cast<uint64_t>(strtoull(row[0], nullptr, 10));
+            found = true;
         }
         if (res)
             mysql_free_result(res);
     }
     else
     {
-        LOG_ERR("登录服票据校验 SQL 失败: %s", mysql_error(db));
+        LOG_ERR("登录服票据校验查询失败: %s", mysql_error(db));
+        rollbackTxn();
+        sendVerifyTokenRsp(server, fromConn, rsp);
+        return;
+    }
+
+    if (found)
+    {
+        snprintf(sql, sizeof(sql),
+                 "DELETE FROM LoginSession "
+                 "WHERE token='%s' AND zone_id=%u AND game_type=%u AND expire_time > NOW()",
+                 escToken, req.zoneId, req.gameType);
+        if (mysql_query(db, sql) != 0)
+        {
+            LOG_ERR("登录服票据校验删除失败: %s", mysql_error(db));
+            rollbackTxn();
+            sendVerifyTokenRsp(server, fromConn, rsp);
+            return;
+        }
+        if (mysql_affected_rows(db) != 1)
+        {
+            LOG_WARN("登录服票据校验消费失败: affected_rows=%llu seq=%u",
+                     static_cast<unsigned long long>(mysql_affected_rows(db)), req.requestSeq);
+            rollbackTxn();
+            sendVerifyTokenRsp(server, fromConn, rsp);
+            return;
+        }
+        rsp.code = 0;
+        rsp.accid = accid;
+    }
+
+    if (mysql_query(db, "COMMIT") != 0)
+    {
+        LOG_ERR("登录服票据校验提交事务失败: %s", mysql_error(db));
+        rollbackTxn();
+        rsp.code = 1;
+        rsp.accid = 0;
     }
 
     if (rsp.code == 0)

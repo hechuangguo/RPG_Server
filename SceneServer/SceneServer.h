@@ -222,6 +222,9 @@ private:
     /** @brief 每帧 Tick（驱动用户/NPC loop + Lua onTick） */
     void onTick();
 
+    /** @brief 向 Session 上报各地图在线人数（负载均衡） */
+    void reportMapLoadToSession();
+
     /** @brief 为已加载地图创建默认 NPC（示例：新手引导官） */
     void initMapNpcs();
 

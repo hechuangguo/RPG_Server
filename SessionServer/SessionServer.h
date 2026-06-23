@@ -23,6 +23,7 @@
 #include "SessionUser.h"
 #include <mysql/mysql.h>
 #include <string>
+#include <unordered_map>
 
 /**
  * @brief 会话服务器 —— 社会关系 + 全区场景/副本管理
@@ -85,22 +86,11 @@ public:
                    const char* data, uint16_t len) override;
 
     /**
-     * @brief 同步从 Record 加载单用户 Relation（启动期/onLoadUserReq）
-     * @param userID 用户 ID
-     * @param out    输出行
-     * @return 成功 true
-     */
-    bool loadRelationSync(UserID userID, RelationRowData& out);
-
-    /**
      * @brief 向 Record 发送 Relation 保存（异步，不等待响应）
      * @param row 待保存行
      * @return 发送成功 true
      */
     bool saveRelation(const RelationRowData& row);
-
-    /** @brief Init 阶段短循环 poll（仅启动预载/同步加载用） */
-    void pollForRelationSync();
 
     /** @brief 记录网关入站连接（GW_CLIENT_MSG 解包时更新） */
     void setGatewayInboundConn(ConnID conn);
@@ -154,8 +144,17 @@ private:
     /** @brief Super 按 mapId 解析 sceneServerId */
     void onResolveMapReq(ConnID fromConn, const Msg_SES_ResolveMapReq& req);
 
+    /** @brief Scene 上报地图在线人数（负载均衡） */
+    void onSceneMapLoadReport(ConnID fromConn, const Msg_SES_SceneMapLoadReport& req);
+
     /** @brief 自动保存在线用户的 Session 数据 */
     void autoSaveAll();
+
+    /** @brief 推进异步关系加载超时清理 */
+    void tickPendingUserLoads();
+
+    /** @brief 完成或失败一次异步用户加载 */
+    void finishPendingUserLoad(UserID userId, bool ok, const RelationRowData* row);
 
     /** @brief 连接游戏区库 rpg_game（config.xml Database 段） */
     bool initDatabase(const ServerConfig& cfg);
@@ -173,10 +172,16 @@ private:
     uint64_t              m_relationPreloadDeadlineMs = 0; /**< 预载超时时刻 */
     bool                  m_startupComplete = false;   /**< 启动预载成功完成 */
     bool                  m_startupFailed = false;     /**< 启动预载失败 */
-    bool                  m_relationLoadDone = false;    /**< 同步单用户加载完成 */
-    bool                  m_relationLoadOk   = false;    /**< 同步单用户加载成功 */
-    RelationRowData       m_relationLoadRow;             /**< 同步加载结果缓存 */
     MYSQL*                m_db = nullptr;                /**< 游戏区库 rpg_game 直连 */
+
+    /** @brief 异步 SES_LOAD_USER_REQ 等待 Record 回包 */
+    struct PendingUserLoad
+    {
+        ConnID   replyConn = INVALID_CONN_ID; /**< 需回 SES_LOAD_USER_RSP 的连接 */
+        uint64_t deadlineMs = 0;              /**< 超时时刻 */
+    };
+
+    std::unordered_map<UserID, PendingUserLoad> m_pendingUserLoads; /**< userId -> 待完成加载 */
 
     static SessionServer* s_active;
 };

@@ -320,7 +320,7 @@ def main():
         create_req.sex = 0
         send_msg(gw, LOGIN_MODULE, C2S_CREATE_USER_REQ, create_req.SerializeToString())
 
-        pending = reader.collect({S2C_CREATE_USER_RSP, S2C_USER_LIST}, timeout=12.0)
+        pending = reader.collect({S2C_CREATE_USER_RSP}, timeout=12.0)
         create_ok = False
         for mod, sub, data in pending:
             if mod == LOGIN_MODULE and sub == S2C_CREATE_USER_RSP:
@@ -331,19 +331,12 @@ def main():
                 if create_rsp["code"] == 0 and create_rsp["userID"]:
                     user_id = create_rsp["userID"]
                     create_ok = True
-            if mod == LOGIN_MODULE and sub == S2C_USER_LIST:
-                ul = parse_user_list(data)
-                if not ul:
-                    continue
-                print(f"    S2C_USER_LIST refresh count={ul['count']}")
-                if ul["count"] > 0:
-                    user_id = ul["entries"][0]["userID"]
-                    create_ok = True
         if not create_ok or not user_id:
             print("FAIL: create character")
             gw.close()
             return 1
 
+        print("[3b] immediate select after create (ownedRoleIds fallback, skip USER_LIST wait) ...")
     print(f"[4] select userID={user_id} enter world ...")
     select_req = LoginMsg_pb2.C2SSelectUserReq()
     select_req.user_id = user_id
