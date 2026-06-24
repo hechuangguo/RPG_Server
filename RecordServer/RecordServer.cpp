@@ -284,6 +284,7 @@ void RecordServer::sendLoadUserRsp(UserID rid, uint32_t requestSeq)
     wire.level = base.level;
     wire.vocation = base.vocation;
     wire.sex = base.sex;
+    wire.modelID = base.modelID;
     wire.mapID = base.mapID ? base.mapID : 1001;
     wire.posX = base.posX;
     wire.posY = base.posY;
@@ -470,7 +471,7 @@ void RecordServer::loadUserFromDb(UserID rid)
 {
     char sql[256];
     snprintf(sql, sizeof(sql),
-             "SELECT user_id,name,level,vocation,sex,map_id,pos_x,pos_y,pos_z,"
+             "SELECT user_id,name,level,vocation,sex,model_id,map_id,pos_x,pos_y,pos_z,"
              "hp,max_hp,mp,max_mp,gold"
              " FROM CharBase WHERE user_id=%" PRIu64 " LIMIT 1",
              rid);
@@ -489,15 +490,16 @@ void RecordServer::loadUserFromDb(UserID rid)
         base.level = row[2] ? (uint32_t)atoi(row[2]) : 1;
         base.vocation = row[3] ? (uint32_t)atoi(row[3]) : 0;
         base.sex = row[4] ? (uint32_t)atoi(row[4]) : 0;
-        base.mapID = row[5] ? (uint32_t)atoi(row[5]) : 0;
-        base.posX = row[6] ? (float)atof(row[6]) : 0.f;
-        base.posY = row[7] ? (float)atof(row[7]) : 0.f;
-        base.posZ = row[8] ? (float)atof(row[8]) : 0.f;
-        base.hp = row[9] ? (uint32_t)atoi(row[9]) : 100;
-        base.maxHP = row[10] ? (uint32_t)atoi(row[10]) : 100;
-        base.mp = row[11] ? (uint32_t)atoi(row[11]) : 100;
-        base.maxMP = row[12] ? (uint32_t)atoi(row[12]) : 100;
-        base.gold = row[13] ? (uint64_t)strtoull(row[13], nullptr, 10) : 0;
+        base.modelID = row[5] ? (uint32_t)atoi(row[5]) : 1;
+        base.mapID = row[6] ? (uint32_t)atoi(row[6]) : 0;
+        base.posX = row[7] ? (float)atof(row[7]) : 0.f;
+        base.posY = row[8] ? (float)atof(row[8]) : 0.f;
+        base.posZ = row[9] ? (float)atof(row[9]) : 0.f;
+        base.hp = row[10] ? (uint32_t)atoi(row[10]) : 100;
+        base.maxHP = row[11] ? (uint32_t)atoi(row[11]) : 100;
+        base.mp = row[12] ? (uint32_t)atoi(row[12]) : 100;
+        base.maxMP = row[13] ? (uint32_t)atoi(row[13]) : 100;
+        base.gold = row[14] ? (uint64_t)strtoull(row[14], nullptr, 10) : 0;
         auto user = RecordUser::create(base);
         user->init();
         user->load();
@@ -524,15 +526,16 @@ void RecordServer::saveUserToDb(UserID rid)
                              std::min(base.name.size(), sizeof(base.name) - 1));
     char sql[768];
     snprintf(sql, sizeof(sql),
-             "INSERT INTO CharBase (user_id,name,level,vocation,sex,map_id,"
+             "INSERT INTO CharBase (user_id,name,level,vocation,sex,model_id,map_id,"
              "pos_x,pos_y,pos_z,hp,max_hp,mp,max_mp,gold)"
-             " VALUES (%" PRIu64 ",'%s',%u,%u,%u,%u,%.2f,%.2f,%.2f,%u,%u,%u,%u,%" PRIu64 ")"
+             " VALUES (%" PRIu64 ",'%s',%u,%u,%u,%u,%u,%.2f,%.2f,%.2f,%u,%u,%u,%u,%" PRIu64 ")"
              " ON DUPLICATE KEY UPDATE name=VALUES(name),level=VALUES(level),"
-             " vocation=VALUES(vocation),sex=VALUES(sex),map_id=VALUES(map_id),"
+             " vocation=VALUES(vocation),sex=VALUES(sex),model_id=VALUES(model_id),"
+             " map_id=VALUES(map_id),"
              " pos_x=VALUES(pos_x),pos_y=VALUES(pos_y),pos_z=VALUES(pos_z),"
              " hp=VALUES(hp),max_hp=VALUES(max_hp),mp=VALUES(mp),"
              " max_mp=VALUES(max_mp),gold=VALUES(gold)",
-             rid, escName, base.level, base.vocation, base.sex, base.mapID,
+             rid, escName, base.level, base.vocation, base.sex, base.modelID, base.mapID,
              base.posX, base.posY, base.posZ, base.hp, base.maxHP, base.mp, base.maxMP, base.gold);
     if (mysql_query(m_db, sql) != 0)
     {

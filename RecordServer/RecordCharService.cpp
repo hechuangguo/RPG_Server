@@ -31,7 +31,7 @@ void RecordCharService::listCharacters(MYSQL* db, const Msg_REC_ListCharactersRe
 
     char sql[384];
     snprintf(sql, sizeof(sql),
-             "SELECT user_id, name, level, vocation, sex FROM CharBase "
+             "SELECT user_id, name, level, vocation, sex, model_id FROM CharBase "
              "WHERE accid=%llu AND gamezone=%u ORDER BY user_id",
              static_cast<unsigned long long>(req.accid), req.zoneId);
 
@@ -55,6 +55,7 @@ void RecordCharService::listCharacters(MYSQL* db, const Msg_REC_ListCharactersRe
             e.level = row[2] ? static_cast<uint32_t>(strtoul(row[2], nullptr, 10)) : 1;
             e.vocation = row[3] ? static_cast<uint8_t>(strtoul(row[3], nullptr, 10)) : 0;
             e.sex = row[4] ? static_cast<uint8_t>(strtoul(row[4], nullptr, 10)) : 0;
+            e.modelId = row[5] ? static_cast<uint8_t>(strtoul(row[5], nullptr, 10)) : 1;
             entries.push_back(e);
         }
         mysql_free_result(res);
@@ -106,6 +107,13 @@ void RecordCharService::createCharacter(MYSQL* db, const Msg_REC_CreateCharacter
                      "职业或性别非法");
         return;
     }
+    if (req.modelId < MIN_MODEL_ID || req.modelId > MAX_MODEL_ID)
+    {
+        rsp.code = static_cast<int32_t>(CreateCharacterError::INVALID_MODEL);
+        logLoginFlow(LoginFlowPhase::CHAR_CREATE, req.accid, 0, req.gatewayConnID, rsp.code,
+                     "角色模型非法");
+        return;
+    }
 
     const uint32_t newbieMapId = DEFAULT_NEWBIE_MAP_ID;
     float spawnX = DEFAULT_NEWBIE_SPAWN_X;
@@ -125,11 +133,11 @@ void RecordCharService::createCharacter(MYSQL* db, const Msg_REC_CreateCharacter
     mysql_real_escape_string(db, escName, roleName, strlen(roleName));
     char sql[1024];
     snprintf(sql, sizeof(sql),
-             "INSERT INTO CharBase (accid, gamezone, name, vocation, sex, map_id, pos_x, pos_y, pos_z) "
-             "SELECT %llu, %u, '%s', %u, %u, %u, %.2f, %.2f, %.2f "
+             "INSERT INTO CharBase (accid, gamezone, name, vocation, sex, model_id, map_id, pos_x, pos_y, pos_z) "
+             "SELECT %llu, %u, '%s', %u, %u, %u, %u, %.2f, %.2f, %.2f "
              "FROM DUAL WHERE (SELECT COUNT(*) FROM CharBase WHERE accid=%llu AND gamezone=%u) < %u",
              static_cast<unsigned long long>(req.accid), req.zoneId, escName,
-             req.vocation, req.sex,
+             req.vocation, req.sex, req.modelId,
              newbieMapId,
              spawnX, spawnY, spawnZ,
              static_cast<unsigned long long>(req.accid), req.zoneId,

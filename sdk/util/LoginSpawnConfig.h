@@ -24,6 +24,12 @@ constexpr uint8_t MAX_VOCATION_ID = 3;
 /** @brief 性别 ID 上限（0=男 1=女） */
 constexpr uint8_t MAX_SEX_ID = 1;
 
+/** @brief 角色模型 ID 下限（1=男大） */
+constexpr uint8_t MIN_MODEL_ID = 1;
+
+/** @brief 角色模型 ID 上限（4=女小） */
+constexpr uint8_t MAX_MODEL_ID = 4;
+
 /** @brief LoginServer 下发给 Gateway 的 loginToken 有效期（秒） */
 constexpr uint32_t LOGIN_TOKEN_TTL_SEC = 300;
 

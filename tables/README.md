@@ -21,6 +21,7 @@
 | `migrate_login_db.sql` | 存量迁移：GameUser/ZoneInfo 从 rpg_game → rpg_login |
 | `migrate_login_session.sql` | 存量迁移：补齐 rpg_login.LoginSession（网关鉴权票据表） |
 | `alter_login_flow.sql` | 存量迁移：LoginSession + CharBase.accid/gamezone 列 |
+| `alter_character_model.sql` | 存量迁移：CharBase.model_id 列（创角/进游戏角色模型） |
 | `alter_relation_add_binary.sql` | 迁移：已为旧库 `Relation` 表增加 `` `binary` `` 列（执行一次） |
 | `seed_test_data.sql` | 开发/测试用种子数据：test001~test003（rpg_game） |
 | `examples_query_characters.sql` | 示例：只查角色（CharBase 多类 SELECT） |
@@ -116,7 +117,7 @@ mysql -h 127.0.0.1 -u rpg_table -prpg_table rpg_game < tables/examples_batch_upd
 
 | 表 | 说明 | C++ 读写 |
 |----|------|----------|
-| `CharBase` | 角色基础；`` `binary` `` 存 bag/skills/buffs/quests | RecordServer |
+| `CharBase` | 角色基础；含 `model_id`；`` `binary` `` 存 bag/skills/buffs/quests | RecordServer |
 | `Relation` | 好友/黑名单 JSON + 社交扩展 `` `binary` `` | RecordServer + Session（经协议） |
 | `Friend` | 双向好友/黑名单行（预留） | — |
 | `Mail` | 离线邮件 | — |

@@ -14,6 +14,7 @@
 #include "../sdk/util/GameZoneExternSender.h"
 #include "SceneLoginMsg.h"
 #include "SceneUserManager.h"
+#include "SceneUser.h"
 #include "SceneNpcManager.h"
 #include "SceneManager.h"
 #include "MoveValidator.h"
@@ -30,13 +31,23 @@
 namespace
 {
 
+/** @brief 从场景玩家实体读取角色模型 ID；非玩家返回 0 */
+uint32_t resolvePlayerModelId(const SceneEntry& entry, uint8_t entityType)
+{
+    if (entityType != 0)
+        return 0;
+    const auto* user = dynamic_cast<const SceneUser*>(&entry);
+    return user ? user->Base().modelID : 0;
+}
+
 void sendSpawnProto(SceneServer& server, uint32_t clientConn, const SceneEntry& entry,
                     uint8_t entityType, uint32_t modelId = 0, uint32_t animState = 0)
 {
+    const uint32_t resolvedModelId = modelId ? modelId : resolvePlayerModelId(entry, entityType);
     rpg::mapdata::S2CSpawnEntity msg;
     fillProtoSpawnEntity(entry.getEntryId(), entry.getName(), entry.getLevel(),
                          entry.getPosX(), entry.getPosY(), entry.getPosZ(), 0.f, entityType,
-                         modelId, animState, msg);
+                         resolvedModelId, animState, msg);
     std::string body;
     if (!serializeSpawnEntity(msg, body))
         return;
@@ -48,10 +59,11 @@ void sendSpawnProto(SceneServer& server, uint32_t clientConn, const SceneEntry& 
 void broadcastSpawnProto(SceneServer& server, uint32_t mapId, UserID exclude,
                          const SceneEntry& entry, uint8_t entityType)
 {
+    const uint32_t modelId = resolvePlayerModelId(entry, entityType);
     rpg::mapdata::S2CSpawnEntity msg;
     fillProtoSpawnEntity(entry.getEntryId(), entry.getName(), entry.getLevel(),
                          entry.getPosX(), entry.getPosY(), entry.getPosZ(), 0.f, entityType,
-                         0, 0, msg);
+                         modelId, 0, msg);
     std::string body;
     if (!serializeSpawnEntity(msg, body))
         return;
@@ -231,6 +243,7 @@ void SceneServer::onUserEnter(ConnID /*fromConn*/, const Msg_SCE_UserEnterReq& r
     base.level = req.level;
     base.vocation = req.vocation;
     base.sex = req.sex;
+    base.modelID = req.modelID ? req.modelID : 1;
     base.mapID = mapID;
     base.posX = req.x;
     base.posY = req.y;

@@ -34,6 +34,7 @@ struct UserBase
     uint32_t    level    = 1;                /**< 等级 */
     uint32_t    vocation = 0;                /**< 职业（0=战士 1=法师 2=弓手 ...） */
     uint32_t    sex      = 0;                /**< 性别：0=男 1=女 */
+    uint32_t    modelID  = 1;                /**< 角色模型 ID（1=男大 2=男小 3=女大 4=女小） */
     uint32_t    mapID    = 0;                /**< 当前所在地图 ID */
     float       posX     = 0.f;              /**< X 坐标 */
     float       posY     = 0.f;              /**< Y 坐标（高度） */

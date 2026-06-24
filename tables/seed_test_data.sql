@@ -23,11 +23,11 @@ USE rpg_game;
 -- 用途：Gateway 角色列表 / 选角进世界联调；map_id=1001 对应新手村
 -- -----------------------------------------------------------
 INSERT IGNORE INTO CharBase
-    (user_id, accid, gamezone, name, level, vocation, sex, map_id, pos_x, pos_y, pos_z, hp, max_hp, mp, max_mp, gold, `binary`)
+    (user_id, accid, gamezone, name, level, vocation, sex, model_id, map_id, pos_x, pos_y, pos_z, hp, max_hp, mp, max_mp, gold, `binary`)
 VALUES
-    (1, 1, 1, 'test001', 1, 1, 1, 1001, 100, 0, 100, 100, 100, 100, 100, 1000, x''),
-    (2, 1, 1, 'test002', 5, 2, 1, 1002, 10, 0, 8, 180, 200, 120, 150, 5000, x''),
-    (3, 1, 1, 'test003', 10, 3, 1, 2001, 22, 0, 16, 260, 300, 180, 220, 12000, x'');
+    (1, 1, 1, 'test001', 1, 1, 1, 1, 1001, 100, 0, 100, 100, 100, 100, 100, 1000, x''),
+    (2, 1, 1, 'test002', 5, 2, 1, 2, 1002, 10, 0, 8, 180, 200, 120, 150, 5000, x''),
+    (3, 1, 1, 'test003', 10, 3, 1, 3, 2001, 22, 0, 16, 260, 300, 180, 220, 12000, x'');
 
 -- 修正历史种子 sex=2（旧值超出 MAX_SEX_ID=1：0=男 1=女）
 UPDATE CharBase SET sex = 1 WHERE user_id = 3 AND sex = 2;

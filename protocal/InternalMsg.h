@@ -377,7 +377,8 @@ struct Msg_REC_CharacterEntryWire
     uint32_t level;
     uint8_t  vocation;
     uint8_t  sex;
-    uint8_t  reserved[2];
+    uint8_t  modelId;   /**< 角色模型 ID（1=男大 2=男小 3=女大 4=女小） */
+    uint8_t  reserved;
 };
 
 /**
@@ -402,7 +403,8 @@ struct Msg_REC_CreateCharacterReq
     char     name[32];
     uint8_t  vocation;
     uint8_t  sex;
-    uint8_t  reserved[2];
+    uint8_t  modelId;   /**< 角色模型 ID（1=男大 2=男小 3=女大 4=女小） */
+    uint8_t  reserved;
     uint32_t gatewayConnID;
 };
 
@@ -477,6 +479,7 @@ struct UserBaseWire
     uint32_t mp       = 100;              /**< 当前魔法值 */
     uint32_t maxMP    = 100;              /**< 最大魔法值 */
     uint64_t gold     = 0;                /**< 金币数量 */
+    uint32_t modelID  = 1;                /**< 角色模型 ID（1=男大 2=男小 3=女大 4=女小） */
 };
 
 /**
@@ -564,6 +567,7 @@ struct Msg_SCE_UserEnterReq
     uint32_t mp       = 100;      /**< 当前魔法值 */
     uint32_t maxMP    = 100;      /**< 最大魔法值 */
     uint64_t gold     = 0;        /**< 当前金币 */
+    uint32_t modelID  = 1;        /**< 角色模型 ID（1=男大 2=男小 3=女大 4=女小） */
 };
 
 /**
@@ -594,6 +598,7 @@ struct Msg_GW_UserLoginRsp
     uint32_t mp    = 100;         /**< 当前魔法值 */
     uint32_t maxMP = 100;         /**< 最大魔法值 */
     uint32_t sceneServerId = 0;   /**< 用户所在 SceneServer 实例 ID（ServerList.server_id） */
+    uint32_t modelID  = 1;        /**< 角色模型 ID（1=男大 2=男小 3=女大 4=女小） */
 };
 
 /**

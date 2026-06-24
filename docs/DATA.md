@@ -47,6 +47,7 @@
 | `gamezone` | 区服 ID（与登录所选 zone 一致） |
 | `name` | 角色名，**全局唯一** |
 | `level`, `vocation`, `sex` | 基础属性 |
+| `model_id` | 角色模型 ID（1=男大 2=男小 3=女大 4=女小）；创角写入，列表/进游戏下发 |
 | `map_id`, `pos_x/y/z` | 位置 |
 | `hp`, `max_hp`, `mp`, `max_mp`, `gold` | 战斗/货币 |
 | `` `binary` `` | 包裹/技能/Buff/任务等序列化 blob |

@@ -33,6 +33,7 @@ enum class CreateCharacterError : int32_t
     LIMIT_REACHED = 2,  /**< 达每区角色上限 */
     INVALID_NAME    = 3,  /**< 名非法 */
     INVALID_VOCATION = 4, /**< 职业或性别非法 */
+    INVALID_MODEL    = 5, /**< 角色模型 ID 非法 */
 };
 
 /**

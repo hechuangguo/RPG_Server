@@ -608,6 +608,7 @@ void SuperServer::sendUserEnterToScene(PendingLogin& pending)
     enter.mp = wire.mp;
     enter.maxMP = wire.maxMP;
     enter.gold = wire.gold;
+    enter.modelID = wire.modelID;
 
     m_server.SendMsg(pending.sceneConnID, (uint16_t)InternalMsgID::SCE_USER_ENTER_REQ,
                      reinterpret_cast<char*>(&enter), sizeof(enter));
@@ -644,6 +645,7 @@ void SuperServer::onUserEnterRsp(ConnID /*connID*/, const Msg_SCE_UserEnterRsp& 
         gwRsp.maxHP = w.maxHP;
         gwRsp.mp = w.mp;
         gwRsp.maxMP = w.maxMP;
+        gwRsp.modelID = w.modelID;
         copyToWire(gwRsp.name, sizeof(gwRsp.name), w.name);
         auto sit = m_servers.find(pit->second.sceneConnID);
         if (sit != m_servers.end())

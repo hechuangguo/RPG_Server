@@ -22,6 +22,7 @@ inline UserBaseWire toUserBaseWire(const UserBase& base)
     wire.level    = base.level;
     wire.vocation = base.vocation;
     wire.sex      = base.sex;
+    wire.modelID  = base.modelID;
     wire.mapID    = base.mapID;
     wire.posX     = base.posX;
     wire.posY     = base.posY;
@@ -46,6 +47,7 @@ inline void applyUserBaseWire(UserBase& base, const UserBaseWire& wire)
     base.level    = wire.level;
     base.vocation = wire.vocation;
     base.sex      = wire.sex;
+    base.modelID  = wire.modelID;
     base.mapID    = wire.mapID;
     base.posX     = wire.posX;
     base.posY     = wire.posY;

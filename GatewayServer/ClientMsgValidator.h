@@ -209,6 +209,8 @@ private:
             return ValidateResult::BAD_PAYLOAD;
         if (req.vocation() > MAX_VOCATION_ID || req.sex() > MAX_SEX_ID)
             return ValidateResult::BAD_PAYLOAD;
+        if (req.model_id() < MIN_MODEL_ID || req.model_id() > MAX_MODEL_ID)
+            return ValidateResult::BAD_PAYLOAD;
         return ValidateResult::OK;
     }
 

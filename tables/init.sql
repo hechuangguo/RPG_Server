@@ -96,6 +96,7 @@ CREATE TABLE IF NOT EXISTS CharBase (
     level        INT UNSIGNED DEFAULT 1 COMMENT '角色等级',
     vocation     TINYINT UNSIGNED DEFAULT 0 COMMENT '职业类型（0=无 1=战士 2=法师 3=弓箭手等）',
     sex          TINYINT UNSIGNED DEFAULT 0 COMMENT '性别（0=未知 1=男 2=女）',
+    model_id     TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '角色模型ID（1=男大 2=男小 3=女大 4=女小）',
     map_id       INT UNSIGNED DEFAULT 1001 COMMENT '当前所在地图ID，默认新手村',
     pos_x        FLOAT DEFAULT 0 COMMENT 'X轴坐标',
     pos_y        FLOAT DEFAULT 0 COMMENT 'Y轴坐标',

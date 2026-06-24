@@ -99,8 +99,16 @@ sequenceDiagram
 | `name` | 2–12 码点（UTF-8 ≤31 字节）；中文/英文字母、数字、下划线 `_`；可混排 |
 | `vocation` | 职业 ID：0=战士 1=法师 2=弓手 3=刺客（见 `LoginSpawnConfig.h` `MAX_VOCATION_ID`） |
 | `sex` | 0=男 1=女（`MAX_SEX_ID`） |
+| `model_id` | 角色模型 ID：1=男大 2=男小 3=女大 4=女小（`MIN_MODEL_ID`~`MAX_MODEL_ID`） |
 
 每账号每区最多 **3** 个角色（`MAX_CHARACTERS_PER_ACCOUNT`）。新角色出生在 map **1001**，坐标见 `LoginSpawnConfig.h`。
+
+### 4.1.1 角色列表 `S2C_USER_LIST` / 进游戏 `S2C_ENTER_GAME`
+
+| 消息 | 字段 | 说明 |
+|------|------|------|
+| `S2C_USER_LIST` → `UserListEntry` | `model_id` | 创角时选定并持久化；选角 UI 展示用 |
+| `S2C_ENTER_GAME` | `model_id` | 进世界时下发，客户端加载本地角色模型 |
 
 ### 4.2 选角 `C2S_SELECT_USER_REQ`
 
@@ -138,6 +146,7 @@ Unity 客户端契约见 [UNITY_LOGIN_CLIENT.md](UNITY_LOGIN_CLIENT.md)。
 | 2 | 本账号角色数达上限（3） | 提示，保持连接 |
 | 3 | 角色名非法 | 修正后重试 |
 | 4 | 职业/性别非法 | 修正后重试 |
+| 5 | 角色模型非法 | 修正后重试 |
 | 其它 | 系统错误 | 可重试或重连 |
 
 ---

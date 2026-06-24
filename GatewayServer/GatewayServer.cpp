@@ -49,6 +49,7 @@ rpg::login::S2CUserList buildUserListProto(int32_t code,
         e->set_level(entries[i].level);
         e->set_vocation(entries[i].vocation);
         e->set_sex(entries[i].sex);
+        e->set_model_id(entries[i].modelId);
     }
     return list;
 }
@@ -660,6 +661,7 @@ void GatewayServer::onCreateUser(ConnID connID, const char* data, uint16_t len)
     copyToWire(createReq.name, sizeof(createReq.name), protoReq.name().c_str());
     createReq.vocation = static_cast<uint8_t>(protoReq.vocation());
     createReq.sex = static_cast<uint8_t>(protoReq.sex());
+    createReq.modelId = static_cast<uint8_t>(protoReq.model_id());
     createReq.gatewayConnID = connID;
     if (!m_recordClient.SendMsg(static_cast<uint16_t>(InternalMsgID::REC_CREATE_CHARACTER_REQ),
                                 reinterpret_cast<char*>(&createReq), sizeof(createReq)))
@@ -978,6 +980,9 @@ void GatewayServer::onCreateCharacterRsp(ConnID /*fromConn*/, const Msg_REC_Crea
     case static_cast<int32_t>(CreateCharacterError::INVALID_VOCATION):
         createRsp.set_msg("职业或性别非法");
         break;
+    case static_cast<int32_t>(CreateCharacterError::INVALID_MODEL):
+        createRsp.set_msg("角色模型非法");
+        break;
     default:
         createRsp.set_msg("创角失败");
         break;
@@ -1045,6 +1050,7 @@ void GatewayServer::onUserLoginRsp(ConnID /*fromConn*/, const Msg_GW_UserLoginRs
         enter.set_mp(rsp.mp);
         enter.set_max_mp(rsp.maxMP);
         enter.set_name(rsp.name);
+        enter.set_model_id(rsp.modelID);
 
         sendClientProtoModule(m_clientServer, clientConn, kLoginModule,
                      static_cast<uint8_t>(rpg::login::S2C_ENTER_WORLD_RSP), enterRsp);

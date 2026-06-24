@@ -201,6 +201,7 @@ def parse_user_list(data: bytes):
                 "level": e.level,
                 "vocation": e.vocation,
                 "sex": e.sex,
+                "model_id": e.model_id,
             }
         )
     return {"code": lst.code, "count": len(entries), "entries": entries}
@@ -223,6 +224,7 @@ def parse_enter_game(data: bytes):
         "x": eg.pos.x,
         "y": eg.pos.y,
         "z": eg.pos.z,
+        "model_id": eg.model_id,
     }
 
 
@@ -334,6 +336,7 @@ def main():
         create_req.name = role_name
         create_req.vocation = 0
         create_req.sex = 0
+        create_req.model_id = 1
         send_msg(gw, LOGIN_MODULE, C2S_CREATE_USER_REQ, create_req.SerializeToString())
 
         pending = reader.collect({S2C_CREATE_USER_RSP}, timeout=12.0)
@@ -372,6 +375,7 @@ def main():
             if eg:
                 print(
                     f"    S2C_ENTER_GAME userID={eg['userID']} map={eg['map_id']} "
+                    f"model_id={eg['model_id']} "
                     f"pos=({eg['x']:.1f},{eg['y']:.1f},{eg['z']:.1f})"
                 )
                 enter_ok = True
