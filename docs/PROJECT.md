@@ -24,7 +24,7 @@
 | 网络 | 单线程 epoll ET + 自研 TCP（`sdk/net`） |
 | 配置 | XML（tinyxml2） |
 | 持久化 | MySQL 三库（rpg_login / rpg_game / rpg_global；Login/Super/Session/Record/Global 各进程直连对应库） |
-| 策划数据 | Excel（`DataDoc/`）→ Lua 配表（`database/`） |
+| 策划数据 | Excel（`Common/DataDoc/`）→ Lua 配表（`database/`） |
 | 构建 | CMake 3.16+，产物默认输出到各服务器目录（如 `SuperServer/SuperServer`） |
 | 第三方库 | Lua、tinyxml2、MariaDB 客户端（`3Party/` 自包含） |
 
@@ -79,7 +79,7 @@ RPG/
 ├── ZoneServer/
 ├── LoginServer/
 ├── config/           # config.xml、server_info.xml
-├── DataDoc/          # 策划 Excel 源表
+├── Common/DataDoc/   # 双端共享策划 Excel 源表
 ├── database/         # 生成的 *_config.lua 策划配表
 ├── tables/           # MySQL DDL（入口 init.sql）
 ├── basefile/         # 配表加载工具 data_table.lua
@@ -141,7 +141,7 @@ UserBase → IUser → SessionUser / RecordUser / SceneUser
 #### Lua 与策划数据
 
 - SceneServer：`LuaManager` 加载 `script/scene/init.lua`，C++ 调用 `OnTick`、`OnUserEnter` 等
-- 配表：`DataDoc/*.xlsx` → `./gen_data.sh` → `database/*_config.lua` → `DataTable.load()`（`basefile/data_table.lua`）
+- 配表：`Common/DataDoc/*.xlsx` → `./gen_data.sh` → `database/*_config.lua` → `DataTable.load()`（`basefile/data_table.lua`）
 - 模块：事件系统、NPC 管理、技能、任务（`script/scene`、`script/quest`）
 
 #### 登录主路径
@@ -206,7 +206,7 @@ mysql -u root -p < tables/seed_test_data.sql  # 可选：开发测试账号
 | 全区调度 | SessionSceneManager：注册、副本复用、SceneServer 负载选择（登录选服为 Super 取首个存活 Scene） |
 | 客户端接入 | Gateway 9005、4 字节消息头、校验与按模块转发 Scene/Session |
 | 脚本层 | Lua VM、事件/NPC/技能/任务框架、C++↔Lua 绑定 |
-| 策划数据 | DataDoc → database Lua + basefile 加载，集成 autoinit/build |
+| 策划数据 | Common/DataDoc → database Lua + basefile 加载，集成 autoinit/build |
 | 外联服 | Login 两阶段登录；Logger 远程日志；Global rank 写入；Zone 转发骨架 |
 | 工程化 | CMake、3Party vendor 入库离线构建、完整 docs 体系 |
 
@@ -262,7 +262,7 @@ mysql -u root -p < tables/seed_test_data.sql  # 可选：开发测试账号
 | [DATA.md](DATA.md) | MySQL + 策划 Lua 数据层 |
 | [LUA.md](LUA.md) | SceneServer Lua 脚本 |
 | [DEVELOPMENT.md](DEVELOPMENT.md) | 扩展开发指南 |
-| [DataDoc/README.md](../DataDoc/README.md) | Excel 配表规范 |
+| [Common/DataDoc/README.md](../Common/DataDoc/README.md) | Excel 配表规范 |
 | [database/README.md](../database/README.md) | Lua 策划配表说明 |
 | [tables/README.md](../tables/README.md) | MySQL 表结构脚本 |
 | [COMMENTS.md](COMMENTS.md) | 头文件 / XML / SQL / 源码注释规范 |

@@ -1,6 +1,6 @@
 /**
  * @file    SimpleJsonUtil.cpp
- * @brief  map.meta.json / spawns.json 轻量解析实现
+ * @brief  Common/map meta.json / spawns.json 轻量解析实现
  */
 
 #include "SimpleJsonUtil.h"
@@ -13,6 +13,10 @@
 
 namespace
 {
+
+constexpr float DEFAULT_MAX_X = 512.f;
+constexpr float DEFAULT_MAX_Y = 64.f;
+constexpr float DEFAULT_MAX_Z = 512.f;
 
 std::string readFileToString(const std::string& path)
 {
@@ -69,6 +73,59 @@ bool parseBoundsObject(const std::string& json, MapWorldBounds& bounds)
     return bounds.maxX > bounds.minX && bounds.maxZ > bounds.minZ;
 }
 
+bool deriveBoundsFromSize(const std::string& json, MapWorldBounds& bounds)
+{
+    double width = 0;
+    double height = 0;
+    double tileW = 0;
+    double tileH = 0;
+
+    const size_t sizePos = json.find("\"size\"");
+    if (sizePos != std::string::npos)
+    {
+        const size_t brace = json.find('{', sizePos);
+        const size_t end = json.find('}', brace);
+        if (brace != std::string::npos && end != std::string::npos)
+        {
+            const std::string block = json.substr(brace, end - brace + 1);
+            findNumberAfterKey(block, "width", width);
+            findNumberAfterKey(block, "height", height);
+        }
+    }
+
+    const size_t tilePos = json.find("\"tileSize\"");
+    if (tilePos != std::string::npos)
+    {
+        const size_t brace = json.find('{', tilePos);
+        const size_t end = json.find('}', brace);
+        if (brace != std::string::npos && end != std::string::npos)
+        {
+            const std::string block = json.substr(brace, end - brace + 1);
+            findNumberAfterKey(block, "width", tileW);
+            findNumberAfterKey(block, "height", tileH);
+        }
+    }
+
+    if (width > 0 && height > 0 && tileW > 0 && tileH > 0)
+    {
+        bounds.minX = 0.f;
+        bounds.minY = 0.f;
+        bounds.minZ = 0.f;
+        bounds.maxX = static_cast<float>(width * tileW);
+        bounds.maxY = DEFAULT_MAX_Y;
+        bounds.maxZ = static_cast<float>(height * tileH);
+        return true;
+    }
+
+    bounds.minX = 0.f;
+    bounds.minY = 0.f;
+    bounds.minZ = 0.f;
+    bounds.maxX = DEFAULT_MAX_X;
+    bounds.maxY = DEFAULT_MAX_Y;
+    bounds.maxZ = DEFAULT_MAX_Z;
+    return true;
+}
+
 bool parseDefaultSpawn(const std::string& json, MapSpawnPoint& spawn)
 {
     const size_t keyPos = json.find("\"defaultSpawn\"");
@@ -88,7 +145,7 @@ bool parseDefaultSpawn(const std::string& json, MapSpawnPoint& spawn)
     return true;
 }
 
-void parseSpawnsArray(const std::string& json, std::vector<MapSpawnPoint>& spawns)
+void parseSpawnObjects(const std::string& json, std::vector<MapSpawnPoint>& spawns)
 {
     spawns.clear();
     size_t pos = 0;
@@ -101,10 +158,11 @@ void parseSpawnsArray(const std::string& json, std::vector<MapSpawnPoint>& spawn
         if (end == std::string::npos)
             break;
         const std::string obj = json.substr(pos, end - pos + 1);
-        if (obj.find("\"name\"") != std::string::npos && obj.find("\"x\"") != std::string::npos)
+        if (obj.find("\"x\"") != std::string::npos)
         {
             MapSpawnPoint pt;
             findStringAfterKey(obj, "name", pt.name);
+            findStringAfterKey(obj, "id", pt.name);
             double v = 0;
             if (findNumberAfterKey(obj, "x", v)) pt.x = static_cast<float>(v);
             if (findNumberAfterKey(obj, "y", v)) pt.y = static_cast<float>(v);
@@ -117,7 +175,7 @@ void parseSpawnsArray(const std::string& json, std::vector<MapSpawnPoint>& spawn
 
 } // namespace
 
-bool loadMapRuntimeData(const std::string& runtimeDir, uint32_t mapId, MapRuntimeData& out,
+bool loadMapRuntimeData(const std::string& mapDir, uint32_t mapId, MapRuntimeData& out,
                         std::string* errOut)
 {
     auto fail = [&](const std::string& msg) {
@@ -126,14 +184,14 @@ bool loadMapRuntimeData(const std::string& runtimeDir, uint32_t mapId, MapRuntim
         return false;
     };
 
-    const std::string metaPath = runtimeDir + "/map.meta.json";
+    const std::string metaPath = mapDir + "/meta.json";
     const std::string metaJson = readFileToString(metaPath);
     if (metaJson.empty())
-        return fail("无法读取 map.meta.json: " + metaPath);
+        return fail("无法读取 meta.json: " + metaPath);
 
     out = MapRuntimeData{};
     out.mapId = mapId;
-    out.runtimeRoot = runtimeDir;
+    out.runtimeRoot = mapDir;
 
     double v = 0;
     if (findNumberAfterKey(metaJson, "mapId", v))
@@ -153,21 +211,24 @@ bool loadMapRuntimeData(const std::string& runtimeDir, uint32_t mapId, MapRuntim
         out.maxStepRun = static_cast<float>(v);
 
     if (!parseBoundsObject(metaJson, out.bounds))
-        return fail("map.meta.json worldBounds 无效");
+    {
+        if (!deriveBoundsFromSize(metaJson, out.bounds))
+            return fail("meta.json 边界无效");
+    }
 
     parseDefaultSpawn(metaJson, out.defaultSpawn);
 
-    const std::string spawnsPath = runtimeDir + "/spawns.json";
+    const std::string spawnsPath = mapDir + "/spawns.json";
     const std::string spawnsJson = readFileToString(spawnsPath);
     if (!spawnsJson.empty())
-        parseSpawnsArray(spawnsJson, out.spawns);
+        parseSpawnObjects(spawnsJson, out.spawns);
 
-    const std::string navPath = runtimeDir + "/navmesh.bin";
+    const std::string navPath = mapDir + "/navmesh.bin";
     std::ifstream nav(navPath, std::ios::binary);
     out.hasNavMesh = nav.good();
 
     if (out.mapId != mapId)
-        LOG_WARN("map.meta.json mapId=%u 与配置 %u 不一致", out.mapId, mapId);
+        LOG_WARN("meta.json mapId=%u 与配置 %u 不一致", out.mapId, mapId);
 
     return true;
 }

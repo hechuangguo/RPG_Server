@@ -472,7 +472,6 @@ void SessionServer::onCopyCreateReq(ConnID fromConn, const Msg_SES_CopyCreateReq
         rsp.maxPlayer = existing->getMaxPlayer();
         rsp.reused = 1;
         copyWireField(rsp.mapName, req.mapName);
-        copyWireField(rsp.mapFile, req.mapFile);
     }
     else
     {
@@ -491,7 +490,6 @@ void SessionServer::onCopyCreateReq(ConnID fromConn, const Msg_SES_CopyCreateReq
         rsp.maxPlayer = req.maxPlayer;
         rsp.reused = 0;
         copyWireField(rsp.mapName, req.mapName);
-        copyWireField(rsp.mapFile, req.mapFile);
 
         Msg_SES_CopyCreateCmd cmd{};
         cmd.copyInstanceId = copyId;
@@ -500,7 +498,6 @@ void SessionServer::onCopyCreateReq(ConnID fromConn, const Msg_SES_CopyCreateReq
         cmd.ownerId = req.ownerId;
         cmd.maxPlayer = req.maxPlayer;
         copyWireField(cmd.mapName, req.mapName);
-        copyWireField(cmd.mapFile, req.mapFile);
 
         ConnID targetConn = SessionSceneManager::Instance().findConnBySceneServerId(targetId);
         if (targetConn != INVALID_CONN_ID)

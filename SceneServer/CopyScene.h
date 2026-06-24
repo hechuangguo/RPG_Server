@@ -17,7 +17,6 @@ struct CopySceneDef
     uint64_t    ownerId        = 0;                         /**< 副本归属者 ID */
     uint32_t    maxPlayer      = 5;                         /**< 最大人数 */
     std::string mapName;                                    /**< 地图名 */
-    std::string mapFile;                                    /**< 地图资源路径 */
 };
 
 /**

@@ -13,16 +13,16 @@ Scene::Scene(uint32_t serverId, uint64_t instanceId, const MapConfig& cfg)
     , sceneInstanceId(instanceId)
     , mapId(cfg.mapID)
     , mapName(cfg.mapName)
-    , mapFile(cfg.mapFile)
-    , maxPlayer(cfg.maxPlayer)
+    , maxPlayer(cfg.maxPlayer > 0 ? cfg.maxPlayer : 200)
+    , expectedVersion(cfg.expectedVersion)
 {
 }
 
 bool Scene::loadResources()
 {
     state = SceneState::CREATING;
-    LOG_INFO("场景加载资源: instance=%llu map=%u file=%s",
-             sceneInstanceId, mapId, mapFile.c_str());
+    LOG_INFO("场景加载资源: instance=%llu map=%u",
+             sceneInstanceId, mapId);
 
     if (!onLoadResources())
     {
@@ -72,10 +72,10 @@ void Scene::shutdown()
 
 bool Scene::onLoadResources()
 {
-    mapRuntimeData = loadMapDataFromConfig(mapFile, mapId);
+    mapRuntimeData = loadMapData(mapId, expectedVersion);
     if (!mapRuntimeData)
     {
-        LOG_ERR("场景 map runtime 加载失败: map=%u file=%s", mapId, mapFile.c_str());
+        LOG_ERR("场景地图几何加载失败: map=%u", mapId);
         return false;
     }
     return true;

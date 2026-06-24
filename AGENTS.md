@@ -30,7 +30,7 @@
 - 三库分工：**rpg_login**（LoginServer）、**rpg_game**（Super/Record/Session）、**rpg_global**（GlobalServer）
 - RecordServer 为 **rpg_game** 角色数据主写库；Session 可直连 rpg_game 做本区玩法
 - 全区场景/副本调度在 **SessionServer** `SessionSceneManager`
-- 策划静态数据：**DataDoc Excel** → `./gen_data.sh` → **database/*.lua** → **basefile** 加载
+- 策划静态数据：**Common/DataDoc Excel** → `./gen_data.sh` → **database/*.lua** → **basefile** 加载
 - MySQL 表结构：**tables/**（入口 `init.sql`，与 `database/` Lua 配表平级）
 - **客户端上行**必须经 Gateway `ClientMsgValidator` + `ClientMsgRouter`，禁止绕过
 
@@ -93,7 +93,7 @@ docs/LUA.md                      # Lua 绑定与模块
 
 - Gateway/Scene/AOI 直连 MySQL（Session/Super/Record/Global/Login 按三库分工除外）
 - 客户端消息绕过 Gateway 校验直转 Scene
-- 在 Lua 或 C++ 中复制粘贴大段策划表（应走 DataDoc）
+- 在 Lua 或 C++ 中复制粘贴大段策划表（应走 Common/DataDoc 管线）
 - 无说明地重命名存量 `OnXxx` / `m_` 前缀符号
 - 使用 `strncpy` 写入 `ClientMsg` / `InternalMsg` 定长字符串字段
 - 新增英文整句日志或在同一概念上混用中英文术语（如 `LoginServer` 与“登录服”并存）

@@ -25,7 +25,6 @@ void SessionClient::registerScene(uint32_t sceneServerId, const Scene& scene)
     req.sceneKind = static_cast<uint8_t>(scene.getSceneKind());
     req.maxPlayer = scene.getMaxPlayer();
     copyToWire(req.mapName, sizeof(req.mapName), scene.getMapName().c_str());
-    copyToWire(req.mapFile, sizeof(req.mapFile), scene.getMapFile().c_str());
     lastRegAttempts[req.sceneInstanceId] = req;
 
     if (!isConnected())
@@ -58,8 +57,7 @@ void SessionClient::unregisterScene(uint32_t sceneServerId, const Scene& scene)
 
 void SessionClient::requestCopyCreate(uint32_t sceneServerId, CopyType copyType,
                                       uint32_t mapId, uint64_t ownerId,
-                                      const std::string& mapName,
-                                      const std::string& mapFile, uint32_t maxPlayer)
+                                      const std::string& mapName, uint32_t maxPlayer)
 {
     Msg_SES_CopyCreateReq req{};
     req.reqSceneServerId = sceneServerId;
@@ -68,7 +66,6 @@ void SessionClient::requestCopyCreate(uint32_t sceneServerId, CopyType copyType,
     req.ownerId = ownerId;
     req.maxPlayer = maxPlayer;
     copyToWire(req.mapName, sizeof(req.mapName), mapName.c_str());
-    copyToWire(req.mapFile, sizeof(req.mapFile), mapFile.c_str());
     sendMsg(static_cast<uint16_t>(InternalMsgID::SES_COPY_CREATE_REQ),
             reinterpret_cast<char*>(&req), sizeof(req));
     LOG_INFO("会话客户端副本创建请求: type=%u map=%u owner=%llu",

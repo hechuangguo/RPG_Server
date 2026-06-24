@@ -4,11 +4,25 @@
  */
 
 #include "CopyScene.h"
+#include "../sdk/util/MapConfigLoader.h"
 #include "../sdk/log/Logger.h"
 
 CopyScene::CopyScene(uint32_t sceneServerId, const CopySceneDef& def)
-    : Scene(sceneServerId, def.copyInstanceId,
-            MapConfig{def.mapId, def.mapName, def.mapFile, def.maxPlayer})
+    : Scene(sceneServerId, def.copyInstanceId, [&]() {
+          MapConfig cfg{};
+          cfg.mapID = def.mapId;
+          cfg.mapName = def.mapName;
+          cfg.maxPlayer = def.maxPlayer;
+          if (const MapTableEntry* entry = MapConfigLoader::find(def.mapId))
+          {
+              if (cfg.mapName.empty())
+                  cfg.mapName = entry->name;
+              if (cfg.maxPlayer == 0)
+                  cfg.maxPlayer = entry->maxPlayer;
+              cfg.expectedVersion = entry->version;
+          }
+          return cfg;
+      }())
     , copyType(def.copyType)
     , ownerId(def.ownerId)
 {

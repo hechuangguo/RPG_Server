@@ -16,7 +16,7 @@
 #
 #  初始化流程（8 步）：
 #    0. 初始化 Git Submodule（Common/ → RPG_Common）
-#    1. 创建必要目录（logs/、run/、.build/、3Party/、DataDoc/）
+#    1. 创建必要目录（logs/、run/、.build/、3Party/、Common/DataDoc/）
 #    2. 从 vendor/ 离线编译 3Party 静态库（Lua / tinyxml2 / MariaDB Client）
 #    3. 检查配置文件完整性（config.xml、server_info.xml）
 #    4. 验证协议文件（头文件定义，无需代码生成）
@@ -69,7 +69,7 @@ git submodule update --init --recursive
 #  - 3Party/：第三方库根目录（若不存在）
 # -------------------------------------------------------
 step "Creating directories..."
-mkdir -p "$LOG_DIR" "$RUN_DIR" "$BUILD_DIR" "$THIRD_DIR" "$SCRIPT_DIR/DataDoc"
+mkdir -p "$LOG_DIR" "$RUN_DIR" "$BUILD_DIR" "$THIRD_DIR" "$SCRIPT_DIR/Common/DataDoc"
 
 # -------------------------------------------------------
 #  第2步：从 vendor/ 离线编译 3Party 静态库
@@ -144,16 +144,16 @@ step "Checking config files..."
 step "Config files OK."
 
 # -------------------------------------------------------
-#  第4步：策划表生成（DataDoc Excel → database Lua）
+#  第4步：策划表生成（Common/DataDoc Excel → database Lua）
 #  依赖 Python3 + openpyxl；失败时仅警告，不阻断环境初始化
 # -------------------------------------------------------
-step "Generating data tables from DataDoc..."
+step "Generating data tables from Common/DataDoc..."
 chmod +x "$SCRIPT_DIR/gen_data.sh" 2>/dev/null || true
 if [[ -x "$SCRIPT_DIR/gen_data.sh" ]]; then
     if "$SCRIPT_DIR/gen_data.sh" 2>/dev/null; then
-        step "DataDoc -> database/*.lua OK."
+        step "Common/DataDoc -> database/*.lua OK."
     else
-        warn "DataDoc gen skipped (install: pip3 install -r tools/requirements-datadoc.txt)"
+        warn "Common/DataDoc gen skipped (install: pip3 install -r tools/requirements-datadoc.txt)"
         warn "  Or run later: ./gen_data.sh --init && ./gen_data.sh"
     fi
 else

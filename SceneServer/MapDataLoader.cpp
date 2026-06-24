@@ -11,46 +11,29 @@
 namespace
 {
 
-std::string resolveRuntimeDir(const std::string& mapFile, uint32_t mapId)
-{
-    if (mapFile.empty())
-        return "maps/runtime/" + std::to_string(mapId);
-
-    if (mapFile.find("maps/runtime") != std::string::npos)
-        return mapFile;
-
-    if (mapFile.size() > 4 && mapFile.rfind(".map") == mapFile.size() - 4)
-    {
-        const auto slash = mapFile.find_last_of('/');
-        if (slash != std::string::npos)
-        {
-            const std::string base = mapFile.substr(slash + 1);
-            const size_t dot = base.rfind('.');
-            const std::string idStr = base.substr(0, dot);
-            return "maps/runtime/" + idStr;
-        }
-        return "maps/runtime/" + std::to_string(mapId);
-    }
-
-    return mapFile;
-}
+constexpr const char* MAP_ROOT = "Common/map/";
 
 } // namespace
 
-std::shared_ptr<MapRuntimeData> loadMapDataFromConfig(const std::string& mapFile,
-                                                      uint32_t mapId)
+std::shared_ptr<MapRuntimeData> loadMapData(uint32_t mapId, uint32_t expectedVersion)
 {
-    const std::string runtimeDir = resolveRuntimeDir(mapFile, mapId);
+    const std::string mapDir = std::string(MAP_ROOT) + std::to_string(mapId);
     auto data = std::make_shared<MapRuntimeData>();
     std::string err;
-    if (!loadMapRuntimeData(runtimeDir, mapId, *data, &err))
+    if (!loadMapRuntimeData(mapDir, mapId, *data, &err))
     {
-        LOG_WARN("地图 runtime 加载失败 map=%u dir=%s: %s", mapId, runtimeDir.c_str(),
-                 err.c_str());
+        LOG_WARN("地图几何数据加载失败 map=%u dir=%s: %s", mapId, mapDir.c_str(), err.c_str());
         return nullptr;
     }
 
-    LOG_INFO("地图 runtime 已加载: map=%u version=%u aoiGrid=%.0f dir=%s",
-             data->mapId, data->version, data->aoiGridSize, runtimeDir.c_str());
+    if (expectedVersion != 0 && data->version != expectedVersion)
+    {
+        LOG_ERR("地图版本不一致 map=%u meta=%u config=%u", mapId, data->version,
+                expectedVersion);
+        return nullptr;
+    }
+
+    LOG_INFO("地图几何数据已加载: map=%u version=%u aoiGrid=%.0f dir=%s",
+             data->mapId, data->version, data->aoiGridSize, mapDir.c_str());
     return data;
 }

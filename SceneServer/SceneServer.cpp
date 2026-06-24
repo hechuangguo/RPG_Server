@@ -160,10 +160,9 @@ void SceneServer::Run()
 }
 
 void SceneServer::requestCreateCopy(CopyType copyType, uint32_t mapId, uint64_t ownerId,
-                                    const std::string& mapName, const std::string& mapFile,
-                                    uint32_t maxPlayer)
+                                    const std::string& mapName, uint32_t maxPlayer)
 {
-    m_sessionClient.requestCopyCreate(m_sceneID, copyType, mapId, ownerId, mapName, mapFile, maxPlayer);
+    m_sessionClient.requestCopyCreate(m_sceneID, copyType, mapId, ownerId, mapName, maxPlayer);
     LOG_INFO("已发送副本创建请求: type=%u map=%u owner=%llu",
              static_cast<uint32_t>(copyType), mapId, ownerId);
 }
@@ -640,7 +639,6 @@ void SceneServer::onCopyCreateCmd(ConnID /*fromConn*/, const Msg_SES_CopyCreateC
     def.ownerId = cmd.ownerId;
     def.maxPlayer = cmd.maxPlayer;
     def.mapName = cmd.mapName;
-    def.mapFile = cmd.mapFile;
 
     if (SceneManager::Instance().createCopyScene(m_sceneID, def))
         LOG_INFO("本地创建副本成功: instance=%llu", cmd.copyInstanceId);

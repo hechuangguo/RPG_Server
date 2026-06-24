@@ -69,7 +69,7 @@ bool SessionSceneManager::registerScene(ConnID connId,
     bindSceneServer(connId, req.sceneServerId);
 
     SessionScene scene(req.sceneInstanceId, req.sceneServerId, req.mapId,
-                       req.mapName, req.mapFile, req.maxPlayer);
+                       req.mapName, req.maxPlayer);
     m_normalScenes[req.sceneInstanceId] = scene;
     adjustServerSceneCount(req.sceneServerId, 1);
 
@@ -111,7 +111,7 @@ SessionCopyScene* SessionSceneManager::createCopyRecord(uint32_t sceneServerId,
 {
     SessionCopyScene copy(copyInstanceId, sceneServerId,
                           static_cast<CopyType>(req.copyType),
-                          req.mapId, req.ownerId, req.mapName, req.mapFile, req.maxPlayer);
+                          req.mapId, req.ownerId, req.mapName, req.maxPlayer);
     m_copyScenes[copyInstanceId] = copy;
     adjustServerSceneCount(sceneServerId, 1);
     return &m_copyScenes[copyInstanceId];

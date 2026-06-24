@@ -27,7 +27,7 @@ Linux 下 **C++17 + Lua 5.4** 分布式 MMORPG 服务端（**10 进程**：6 区
 | 服间协议 | `protocal/InternalMsg.h`（拼写保持 `protocal`） |
 | 网关校验/路由 | `GatewayServer/ClientMsgValidator.h`、`ClientMsgRouter.h` |
 | 玩法逻辑（可热更） | `script/`（SceneServer Lua） |
-| 静态策划表源 | `DataDoc/*.xlsx` |
+| 静态策划表源 | `Common/DataDoc/*.xlsx` |
 | 生成的 Lua 配表 | `database/*_config.lua`（**勿手改**，改 Excel 后 `./gen_data.sh`） |
 | 配表加载 API | `basefile/`（如 `data_table.lua`） |
 | 运行时配置 | `config/config.xml`、`config/server_info.xml` |
@@ -82,7 +82,7 @@ Linux 下 **C++17 + Lua 5.4** 分布式 MMORPG 服务端（**10 进程**：6 区
 ## 构建与验证
 
 ```bash
-./gen_data.sh          # 改 DataDoc 后
+./gen_data.sh          # 改 Common/DataDoc 后
 ./Build.sh [Server]    # 编译前自动生成 Protobuf；proto 变更时自动 cmake 重配
 ./RunServer.sh         # 从项目根启动（cwd 影响 Lua 路径）
 ```

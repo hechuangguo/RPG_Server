@@ -20,14 +20,13 @@ public:
     /** @brief 构造已注册副本记录 */
     SessionCopyScene(uint64_t instanceId, uint32_t serverId, CopyType type,
                      uint32_t mapId, uint64_t owner, const std::string& name,
-                     const std::string& file, uint32_t maxPlayer)
+                     uint32_t maxPlayer)
         : copyInstanceId(instanceId)
         , sceneServerId(serverId)
         , copyType(type)
         , mapId(mapId)
         , ownerId(owner)
         , mapName(name)
-        , mapFile(file)
         , maxPlayer(maxPlayer)
         , state(SceneState::RUNNING)
     {
@@ -83,7 +82,6 @@ private:
     uint32_t   mapId          = 0;                         /**< 副本地图 ID */
     uint64_t   ownerId        = 0;                         /**< 副本归属者（队长/玩家/公会） */
     std::string mapName;                                   /**< 地图名称 */
-    std::string mapFile;                                   /**< 地图资源文件 */
     uint32_t   maxPlayer      = 5;                         /**< 人数上限 */
     uint32_t   playerCount    = 0;                         /**< 当前人数 */
     SceneState state          = SceneState::CREATING;      /**< 副本状态机 */

@@ -114,7 +114,7 @@ RPG/
 ├── SessionServer/ # SessionScene、SessionCopyScene、SessionSceneManager
 ├── docs/          # 架构、协议、各服、SDK、Lua 等文档（见 INDEX.md）
 ├── config/        # config.xml、server_info.xml
-├── DataDoc/       # 策划 Excel 表（源数据）
+├── Common/DataDoc/  # 双端共享策划 Excel 源表
 ├── database/      # 生成的 *_config.lua 策划配表
 ├── tables/        # MySQL DDL（入口 init.sql）
 ├── basefile/      # 配表加载工具（data_table.lua）
@@ -180,7 +180,7 @@ sudo dnf install -y gcc-c++ cmake make tar openssl-devel zlib-devel
 
 ```bash
 ./autoinit.sh          # 从 vendor 离线编译 3Party + cmake configure
-./gen_data.sh          # DataDoc Excel → database/*.lua（可选 --init 生成示例表）
+./gen_data.sh          # Common/DataDoc Excel → database/*.lua（可选 --init 生成示例表）
 ./pull.sh              # 日常：拉取主仓库 + Common 子模块
 ./build                # 或 ./Build.sh（编译全部 10 个服务器）
 
@@ -195,15 +195,15 @@ sudo dnf install -y gcc-c++ cmake make tar openssl-devel zlib-devel
 # 编译后可执行文件位于各服务器目录（如 SuperServer/SuperServer、LoginServer/LoginServer）
 ```
 
-### 策划配表（DataDoc）
+### 策划配表（Common/DataDoc）
 
 | 步骤 | 说明 |
 |------|------|
-| 编辑 | `DataDoc/*.xlsx` |
+| 编辑 | `Common/DataDoc/*.xlsx` |
 | 生成 | `./gen_data.sh` → `database/*_config.lua` |
 | 加载 | SceneServer 经 `basefile/data_table.lua` 的 `DataTable.load()` |
 
-详见 [DataDoc/README.md](DataDoc/README.md)。
+详见 [Common/DataDoc/README.md](Common/DataDoc/README.md)。
 
 仅重建第三方库：`./3Party/download_and_build.sh`（加 `--force` 强制重下载 vendor 并重编）
 

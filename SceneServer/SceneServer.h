@@ -139,7 +139,7 @@ public:
 
     /** @brief 请求 SessionServer 创建副本（异步，结果见 onCopyCreateRsp） */
     void requestCreateCopy(CopyType copyType, uint32_t mapId, uint64_t ownerId,
-                           const std::string& mapName, const std::string& mapFile,
+                           const std::string& mapName,
                            uint32_t maxPlayer = 5);
 
     /** @brief 内部连接建立 */

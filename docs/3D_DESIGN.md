@@ -440,7 +440,7 @@ flowchart TD
     A[打开 Map_1001.unity] --> B[MapExportConfig + Markers]
     B --> C[Bake NavMesh]
     C --> D["菜单 RPG / Export Map Runtime"]
-    D --> E1[Server maps/runtime/1001]
+    D --> E1[Server Common/map/1001]
     D --> E2[Addressables map_1001]
     E1 --> F[validate_map.sh]
     E2 --> G[Build Addressables]
@@ -448,7 +448,7 @@ flowchart TD
 
 **导出路径：**
 
-- Server：`../../RPG_Server/maps/runtime/{mapId}/`（相对 Unity 工程）
+- Server：`../../RPG_Server/Common/map/{mapId}/`（相对 Unity 工程）
 - 或环境变量 `RPG_SERVER_MAPS_ROOT`
 
 **navmesh.bin：** Phase 1 可写占位 magic `RPGN`；Phase 2 对接 Recast 二进制。
@@ -465,7 +465,7 @@ flowchart TD
 RPG_Server/
 ├── config/
 │   ├── config.xml              # <Aoi gridSize="200"/>
-│   └── server_info.xml         # Map@file → maps/runtime/{id}
+│   └── server_info.xml         # Map@id 声明本进程承载 mapId
 ├── maps/
 │   ├── README.md
 │   └── runtime/{mapId}/
@@ -492,7 +492,7 @@ RPG_Server/
 #### MapDataLoader
 
 - **时机：** `Scene::onLoadResources()`，失败则场景不启动
-- **路径：** `maps/runtime/{mapId}/`；兼容 `map/1001.map` → `maps/runtime/1001/`
+- **路径：** `Common/map/{mapId}/`；策划元数据见 `Common/DataDoc/map.xlsx`
 - **输出：** `MapRuntimeData`（bounds、aoiGridSize、步长上限等）
 
 #### MoveValidator（Phase 2）
@@ -509,18 +509,16 @@ RPG_Server/
 | 层级 | 配置 |
 |------|------|
 | 全局默认 | `config.xml` `<Aoi gridSize="200"/>` |
-| 按地图 | `map.meta.json` `aoiGridSize` → `Msg_AOI_SceneRegister` |
+| 按地图 | `meta.json` `aoiGridSize` → `Msg_AOI_SceneRegister` |
 
 **建议：** 主城/新手村 200；野外 100；副本 50–100。
 
 ### 6.3 server_info.xml 示例
 
 ```xml
-<Map id="1001" name="新手村" file="maps/runtime/1001" maxPlayer="200"
-     spawnX="100" spawnY="0" spawnZ="100"/>
-<Map id="1002" name="主城" file="maps/runtime/1002" maxPlayer="500"/>
-<Map id="2001" name="迷雾森林" file="maps/runtime/2001" maxPlayer="100"/>
-<Map id="2002" name="荒漠要塞" file="maps/runtime/2002" maxPlayer="100"/>
+<Map id="1001" maxPlayer="200"/>
+<Map id="1002" maxPlayer="500"/>
+<Map id="1003" maxPlayer="100"/>
 ```
 
 ### 6.4 mapId 分段
@@ -607,7 +605,7 @@ RPG_Server/
 ### 6.8 校验命令
 
 ```bash
-./tools/map_export/validate_map.sh maps/runtime/1001
+./tools/map_export/validate_map.sh Common/map
 ```
 
 ---
@@ -699,7 +697,7 @@ RPG_Client_Unity/
 | 仓库 | 入库 | 忽略 |
 |------|------|------|
 | **RPG_Common (`Common/`)** | `*Common.proto`、`*Msg.proto`、`generated/`、`tools/gen_proto.sh` | — |
-| RPG_Server | `maps/runtime/**/*.json`、代码、工具 | `.build/`、`navmesh.bin` 大文件可用 LFS |
+| RPG_Server | `Common/map/**/*.json`、`Common/DataDoc/*.xlsx`、代码、工具 | `.build/`、`navmesh.bin` 大文件可用 LFS |
 | RPG_Client_Unity | Submodule `Common/`、`Assets/Maps/Source/` 等 | `Library/`、`Build/`、`Temp/` |
 
 **版本对齐：** `map.meta.json.version` 与 `StreamingAssets/maps/version_manifest.json` 中 mapId 版本一致。
@@ -732,7 +730,7 @@ RPG_Client_Unity/
 ### 9.2 Phase 1 检查清单
 
 - [ ] `MapExporterWindow` 导出 JSON
-- [ ] `maps/runtime/1001–2002/` 种子数据
+- [ ] `Common/map/1001–1003/` 种子数据
 - [ ] `SceneServer/MapDataLoader` 加载成功
 - [ ] `validate_map.sh` 纳入 CI
 
@@ -845,7 +843,7 @@ parse_args → check_deps → check_protoc → gen_proto → check_common_proto
 | AOI 九宫格 | `AOIServer/AOIServer.h` |
 | 地图配置 | `config/server_info.xml` |
 | TLS | `docs/TLS.md` |
-| 地图 runtime | `maps/README.md` |
+| 地图几何 | `Common/map/README.md` |
 | 构建脚本 | `Build.sh`、`RunServer.sh`、`StopServer.sh`、`autoinit.sh` |
 | proto 生成 | `scripts/gen_proto.sh` |
 | proto 注释校验 | `scripts/check_common_proto.sh` |

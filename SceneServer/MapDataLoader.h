@@ -1,6 +1,6 @@
 /**
  * @file    MapDataLoader.h
- * @brief  加载 maps/runtime/{mapId}/ 地图 runtime 数据
+ * @brief  加载 Common/map/{mapId}/ 地图几何数据
  */
 
 #pragma once
@@ -8,13 +8,12 @@
 #include "../sdk/util/MapRuntimeTypes.h"
 
 #include <memory>
-#include <string>
+#include <cstdint>
 
 /**
- * @brief 解析 maps/runtime 目录；兼容 map/{id}.map → maps/runtime/{id}/
- * @param mapFile server_info.xml Map@file 属性
+ * @brief 按 mapId 加载 Common/map/{mapId} 目录
  * @param mapId 地图模板 ID
+ * @param expectedVersion 策划表 version；0 表示跳过版本校验
  * @return 成功返回 MapRuntimeData；失败返回 nullptr
  */
-std::shared_ptr<MapRuntimeData> loadMapDataFromConfig(const std::string& mapFile,
-                                                      uint32_t mapId);
+std::shared_ptr<MapRuntimeData> loadMapData(uint32_t mapId, uint32_t expectedVersion = 0);

@@ -45,13 +45,10 @@ public:
     /** @brief 地图显示名 */
     const std::string& getMapName() const { return mapName; }
 
-    /** @brief 地图资源文件路径 */
-    const std::string& getMapFile() const { return mapFile; }
-
     /** @brief 最大容纳玩家数 */
     uint32_t getMaxPlayer() const { return maxPlayer; }
 
-    /** @brief 地图 runtime 数据（maps/runtime/） */
+    /** @brief 地图几何数据（Common/map/） */
     std::shared_ptr<MapRuntimeData> getMapData() const { return mapRuntimeData; }
 
     /** @brief AOI 格子边长；0 表示使用 AOIServer 全局默认 */
@@ -103,9 +100,9 @@ protected:
     uint64_t            sceneInstanceId = INVALID_SCENE_INSTANCE_ID; /**< 场景实例 ID */
     uint32_t            mapId           = 0;                       /**< 地图模板 ID */
     std::string         mapName;                                   /**< 地图名称 */
-    std::string         mapFile;                                   /**< 地图文件路径 */
     uint32_t            maxPlayer       = 200;                     /**< 最大容纳玩家数 */
-    std::shared_ptr<MapRuntimeData> mapRuntimeData;              /**< 3D runtime 数据 */
+    uint32_t            expectedVersion = 0;                     /**< 策划表 version，用于几何校验 */
+    std::shared_ptr<MapRuntimeData> mapRuntimeData;              /**< 几何 runtime 数据 */
     SceneState          state           = SceneState::CREATING;    /**< 生命周期状态 */
     std::vector<UserID> players;                                   /**< 当前玩家 ID 列表 */
     SceneStartedCallback onStarted;                                /**< 场景启动回调 */

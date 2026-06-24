@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  gen_data.sh —  DataDoc Excel → database Lua 配表生成
+#  gen_data.sh —  Common/DataDoc Excel → database Lua 配表生成
 #
 #  用法：
-#    ./gen_data.sh           # 转换 DataDoc/*.xlsx
+#    ./gen_data.sh           # 转换 Common/DataDoc/*.xlsx
 #    ./gen_data.sh --init    # 仅生成示例 Excel（不转换）
 #
 #  依赖：Python 3 + openpyxl（见 tools/requirements-datadoc.txt）

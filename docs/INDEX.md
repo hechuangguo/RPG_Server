@@ -32,7 +32,7 @@
 1. [LUA.md](LUA.md) — C++↔Lua API、模块说明
 2. [script/README.md](../script/README.md) — 脚本目录与扩展步骤
 3. [basefile/README.md](../basefile/README.md) — `DataTable` 配表 API
-4. [DataDoc/README.md](../DataDoc/README.md) — Excel 策划表规范
+4. [Common/DataDoc/README.md](../Common/DataDoc/README.md) — Excel 策划表规范
 
 ### 运维 / DBA
 
@@ -81,8 +81,8 @@
 | [config/README.md](../config/README.md) | `config.xml` / `server_info.xml` |
 | [database/README.md](../database/README.md) | 生成的 Lua 策划配表 |
 | [tables/README.md](../tables/README.md) | MySQL DDL 与初始化 |
-| [DataDoc/README.md](../DataDoc/README.md) | Excel 源表规范 |
-| [maps/README.md](../maps/README.md) | 3D 地图 runtime 数据目录 |
+| [Common/DataDoc/README.md](../Common/DataDoc/README.md) | Excel 源表规范 |
+| [Common/map/README.md](../Common/map/README.md) | 共享地图几何数据 |
 | [3Party/README.md](../3Party/README.md) | 第三方库离线编译 |
 | [3Party/vendor/README.md](../3Party/vendor/README.md) | vendor 源码 tar.gz 清单 |
 

@@ -7,7 +7,7 @@ QuestMgr = {}
 -- ============================================================
 --  任务状态机：接取(Accept) → 进行中(UpdateProgress) → 完成(Complete) → 提交(Submit)
 --  接取后开始追踪进度，进度达标后标记完成，提交后发放奖励并清除任务
---  配置来源：database/quest_config.lua（DataDoc/quest.xlsx 生成）
+--  配置来源：database/quest_config.lua（Common/DataDoc/quest.xlsx 生成）
 -- ============================================================
 
 require("data_table")

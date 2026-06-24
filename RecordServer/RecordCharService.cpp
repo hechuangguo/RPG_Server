@@ -7,6 +7,7 @@
 #include "../sdk/log/Logger.h"
 #include "../sdk/util/LoginEnterErrorCode.h"
 #include "../sdk/util/LoginSpawnConfig.h"
+#include "../sdk/util/MapConfigLoader.h"
 #include "../sdk/util/LoginFlowLog.h"
 #include "../sdk/util/RoleNameUtil.h"
 #include "../sdk/util/WireStringUtil.h"
@@ -106,6 +107,20 @@ void RecordCharService::createCharacter(MYSQL* db, const Msg_REC_CreateCharacter
         return;
     }
 
+    const uint32_t newbieMapId = DEFAULT_NEWBIE_MAP_ID;
+    float spawnX = DEFAULT_NEWBIE_SPAWN_X;
+    float spawnY = DEFAULT_NEWBIE_SPAWN_Y;
+    float spawnZ = DEFAULT_NEWBIE_SPAWN_Z;
+    if (MapConfigLoader::load())
+    {
+        if (const MapTableEntry* mapRow = MapConfigLoader::getDefaultNewbieMap())
+        {
+            spawnX = mapRow->spawnX;
+            spawnY = mapRow->spawnY;
+            spawnZ = mapRow->spawnZ;
+        }
+    }
+
     char escName[sizeof(roleName) * 2 + 1];
     mysql_real_escape_string(db, escName, roleName, strlen(roleName));
     char sql[1024];
@@ -115,8 +130,8 @@ void RecordCharService::createCharacter(MYSQL* db, const Msg_REC_CreateCharacter
              "FROM DUAL WHERE (SELECT COUNT(*) FROM CharBase WHERE accid=%llu AND gamezone=%u) < %u",
              static_cast<unsigned long long>(req.accid), req.zoneId, escName,
              req.vocation, req.sex,
-             DEFAULT_NEWBIE_MAP_ID,
-             DEFAULT_NEWBIE_SPAWN_X, DEFAULT_NEWBIE_SPAWN_Y, DEFAULT_NEWBIE_SPAWN_Z,
+             newbieMapId,
+             spawnX, spawnY, spawnZ,
              static_cast<unsigned long long>(req.accid), req.zoneId,
              MAX_CHARACTERS_PER_ACCOUNT);
     if (mysql_query(db, sql) != 0)

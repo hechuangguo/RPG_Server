@@ -135,7 +135,7 @@ local row = DataTable.getById(npcTable, templateId)
 
 ### 6.2 新 NPC 对话脚本
 
-1. 在 `DataDoc` / `npc_config` 中设置 `templateId`
+1. 在 `Common/DataDoc` / `npc_config` 中设置 `templateId`
 2. 新建 `script/npc/your_npc.lua`，实现 `OnTalk(userId, npcId, step) → { text, options }`
 3. 在 `npc_dialog.lua` 的 `BY_TEMPLATE` 注册 `templateId → "npc.your_npc"`
 
@@ -153,7 +153,7 @@ local row = DataTable.getById(npcTable, templateId)
 | `script/global/global_mgr.lua` | 存在但未 `require`，无 C++ 钩子 |
 | `script/scene/entry_api.lua` | 已加载，函数为示例，C++ 未调用 |
 | `goblin_ai.lua` / `goblin_boss.lua` | `npc_config` / gen_datadoc 引用但**文件缺失** |
-| 技能配表 | 硬编码在 `skill_mgr.lua`，未纳入 DataDoc |
+| 技能配表 | 硬编码在 `skill_mgr.lua`，未纳入 Common/DataDoc |
 | Session 社交/任务 | 走 SessionServer，Lua 未参与 |
 
 ---

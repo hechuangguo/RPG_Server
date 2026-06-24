@@ -3,12 +3,12 @@
  * @brief  场景服务器地图配置解析器 —— server_info.xml → SceneServerInfo
  *
  * 每个 SceneServer 进程对应一份 server_info.xml，描述该进程
- * 承载的地图列表及参数。
+ * 承载的地图列表及参数。地图元数据由 Common/DataDoc/map.xlsx 提供。
  *
  * XML 结构参考：
  * @code
  *   <SceneServerInfo sceneID="1">
- *     <Map id="1001" name="新手村" file="map/1001.map" maxPlayer="200"/>
+ *     <Map id="1001" maxPlayer="200"/>
  *   </SceneServerInfo>
  * @endcode
  */
@@ -23,14 +23,14 @@
 #include <tinyxml2.h>
 
 /**
- * @brief 单个地图的配置信息
+ * @brief 单个地图的配置信息（进程承载声明）
  */
 struct MapConfig
 {
     uint32_t    mapID    = 0;     /**< 地图唯一 ID */
-    std::string mapName;          /**< 地图显示名 */
-    std::string mapFile;          /**< 地图资源文件路径（如 map/1001.map） */
-    uint32_t    maxPlayer= 200;   /**< 地图最大玩家数 */
+    std::string mapName;          /**< 可选覆盖名；通常由 map_config 补全 */
+    uint32_t    maxPlayer= 0;     /**< 0 表示使用 map_config.maxPlayer */
+    uint32_t    expectedVersion = 0; /**< 策划表 version，用于与 meta.json 交叉校验 */
 };
 
 /**
@@ -80,14 +80,7 @@ public:
                 return false;
             }
             XmlConfig::readStrAttr(e, "name", mc.mapName);
-            XmlConfig::readStrAttr(e, "file", mc.mapFile);
-            mc.maxPlayer = XmlConfig::readUIntAttr(e, "maxPlayer", mc.maxPlayer);
-            if (mc.mapFile.empty())
-            {
-                XmlConfig::setError(errOut,
-                                     "Map id=" + std::to_string(mc.mapID) + ": file is required");
-                return false;
-            }
+            mc.maxPlayer = XmlConfig::readUIntAttr(e, "maxPlayer", 0);
             info.maps.push_back(std::move(mc));
         }
         return true;

@@ -2,11 +2,11 @@
 # -*- coding: utf-8 -*-
 """
 @file   gen_datadoc.py
-@brief  将 DataDoc/*.xlsx 策划表转换为 database/*.lua 供服务器加载
+@brief  将 Common/DataDoc/*.xlsx 策划表转换为 database/*.lua 供服务器加载
 
 用法：
   python3 tools/gen_datadoc.py              # 转换全部 xlsx
-  python3 tools/gen_datadoc.py --init       # 生成示例 DataDoc/*.xlsx
+  python3 tools/gen_datadoc.py --init       # 生成示例 Common/DataDoc/*.xlsx
 
 表格式约定（每个 xlsx 取第一个工作表）：
   - 第 1 行：字段名（英文 camelCase，如 reward_exp 表示嵌套 reward.exp）
@@ -32,7 +32,7 @@ except ImportError:
     sys.exit(1)
 
 ROOT = Path(__file__).resolve().parent.parent
-DATA_DOC_DIR = ROOT / "DataDoc"
+DATA_DOC_DIR = ROOT / "Common" / "DataDoc"
 DATABASE_DIR = ROOT / "database"
 
 # 输出模块名：npc.xlsx -> npc_config.lua -> require("npc_config")
@@ -215,8 +215,33 @@ def initSampleWorkbooks() -> None:
         ]
     )
     wbQuest.save(questPath)
+
+    mapPath = DATA_DOC_DIR / "map.xlsx"
+    wbMap = Workbook()
+    wsMap = wbMap.active
+    wsMap.title = "map"
+    wsMap.append(
+        [
+            "id",
+            "name",
+            "mapType",
+            "maxPlayer",
+            "enabled",
+            "version",
+            "addressableKey",
+            "spawnX",
+            "spawnY",
+            "spawnZ",
+        ]
+    )
+    wsMap.append([1001, "新手村", 1, 200, 1, 1, "map_1001", 0, 0, 0])
+    wsMap.append([1002, "原野地图", 1, 500, 1, 1, "map_1002", 0, 0, 0])
+    wsMap.append([1003, "仙侠主城", 1, 100, 1, 1, "map_1003", 0, 0, 5])
+    wbMap.save(mapPath)
+
     print(f"[init] wrote {npcPath}")
     print(f"[init] wrote {questPath}")
+    print(f"[init] wrote {mapPath}")
 
 
 def main() -> int:
@@ -224,7 +249,7 @@ def main() -> int:
     parser.add_argument(
         "--init",
         action="store_true",
-        help="生成示例 DataDoc/*.xlsx（不执行转换）",
+        help="生成示例 Common/DataDoc/*.xlsx（不执行转换）",
     )
     args = parser.parse_args()
 
@@ -233,12 +258,12 @@ def main() -> int:
         return 0
 
     if not DATA_DOC_DIR.is_dir():
-        print(f"DataDoc 目录不存在: {DATA_DOC_DIR}", file=sys.stderr)
+        print(f"Common/DataDoc 目录不存在: {DATA_DOC_DIR}", file=sys.stderr)
         return 1
 
     xlsxFiles = sorted(DATA_DOC_DIR.glob("*.xlsx"))
     if not xlsxFiles:
-        print("DataDoc 下无 .xlsx，执行 --init 创建示例表")
+        print("Common/DataDoc 下无 .xlsx，执行 --init 创建示例表")
         initSampleWorkbooks()
         xlsxFiles = sorted(DATA_DOC_DIR.glob("*.xlsx"))
 

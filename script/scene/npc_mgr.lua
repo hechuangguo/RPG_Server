@@ -1,6 +1,6 @@
 -- ============================================================
 --  script/scene/npc_mgr.lua  —— NPC 管理器
---  配置来源：database/npc_config.lua（DataDoc/npc.xlsx 生成）
+--  配置来源：database/npc_config.lua（Common/DataDoc/npc.xlsx 生成）
 -- ============================================================
 
 NpcMgr = {}

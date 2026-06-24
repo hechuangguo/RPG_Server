@@ -1,6 +1,6 @@
 /**
  * @file    MapRuntimeTypes.h
- * @brief  3D 地图 runtime 数据结构（maps/runtime/{mapId}/ JSON）
+ * @brief  Common/map/{mapId}/ JSON 解析后的地图运行时数据结构
  *
  * SceneServer MapDataLoader 解析产物；供 MoveValidator 与 AOI 注册使用。
  */
@@ -31,7 +31,7 @@ struct MapSpawnPoint
     float z = 0.f;
 };
 
-/** @brief maps/runtime/{mapId}/ 加载后的内存模型 */
+/** @brief Common/map/{mapId}/ 加载后的内存模型 */
 struct MapRuntimeData
 {
     uint32_t mapId = 0;

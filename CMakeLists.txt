@@ -214,7 +214,7 @@ macro(add_server SERVER_NAME EXTRA_LIBS)
 endmacro()
 
 # RecordServer 特殊依赖：MySQL 客户端及 SSL/zlib 传输层库
-set(RECORD_SERVER_LIBS ${MYSQL_LIB} ${MYSQL_EXTRA_LIBS})
+set(RECORD_SERVER_LIBS ${MYSQL_LIB} ${MYSQL_EXTRA_LIBS} ${LUA_LIBRARIES})
 
 # -------------------------------------------------------
 # 各服务器目标定义

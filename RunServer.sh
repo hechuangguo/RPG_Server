@@ -65,8 +65,8 @@ preflight_proto() {
         fi
     fi
     if [[ -x "$SCRIPT_DIR/tools/map_export/validate_map.sh" ]]; then
-        if ! "$SCRIPT_DIR/tools/map_export/validate_map.sh" "$SCRIPT_DIR/maps/runtime" >/dev/null 2>&1; then
-            log_warn "maps/runtime 校验未通过，SceneServer 可能无法加载地图"
+        if ! "$SCRIPT_DIR/tools/map_export/validate_map.sh" "$SCRIPT_DIR/Common/map" >/dev/null 2>&1; then
+            log_warn "Common/map 校验未通过，SceneServer 可能无法加载地图"
         fi
     fi
 }

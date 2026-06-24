@@ -34,8 +34,7 @@ public:
 
     /** @brief 请求 Session 创建副本 */
     void requestCopyCreate(uint32_t sceneServerId, CopyType copyType, uint32_t mapId,
-                           uint64_t ownerId, const std::string& mapName,
-                           const std::string& mapFile, uint32_t maxPlayer);
+                           uint64_t ownerId, const std::string& mapName, uint32_t maxPlayer);
 
     /** @brief 处理 SES_SCENE_REGISTER_RSP */
     void onRegisterRsp(const char* data, uint16_t len);

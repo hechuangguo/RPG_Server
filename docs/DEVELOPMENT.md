@@ -100,12 +100,12 @@ Scene Lua 扩展：见 [LUA.md](LUA.md) § 扩展指南。
 
 ## 6. 新增策划表
 
-1. 在 `DataDoc/` 添加或修改 `.xlsx`（或 `./gen_data.sh --init`）
+1. 在 `Common/DataDoc/` 添加或修改 `.xlsx`（或 `./gen_data.sh --init`）
 2. `./gen_data.sh` → `database/your_config.lua`
 3. Lua：`DataTable.load("your_config")`
 4. **勿手改** AUTO-GENERATED 的 lua 文件
 
-详见 [DataDoc/README.md](../DataDoc/README.md)、[DATA.md](DATA.md)。
+详见 [Common/DataDoc/README.md](../Common/DataDoc/README.md)、[DATA.md](DATA.md)。
 
 ---
 
@@ -168,7 +168,7 @@ cp LoginServer/extern_login.xml.example LoginServer/extern_login.xml
 - Handler 内阻塞 IO、长锁、跨线程写共享状态
 - Gateway/Scene/Session 直连 MySQL（Record 唯一写库入口）
 - 客户端消息绕过 Gateway Validator/Router
-- Lua/C++ 硬编码大段策划表（应走 DataDoc）
+- Lua/C++ 硬编码大段策划表（应走 Common/DataDoc）
 - `strncpy` 写协议定长字符串字段
 
 完整规则：[AGENTS.md](../AGENTS.md)、[`.cursor/rules/project.mdc`](../.cursor/rules/project.mdc)

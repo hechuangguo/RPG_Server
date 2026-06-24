@@ -307,12 +307,12 @@ print_result() {
 }
 
 # ──────────────────────────────────────────────
-# 策划表生成：DataDoc/*.xlsx -> database/*.lua
+# 策划表生成：Common/DataDoc/*.xlsx -> database/*.lua
 # 失败不阻断编译（可能尚未安装 openpyxl）
 # ──────────────────────────────────────────────
 gen_datadoc() {
     if [[ -x "${SCRIPT_DIR}/gen_data.sh" ]]; then
-        info "生成策划配表 (DataDoc -> database)..."
+        info "生成策划配表 (Common/DataDoc -> database)..."
         if "${SCRIPT_DIR}/gen_data.sh"; then
             success "配表生成完成"
         else
@@ -399,11 +399,11 @@ check_common_proto() {
 
 validate_maps() {
     if [[ -x "${SCRIPT_DIR}/tools/map_export/validate_map.sh" ]]; then
-        info "校验 maps/runtime 种子数据..."
-        if "${SCRIPT_DIR}/tools/map_export/validate_map.sh" "${SCRIPT_DIR}/maps/runtime"; then
-            success "地图 runtime 校验通过"
+        info "校验 Common/map 地图数据..."
+        if "${SCRIPT_DIR}/tools/map_export/validate_map.sh" "${SCRIPT_DIR}/Common/map"; then
+            success "地图几何数据校验通过"
         else
-            warn "地图 runtime 校验失败，Scene 启动可能受影响"
+            warn "地图几何数据校验失败，Scene 启动可能受影响"
         fi
     fi
 }
@@ -420,7 +420,7 @@ main() {
     check_protoc             # 步骤2b：确保 protoc 可用
     gen_proto                # 步骤2c：Common/*.proto → Protobuf/
     check_common_proto       # 步骤2d：proto 注释与生成物（失败阻断）
-    validate_maps            # 步骤2e：maps/runtime JSON 校验
+    validate_maps            # 步骤2e：Common/map JSON 校验
     gen_datadoc              # 步骤2f：Excel 配表 -> Lua
     print_env                 # 步骤3：打印构建环境信息摘要
 

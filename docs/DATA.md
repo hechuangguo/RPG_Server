@@ -5,9 +5,9 @@
 | 轨道 | 路径 | 说明 |
 |------|------|------|
 | MySQL | [`tables/`](../tables/) | 三库：rpg_login / rpg_game / rpg_global；Record 主写游戏数据 |
-| 策划 Lua | [`DataDoc/`](../DataDoc/) → [`database/`](../database/) | 静态配置，SceneServer Lua 加载 |
+| 策划 Lua | [`Common/DataDoc/`](../Common/DataDoc/) → [`database/`](../database/) | 静态配置，SceneServer C++/Lua 加载 |
 
-脚本说明见 [tables/README.md](../tables/README.md)、[database/README.md](../database/README.md)、[DataDoc/README.md](../DataDoc/README.md)。
+脚本说明见 [tables/README.md](../tables/README.md)、[database/README.md](../database/README.md)、[Common/DataDoc/README.md](../Common/DataDoc/README.md)。
 
 ---
 
@@ -138,14 +138,14 @@ Session 启动时会 **阻塞** 直到 Relation 全表预载完成。
 ### 2.1 生成管线
 
 ```
-DataDoc/*.xlsx  →  ./gen_data.sh  →  tools/gen_datadoc.py  →  database/<name>_config.lua
+Common/DataDoc/*.xlsx  →  ./gen_data.sh  →  tools/gen_datadoc.py  →  database/<name>_config.lua
 ```
 
 | 步骤 | 说明 |
 |------|------|
-| 编辑 | `DataDoc/*.xlsx`（首次 `./gen_data.sh --init` 生成示例） |
+| 编辑 | `Common/DataDoc/*.xlsx`（首次 `./gen_data.sh --init` 生成示例） |
 | 生成 | `./gen_data.sh` → `database/*_config.lua`（**勿手改** AUTO-GENERATED 文件） |
-| 加载 | SceneServer Lua：`DataTable.load("npc_config")` 等 |
+| 加载 | SceneServer Lua：`DataTable.load("npc_config")` 等；C++：`MapConfigLoader` |
 
 Excel 格式：首 sheet、第 1 行字段名、必须有 `id` 列；`a_b_c` → 嵌套 `a.b.c`。
 
@@ -155,6 +155,7 @@ Excel 格式：首 sheet、第 1 行字段名、必须有 `id` 列；`a_b_c` →
 |------|------|--------|
 | NPC | `database/npc_config.lua` | `script/scene/npc_mgr.lua` |
 | 任务 | `database/quest_config.lua` | `script/quest/quest_mgr.lua` |
+| 地图 | `database/map_config.lua` | C++ `MapConfigLoader`、Scene 启动校验 |
 
 ### 2.3 加载 API
 
@@ -169,12 +170,14 @@ DataTable.clearCache()  -- 热更前清缓存
 
 详见 [basefile/README.md](../basefile/README.md)。
 
-### 2.4 非 DataDoc 配置
+### 2.4 非策划表配置
 
 | 内容 | 位置 | 说明 |
 |------|------|------|
 | 技能 | `script/scene/skill_mgr.lua` | **硬编码** `SKILL_CONFIG`，未走 Excel |
-| 地图列表 | `config/server_info.xml` | SceneServer C++ 读取 |
+| 地图承载列表 | `config/server_info.xml` | SceneServer 声明本进程 mapId |
+| 地图元数据 | `Common/DataDoc/map.xlsx` | 名称、人数、版本、出生点 |
+| 地图几何 | `Common/map/{mapId}/` | bounds、碰撞、spawns |
 | 运行时端口/DB | `config/config.xml` | 各进程 `ConfigLoader` |
 | 区内拓扑 | MySQL `ServerList` | 优先于 config 中的端口 |
 | 外联地址 | `loginserverlist.xml` | Super `ExternalServerHub` |
@@ -215,21 +218,21 @@ flowchart LR
 
 - 玩家 CharBase 存档变更主经 **RecordServer**；Session 可直连 rpg_game 做本区玩法（如排行榜）
 - 账号数据仅在 **rpg_login**（LoginServer）；全区数据在 **rpg_global**（GlobalServer）
-- 静态数值走 **DataDoc → database/**，不在 C++/Lua 硬编码大表
+- 静态数值走 **Common/DataDoc → database/**，不在 C++/Lua 硬编码大表
 - 集群拓扑：**ServerList**（区内）+ **loginserverlist.xml**（外联）
 
 ---
 
-## 3. 地图 runtime 数据（Unity 3D）
+## 3. 地图数据（Common/map + map_config）
 
 | 轨道 | 路径 | 说明 |
 |------|------|------|
-| 地图 runtime | [`maps/runtime/`](../maps/runtime/) | JSON + navmesh；SceneServer `MapDataLoader` 加载（Phase 1） |
-| 配置引用 | [`config/server_info.xml`](../config/server_info.xml) | `Map@file` → `maps/runtime/{mapId}` |
-| Unity 导出 | Unity `Editor/MapExporter` | 见 [3D_DESIGN.md](3D_DESIGN.md) §5 |
-| 校验 | [`tools/map_export/validate_map.sh`](../tools/map_export/validate_map.sh) | CI / 本地校验 |
+| 策划元数据 | [`Common/DataDoc/map.xlsx`](../Common/DataDoc/map.xlsx) → [`database/map_config.lua`](../database/map_config.lua) | 名称、类型、maxPlayer、version、出生点 |
+| 几何真源 | [`Common/map/`](../Common/map/) | meta.json、spawns.json、collision 等 |
+| 进程承载 | [`config/server_info.xml`](../config/server_info.xml) | `<Map id="..."/>` 声明本 Scene 进程地图 |
+| 校验 | [`tools/map_export/validate_map.sh`](../tools/map_export/validate_map.sh) | 校验 Common/map 并与 map_config.version 交叉比对 |
 
-详见 [3D_DESIGN.md](3D_DESIGN.md) §6。
+详见 [3D_DESIGN.md](3D_DESIGN.md) §6、[Common/map/README.md](../Common/map/README.md)。
 
 ---
 

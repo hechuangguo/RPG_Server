@@ -19,12 +19,11 @@ public:
 
     /** @brief 构造已注册普通场景记录 */
     SessionScene(uint64_t instanceId, uint32_t serverId, uint32_t mapId,
-                 const std::string& name, const std::string& file, uint32_t maxPlayer)
+                 const std::string& name, uint32_t maxPlayer)
         : sceneInstanceId(instanceId)
         , sceneServerId(serverId)
         , mapId(mapId)
         , mapName(name)
-        , mapFile(file)
         , maxPlayer(maxPlayer)
         , state(SceneState::RUNNING)
     {
@@ -62,7 +61,6 @@ private:
     uint32_t    sceneServerId   = 0;                         /**< 承载该场景的 SceneServer ID */
     uint32_t    mapId           = 0;                         /**< 地图模板 ID */
     std::string mapName;                                     /**< 地图显示名 */
-    std::string mapFile;                                     /**< 地图资源文件 */
     uint32_t    maxPlayer       = 200;                       /**< 场景人数上限 */
     uint32_t    playerCount     = 0;                         /**< 当前在线人数 */
     SceneState  state           = SceneState::CREATING;      /**< 场景生命周期状态 */

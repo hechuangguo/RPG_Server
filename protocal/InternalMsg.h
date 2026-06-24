@@ -841,7 +841,6 @@ struct Msg_SES_SceneRegisterReq
     uint32_t mapId;           /**< 地图模板 ID */
     uint8_t  sceneKind;       /**< 场景类型，取值见 SceneKind */
     char     mapName[32];     /**< 地图显示名 */
-    char     mapFile[64];     /**< 地图资源文件名 */
     uint32_t maxPlayer;       /**< 场景容量上限 */
 };
 
@@ -892,7 +891,6 @@ struct Msg_SES_CopyCreateReq
     uint64_t ownerId;          /**< 副本拥有者用户 ID */
     uint32_t maxPlayer;        /**< 副本人数上限 */
     char     mapName[32];      /**< 地图显示名 */
-    char     mapFile[64];      /**< 地图资源文件名 */
 };
 
 /** @brief SessionServer → SceneServer：副本创建/复用结果（回复请求方） */
@@ -906,7 +904,6 @@ struct Msg_SES_CopyCreateRsp
     uint64_t ownerId;             /**< 副本拥有者用户 ID */
     uint32_t maxPlayer;           /**< 副本人数上限 */
     char     mapName[32];         /**< 地图显示名 */
-    char     mapFile[64];         /**< 地图资源文件名 */
     uint8_t  reused;              /**< 1=复用已有副本，0=新建副本 */
 };
 
@@ -919,7 +916,6 @@ struct Msg_SES_CopyCreateCmd
     uint64_t ownerId;        /**< 副本拥有者用户 ID */
     uint32_t maxPlayer;      /**< 副本人数上限 */
     char     mapName[32];    /**< 地图显示名 */
-    char     mapFile[64];    /**< 地图资源文件名 */
 };
 
 /** @brief SceneServer → AOIServer：注册场景实例 */
