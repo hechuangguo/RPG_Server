@@ -352,9 +352,9 @@ flowchart TB
 | 0x02 | 战斗 | SCENE |
 | 0x03 | 背包/物品 | SCENE |
 | 0x04 | 技能 | SCENE |
-| 0x05 | 聊天 | SCENE（sub=0x03 私聊 → SESSION） |
-| 0x06 | 社交 | SESSION |
-| 0x07 | 任务 | SESSION |
+| 0x05 | 聊天 | SCENE（全量；私聊分流至 SESSION **未实现**） |
+| 0x06 | 社交 | DROP（**未实现**，见 `ClientMsgRouter.h`） |
+| 0x07 | 任务 | DROP（**未实现**，见 `ClientMsgRouter.h`） |
 | 0x08 | NPC 交互 | SCENE |
 | 0x0F | 系统/心跳/错误（含 `S2C_ERROR` sub=0x05） | LOCAL |
 

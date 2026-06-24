@@ -7,6 +7,7 @@
 
 #include "LoginServer.h"
 #include "../sdk/net/NetTls.h"
+#include "../sdk/util/ProductionConfigValidator.h"
 #include "../sdk/util/ServerBootstrap.h"
 
 #include <csignal>
@@ -30,6 +31,15 @@ int main(int argc, char* argv[])
 
     if (!initNetTls(cfg.tls))
         return 1;
+
+    const bool enforceProduction = std::getenv("RPG_PRODUCTION") != nullptr;
+    const ProductionConfigCheckResult prodCheck =
+        validateProductionConfig(cfg.tls, cfg.database.pass, enforceProduction);
+    if (!prodCheck.ok)
+    {
+        std::fprintf(stderr, "生产配置校验失败: %s\n", prodCheck.message.c_str());
+        return 1;
+    }
 
     Logger::Instance().SetPath(cfg.logPath.empty() ? "logs/login.log" : cfg.logPath);
 

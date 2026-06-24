@@ -36,7 +36,7 @@
     <!--  pass：MySQL 登录密码（生产环境部署时必须修改）                    -->
     <!--  name：游戏区库名 rpg_game（与 tables/init.sql Part B 一致）      -->
     <!-- ================================================================ -->
-    <Database host="127.0.0.1" port="3306" user="rpg_table" pass="rpg_table" name="rpg_game"/>
+    <Database host="192.168.45.128" port="3306" user="rpg_table" pass="rpg_table" name="rpg_game"/>
 
     <!-- ================================================================ -->
     <!--  SuperServer 配置                                                -->
@@ -46,7 +46,7 @@
     <!--  ip：监听 IP（通常为本机回环或内网 IP）                            -->
     <!--  port：监听端口，子服务器连接的目标端口                            -->
     <!-- ================================================================ -->
-    <SuperServer ip="127.0.0.1" port="9000"/>
+    <SuperServer ip="192.168.45.128" port="9000"/>
 
     <!-- 本游戏区身份：Super/Gateway 向 LoginServer 上报区状态时使用；须与 serverlist.xml zoneId 一致 -->
     <Zone zoneId="1" gameType="0"/>

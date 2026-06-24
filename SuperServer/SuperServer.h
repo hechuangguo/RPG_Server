@@ -98,6 +98,7 @@ struct PendingLogin
     LoginTxnPhase phase = LoginTxnPhase::LOAD_USER; /**< 当前编排阶段 */
     bool         awaitingMapResolve = false; /**< 等待 Session 解析 sceneServerId */
     uint64_t     startedAtMs = 0;      /**< 事务开始时间（幂等/超时） */
+    uint32_t     loadRequestSeq = 0;   /**< 发往 Record 的 REC_LOAD_USER 序号 */
     UserBaseWire userData{};           /**< Record 返回的用户基础数据 */
 };
 
@@ -318,4 +319,5 @@ private:
     uint8_t m_gameType = 0;  /**< 游戏类型 */
     /** @brief Gateway serverID → 最近心跳上报的在线人数 */
     std::unordered_map<uint32_t, uint32_t> m_gatewayOnline;
+    uint32_t m_loadUserSeq = 0; /**< REC_LOAD_USER_REQ 单调递增序号 */
 };

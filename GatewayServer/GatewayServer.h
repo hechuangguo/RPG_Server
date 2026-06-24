@@ -123,6 +123,9 @@ private:
     /** @brief Record 是否 TLS 就绪、可发 REC_VALIDATE_TOKEN_REQ */
     bool isRecordReady() const;
 
+    /** @brief Record + Session + 至少一个 Scene 均可写时上游就绪 */
+    bool isUpstreamReady() const;
+
     /** @brief Record 断开时重连（已就绪则 no-op） */
     void reconnectRecordClient();
 

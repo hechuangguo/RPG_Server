@@ -320,6 +320,19 @@ bool LoginServer::allowClientMessage(ConnID connId, uint8_t module, uint8_t sub,
     return true;
 }
 
+bool LoginServer::allowAccountLoginAttempt(const std::string& account)
+{
+    if (account.empty())
+        return true;
+    if (!m_accountRateLimiter.allowKey(account))
+    {
+        ServiceHealthMetrics::instance().incRateLimitHit();
+        LOG_WARN("账号登录被限速: account=%s", account.c_str());
+        return false;
+    }
+    return true;
+}
+
 void LoginServer::registerHandlers()
 {
     LoginClientMsgRegister(*this);

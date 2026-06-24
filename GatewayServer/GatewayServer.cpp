@@ -238,7 +238,7 @@ void GatewayServer::tickUpstreamConnect()
         return;
 
     m_upstreamConnectPending = false;
-    m_upstreamReady = isRecordReady();
+    m_upstreamReady = isUpstreamReady();
     LOG_INFO("网关上游就绪: record=%d session=%d scene=%d upstreamReady=%d",
              m_recordClient.canSend() ? 1 : 0,
              m_sessionClient.canSend() ? 1 : 0,
@@ -252,6 +252,12 @@ void GatewayServer::tickUpstreamConnect()
 bool GatewayServer::isRecordReady() const
 {
     return m_recordClient.canSend();
+}
+
+bool GatewayServer::isUpstreamReady() const
+{
+    return m_recordClient.canSend() && m_sessionClient.canSend() &&
+           m_scenePool.hasAnyCanSend();
 }
 
 void GatewayServer::reconnectRecordClient()
@@ -272,27 +278,30 @@ void GatewayServer::reconnectRecordClient()
 
 void GatewayServer::upstreamHealthCheck()
 {
-    if (isRecordReady())
+    if (isUpstreamReady())
     {
         if (!m_upstreamReady)
         {
             m_upstreamReady = true;
-            LOG_INFO("Record 上游已恢复");
+            LOG_INFO("网关上游已恢复（Record+Session+Scene）");
         }
         return;
     }
     if (m_upstreamReady)
     {
-        LOG_WARN("Record 上游不可用，暂停客户端转发与鉴权");
+        LOG_WARN("网关上游不可用，暂停客户端转发与鉴权");
         m_upstreamReady = false;
     }
-    reconnectRecordClient();
-    for (int i = 0; i < 5 && !isRecordReady(); ++i)
+    if (!m_recordClient.canSend())
+        reconnectRecordClient();
+    for (int i = 0; i < 5 && !m_recordClient.canSend(); ++i)
         m_recordClient.Poll(10);
-    if (isRecordReady())
+    m_sessionClient.Poll(0);
+    m_scenePool.pollAll();
+    if (isUpstreamReady())
     {
         m_upstreamReady = true;
-        LOG_INFO("Record 上游重连成功");
+        LOG_INFO("网关上游重连成功");
     }
 }
 

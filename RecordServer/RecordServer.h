@@ -37,6 +37,7 @@
 #include "RecordUserManager.h"
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <deque>
 #include <mysql/mysql.h>
@@ -188,6 +189,16 @@ private:
     /** @brief 从有界队列取出一条写库任务执行（每主循环一次） */
     void drainSaveQueue();
 
+    /** @brief 从有界队列取出一条读库任务并回包 Super（每主循环一次） */
+    void drainLoadQueue();
+
+    /**
+     * @brief 向 Super 回发 REC_LOAD_USER_RSP
+     * @param rid 用户 ID
+     * @param requestSeq 回显请求序号
+     */
+    void sendLoadUserRsp(UserID rid, uint32_t requestSeq);
+
     /** @brief Super 不可达时失败所有待校验票据 */
     void failAllPendingVerifyTokens();
 
@@ -228,6 +239,17 @@ private:
 
     static constexpr size_t MAX_SAVE_QUEUE_DEPTH = 8192;
     std::deque<SaveQueueItem> m_saveQueue; /**< 有界写库队列 */
+
+    /** @brief 异步读库队列项 */
+    struct LoadQueueItem
+    {
+        UserID userId = INVALID_USER_ID;
+        uint32_t requestSeq = 0;
+    };
+
+    static constexpr size_t MAX_LOAD_QUEUE_DEPTH = 4096;
+    std::deque<LoadQueueItem> m_loadQueue; /**< 有界读库队列 */
+    std::unordered_set<UserID> m_pendingLoadUsers; /**< 已在队列中的 userID（去重） */
     uint32_t m_superRetryDelayMs = 1000;   /**< Super 重连退避毫秒 */
     uint64_t m_superNextRetryMs = 0;       /**< 下次允许重连时刻 */
     uint64_t m_superTlsStuckSinceMs = 0;   /**< TLS 半开检测起点 */

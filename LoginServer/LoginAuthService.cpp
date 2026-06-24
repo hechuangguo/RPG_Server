@@ -124,7 +124,8 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
     loginRsp.set_user_id(0);
     loginRsp.set_accid(0);
 
-    if (!m_owner.peekLoginChallengeNonce(connID, req.login_nonce()))
+    const bool nonceOk = m_owner.peekLoginChallengeNonce(connID, req.login_nonce());
+    if (!nonceOk)
     {
         loginRsp.set_code(1);
         loginRsp.set_msg("登录挑战无效");
@@ -151,6 +152,19 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
     }
 
     const std::string& account = req.account();
+
+    if (!m_owner.allowAccountLoginAttempt(account))
+    {
+        loginRsp.set_code(1);
+        loginRsp.set_msg("请求过于频繁");
+        sendClientProtoModule(m_owner.clientServer(), connID, kLoginModule,
+                       static_cast<uint8_t>(rpg::login::S2C_LOGIN_RSP), loginRsp);
+        m_owner.verifyAndConsumeLoginNonce(connID, req.login_nonce());
+        logLoginFlow(LoginFlowPhase::ACCOUNT_LOGIN, 0, 0, connID, loginRsp.code(),
+                     loginRsp.msg().c_str());
+        sendGatewayInfo(connID, -1, "登录失败");
+        return;
+    }
 
     uint8_t passwordDigest[PASSWORD_DIGEST_LEN]{};
     if (!copyWireDigest(req.password_digest(), passwordDigest))
@@ -205,7 +219,7 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
             if (!row)
             {
                 loginRsp.set_code(1);
-                loginRsp.set_msg("账号不存在");
+                loginRsp.set_msg("账号或密码错误");
             }
             else
             {
@@ -273,9 +287,10 @@ void LoginAuthService::onClientLogin(ConnID connID, const char* data, uint16_t l
 
     sendClientProtoModule(m_owner.clientServer(), connID, kLoginModule,
                    static_cast<uint8_t>(rpg::login::S2C_LOGIN_RSP), loginRsp);
+    if (nonceOk)
+        m_owner.verifyAndConsumeLoginNonce(connID, req.login_nonce());
     if (loginRsp.code() == 0)
     {
-        m_owner.verifyAndConsumeLoginNonce(connID, req.login_nonce());
         LOG_INFO("账号登录成功: connID=%u zone=%u gameType=%u userID=%llu",
                  connID, req.zone_id(), req.game_type(),
                  static_cast<unsigned long long>(loginRsp.user_id()));

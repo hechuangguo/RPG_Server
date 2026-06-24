@@ -357,7 +357,6 @@ void SuperServer::onUserLoginReq(ConnID connID, const Msg_GW_UserEnterReq& req)
     pending.loginTxnId = req.loginTxnId;
     pending.startedAtMs = nowMs;
     pending.phase = LoginTxnPhase::LOAD_USER;
-    m_pendingLogins[userID] = pending;
 
     logLoginFlow(LoginFlowPhase::SUPER_ENTER, 0, userID, req.gatewayClientConnID, 0,
                  "开始加载角色", req.loginTxnId);
@@ -371,8 +370,13 @@ void SuperServer::onUserLoginReq(ConnID connID, const Msg_GW_UserEnterReq& req)
     ConnID recConn = findSubServer(SubServerType::RECORD);
     if (recConn != INVALID_CONN_ID)
     {
+        Msg_REC_LoadUserReq loadReq{};
+        loadReq.userID = userID;
+        loadReq.requestSeq = ++m_loadUserSeq;
+        pending.loadRequestSeq = loadReq.requestSeq;
+        m_pendingLogins[userID] = pending;
         m_server.SendMsg(recConn, (uint16_t)InternalMsgID::REC_LOAD_USER_REQ,
-                         reinterpret_cast<const char*>(&userID), sizeof(userID));
+                         reinterpret_cast<const char*>(&loadReq), sizeof(loadReq));
     }
     else
     {
@@ -477,6 +481,14 @@ void SuperServer::onLoadUserRsp(ConnID /*connID*/, const char* data, uint16_t le
     auto pit = m_pendingLogins.find(hdr->userID);
     if (pit == m_pendingLogins.end())
     {
+        return;
+    }
+
+    if (hdr->requestSeq != 0 && hdr->requestSeq != pit->second.loadRequestSeq)
+    {
+        LOG_WARN("孤儿 REC_LOAD_USER_RSP 已丢弃: userID=%llu seq=%u expect=%u",
+                 static_cast<unsigned long long>(hdr->userID),
+                 hdr->requestSeq, pit->second.loadRequestSeq);
         return;
     }
 

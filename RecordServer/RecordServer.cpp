@@ -14,6 +14,7 @@
 #include "../sdk/util/LoginFlowTimeouts.h"
 #include "../sdk/util/ServerBootstrap.h"
 
+#include <algorithm>
 #include <cstring>
 #include <unordered_set>
 #include <vector>
@@ -85,6 +86,7 @@ void RecordServer::Run()
         TimerMgr::Instance().Update();
         m_superClient.Poll(0);
         drainSaveQueue();
+        drainLoadQueue();
     }
 }
 
@@ -214,20 +216,56 @@ void RecordServer::sendHeartbeat()
 
 void RecordServer::onLoadUser(ConnID /*fromConn*/, const char* data, uint16_t len)
 {
-    // Super 经 Record→Super 出站连接下发 REC_LOAD_USER_REQ，须同连接回包（m_superClient）
     if (len < sizeof(UserID))
+        return;
+
+    UserID rid = INVALID_USER_ID;
+    uint32_t requestSeq = 0;
+    if (len >= sizeof(Msg_REC_LoadUserReq))
     {
+        const auto* req = reinterpret_cast<const Msg_REC_LoadUserReq*>(data);
+        rid = req->userID;
+        requestSeq = req->requestSeq;
+    }
+    else
+    {
+        rid = *reinterpret_cast<const UserID*>(data);
+    }
+
+    if (m_userManager.contains(rid))
+    {
+        sendLoadUserRsp(rid, requestSeq);
         return;
     }
-    UserID rid = *reinterpret_cast<const UserID*>(data);
 
-    if (!m_userManager.contains(rid))
+    if (m_pendingLoadUsers.count(rid) != 0)
+        return;
+
+    if (m_loadQueue.size() >= MAX_LOAD_QUEUE_DEPTH)
     {
-        loadUserFromDb(rid);
+        LOG_WARN("读库队列已满，拒绝加载: userID=%llu", static_cast<unsigned long long>(rid));
+        Msg_REC_LoadUserRsp hdr{};
+        hdr.code = -1;
+        hdr.userID = rid;
+        hdr.requestSeq = requestSeq;
+        m_superClient.SendMsg((uint16_t)InternalMsgID::REC_LOAD_USER_RSP,
+                              reinterpret_cast<char*>(&hdr), sizeof(hdr));
+        logLoginFlow(LoginFlowPhase::SUPER_ENTER, 0, rid, 0, hdr.code, "Record加载角色");
+        return;
     }
 
+    m_pendingLoadUsers.insert(rid);
+    LoadQueueItem item{};
+    item.userId = rid;
+    item.requestSeq = requestSeq;
+    m_loadQueue.push_back(item);
+}
+
+void RecordServer::sendLoadUserRsp(UserID rid, uint32_t requestSeq)
+{
     Msg_REC_LoadUserRsp hdr{};
     hdr.userID = rid;
+    hdr.requestSeq = requestSeq;
     auto user = m_userManager.findUser(rid);
     if (!user)
     {
@@ -262,6 +300,21 @@ void RecordServer::onLoadUser(ConnID /*fromConn*/, const char* data, uint16_t le
     m_superClient.SendMsg((uint16_t)InternalMsgID::REC_LOAD_USER_RSP,
                           buf.data(), static_cast<uint16_t>(buf.size()));
     logLoginFlow(LoginFlowPhase::SUPER_ENTER, 0, rid, 0, 0, "Record加载角色");
+}
+
+void RecordServer::drainLoadQueue()
+{
+    if (m_loadQueue.empty())
+        return;
+
+    LoadQueueItem item = std::move(m_loadQueue.front());
+    m_loadQueue.pop_front();
+    m_pendingLoadUsers.erase(item.userId);
+
+    if (!m_userManager.contains(item.userId))
+        loadUserFromDb(item.userId);
+
+    sendLoadUserRsp(item.userId, item.requestSeq);
 }
 
 void RecordServer::onSaveUser(ConnID fromConn, const char* data, uint16_t len)
@@ -313,6 +366,7 @@ void RecordServer::onSaveUser(ConnID fromConn, const char* data, uint16_t len)
     Msg_REC_LoadUserRsp rsp{};
     rsp.code = 0;
     rsp.userID = rid;
+    rsp.requestSeq = 0;
     if (!m_server.SendMsg(fromConn, static_cast<uint16_t>(InternalMsgID::REC_SAVE_USER_RSP),
                           reinterpret_cast<char*>(&rsp), sizeof(rsp)))
         ServiceHealthMetrics::instance().incSendMsgFail();
@@ -465,6 +519,9 @@ void RecordServer::saveUserToDb(UserID rid)
     }
     user->save();
     const auto& base = user->Base();
+    char escName[sizeof(base.name) * 2 + 1];
+    mysql_real_escape_string(m_db, escName, base.name.c_str(),
+                             std::min(base.name.size(), sizeof(base.name) - 1));
     char sql[768];
     snprintf(sql, sizeof(sql),
              "INSERT INTO CharBase (user_id,name,level,vocation,sex,map_id,"
@@ -475,7 +532,7 @@ void RecordServer::saveUserToDb(UserID rid)
              " pos_x=VALUES(pos_x),pos_y=VALUES(pos_y),pos_z=VALUES(pos_z),"
              " hp=VALUES(hp),max_hp=VALUES(max_hp),mp=VALUES(mp),"
              " max_mp=VALUES(max_mp),gold=VALUES(gold)",
-             rid, base.name.c_str(), base.level, base.vocation, base.sex, base.mapID,
+             rid, escName, base.level, base.vocation, base.sex, base.mapID,
              base.posX, base.posY, base.posZ, base.hp, base.maxHP, base.mp, base.maxMP, base.gold);
     if (mysql_query(m_db, sql) != 0)
     {

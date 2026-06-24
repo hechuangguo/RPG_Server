@@ -1,0 +1,27 @@
+name: Build
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake libssl-dev python3 protobuf-compiler
+
+      - name: Proto check
+        run: ./scripts/check_common_proto.sh
+
+      - name: Build all servers
+        run: ./Build.sh -j2

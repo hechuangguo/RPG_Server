@@ -105,9 +105,12 @@ void LoginRegisterService::onClientRegister(ConnID connID, const char* data, uin
                  connID, req.login_nonce().size());
         return;
     }
+    const std::string loginNonce = req.login_nonce();
+
     if (!m_owner.zoneInfoStore().isZoneEnabled(static_cast<uint8_t>(req.game_type()), req.zone_id()))
     {
         sendRegisterRsp(connID, REGISTER_ZONE_UNAVAILABLE, "区服不可用");
+        m_owner.verifyAndConsumeLoginNonce(connID, loginNonce);
         return;
     }
 
@@ -115,6 +118,7 @@ void LoginRegisterService::onClientRegister(ConnID connID, const char* data, uin
     if (!db)
     {
         sendRegisterRsp(connID, REGISTER_SERVER_ERROR, "数据库不可用");
+        m_owner.verifyAndConsumeLoginNonce(connID, loginNonce);
         return;
     }
 
@@ -127,6 +131,7 @@ void LoginRegisterService::onClientRegister(ConnID connID, const char* data, uin
     {
         LOG_ERR("注册时查询账号失败: %s", mysql_error(db));
         sendRegisterRsp(connID, REGISTER_SERVER_ERROR, "数据库错误");
+        m_owner.verifyAndConsumeLoginNonce(connID, loginNonce);
         return;
     }
 
@@ -137,6 +142,7 @@ void LoginRegisterService::onClientRegister(ConnID connID, const char* data, uin
         if (res)
             mysql_free_result(res);
         sendRegisterRsp(connID, REGISTER_ACCOUNT_EXISTS, "账号已存在");
+        m_owner.verifyAndConsumeLoginNonce(connID, loginNonce);
         return;
     }
     if (res)
@@ -146,6 +152,7 @@ void LoginRegisterService::onClientRegister(ConnID connID, const char* data, uin
     if (!hashPasswordDigestBcrypt(passwordDigest, passwordHash))
     {
         sendRegisterRsp(connID, REGISTER_SERVER_ERROR, "密码哈希失败");
+        m_owner.verifyAndConsumeLoginNonce(connID, loginNonce);
         return;
     }
 
@@ -163,15 +170,18 @@ void LoginRegisterService::onClientRegister(ConnID connID, const char* data, uin
         if (mysql_errno(db) == ER_DUP_ENTRY)
         {
             sendRegisterRsp(connID, REGISTER_ACCOUNT_EXISTS, "账号已存在");
+            m_owner.verifyAndConsumeLoginNonce(connID, loginNonce);
             return;
         }
         LOG_ERR("注册写入 GameUser 失败: %s", mysql_error(db));
         sendRegisterRsp(connID, REGISTER_SERVER_ERROR, "创建账号失败");
+        m_owner.verifyAndConsumeLoginNonce(connID, loginNonce);
         return;
     }
 
     const uint64_t accid = static_cast<uint64_t>(mysql_insert_id(db));
     sendRegisterRsp(connID, REGISTER_OK, "注册成功", accid);
+    m_owner.verifyAndConsumeLoginNonce(connID, loginNonce);
     LOG_INFO("账号注册成功: connID=%u accid=%llu account=%s zone=%u gameType=%u",
              connID, static_cast<unsigned long long>(accid), account.c_str(),
              req.zone_id(), req.game_type());

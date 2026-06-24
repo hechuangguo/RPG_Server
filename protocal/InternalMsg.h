@@ -427,14 +427,24 @@ struct Msg_GW_UserEnterReq
 };
 
 /**
+ * @brief Super → Record: 从 DB 加载用户（含请求序号，防幂等重试串包）
+ */
+struct Msg_REC_LoadUserReq
+{
+    uint64_t userID;     /**< 用户 ID */
+    uint32_t requestSeq; /**< Super pending 请求序号（0=兼容旧包仅 userID） */
+};
+
+/**
  * @brief RecordServer 加载用户数据响应
  *
  * code=0 时后续追加完整的用户二进制数据（UserBase 序列化 + 扩展字段）。
  */
 struct Msg_REC_LoadUserRsp
 {
-    int32_t  code;      /**< 0=成功, -1=用户不存在 */
-    uint64_t userID;    /**< 用户 ID */
+    int32_t  code;       /**< 0=成功, -1=用户不存在 */
+    uint64_t userID;     /**< 用户 ID */
+    uint32_t requestSeq; /**< 回显 Msg_REC_LoadUserReq.requestSeq */
     // 成功时后续追加 UserBaseWire ...
 };
 

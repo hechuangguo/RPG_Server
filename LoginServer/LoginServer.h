@@ -104,6 +104,12 @@ public:
      */
     bool verifyAndConsumeLoginNonce(ConnID connId, const std::string& loginNonce);
 
+    /**
+     * @brief 按账号滑动窗口限速（防枚举/撞库）
+     * @return 允许继续登录尝试 true
+     */
+    bool allowAccountLoginAttempt(const std::string& account);
+
     /** @brief 注册口：新连接 */
     void onRegisterConnect(ConnID id);
 
@@ -142,4 +148,5 @@ private:
     bool m_dbRequired = false;   /**< 配置了 Database 则须连库成功 */
     std::unordered_map<ConnID, std::string> m_loginChallengeNonces; /**< 每连接 16 字节挑战 nonce */
     ConnRateLimiter m_clientRateLimiter{20, 1000}; /**< 客户端口滑动窗口限速 */
+    ConnRateLimiter m_accountRateLimiter{5, 60000}; /**< 每账号每分钟登录尝试上限 */
 };
